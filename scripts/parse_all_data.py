@@ -40,8 +40,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 import time 
 import sys
-# import simplejson as json 
-import json
+import pickle
+import sqlite3
+# import json
 
 
 
@@ -50,41 +51,25 @@ def printvar( var ):
     
 
 
-# this function shall only write the fit parametetrs and things that can be obtained only from the histograms,
-# especially the fits. the fwhms etc. can be extracted later much more rapidly by reconstructing the fit function.
-# p0 and fit_bounds also saved because they could be used to reconstruct the fit.
-def extract_and_write_data( outfile, pixel_coords, fit_id, pf, pferr, p0, fit_bounds ):
+    
 
+    #mode = 'a'
     #if( extract_and_write_data.first_time ):
-    #    extract_and_write_data.first_time = 0   
-    #    with open( outfile, 'w' ) as f:
-    #        header = "coords peakid status reduc_chisq pf pferr" 
-    #        f.write( header )
-    #        
-    #else:
-    mode = 'a'
-    if( extract_and_write_data.first_time ):
-        mode = 'w'
-        extract_and_write_data.first_time = 0  
+    #    mode = 'w'
+    #    extract_and_write_data.first_time = 0  
+    #    
+    #with open( outfile, mode ) as f:
+    #    d = {
+    #        'pixel_coords' : pixel_coords,
+    #        'fit_id' : fit_id,
+    #        'pf' : pf.tolist(),
+    #        'pferr' : pferr.tolist(),
+    #        'p0' : p0,
+    #        'fit_bounds' : fit_bounds
+    #    }
+    #    json.dump(d, f)
         
-    with open( outfile, mode ) as f:
-        d = {
-            'pixel_coords' : pixel_coords,
-            'fit_id' : fit_id,
-            'pf' : pf.tolist(),
-            'pferr' : pferr.tolist(),
-            'p0' : p0,
-            'fit_bounds' : fit_bounds
-        }
-        json.dump(d, f)
-        
-        #json.dump( coords, f )
-        #json.dump( fit_id, f )
-        #json.dump( pf.tolist(), f )
-        #json.dump( pferr.tolist(), f )
-        #json.dump( p0, f )
-        #json.dump( fit_bounds, f )
-extract_and_write_data.first_time = 1
+#extract_and_write_data.first_time = 1
         
 
 
@@ -176,9 +161,9 @@ def apply_peak_fit( pixel_coords, ax, x, y, fit_bounds, p0, npeaks, mu_all, muer
                 print "Unsuccessful fit, trying new parameters..."
             attempt += 1
 
-    # write all relevant data to a file
+    # write all relevant data to the db
     if outfile:
-        extract_and_write_data( outfile, pixel_coords, fit_id, pf, pferr, p0, fit_bounds )
+        pass #extract_and_write_data( outfile, pixel_coords, fit_id, pf, pferr, p0, fit_bounds )
 
 
     # where we are after breaking    
