@@ -37,7 +37,6 @@ def construct_histo_array( f, efront_histo ):
 
     while( read_doubles_from_bin( f, buf ) ):
         efront_histo[ int( buf[0] ) ] += 1
-        # eback_histo[ int( eback ) ]  += 1
 
 
 

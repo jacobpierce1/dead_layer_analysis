@@ -12,7 +12,7 @@ from jacob_math import *
 from jacob_pyplot import *
 from jacob_utils import *
 from deadlayer_functions import * 
-# reload(jacob_math)
+import sql_db_manager
 
 
 
@@ -95,7 +95,13 @@ p0 += [ 14000.0, 2730.0 ]
 p0 += [ 30000.0, 2755.0 ]
 fitfunc = n_fitfuncs_abstract( fitfunc_n_alpha_peaks, 2 )
 
-status, reduc_chisq, dof, pf, pferr = jacob_least_squares( x, efront_histo, np.sqrt(efront_histo), fit_bounds, p0, fitfunc )
+# apply the laest squares fit.
+ret = jacob_least_squares( x, efront_histo, np.sqrt(efront_histo), fit_bounds, p0, fitfunc )
+
+# unpack if successful
+if ret is not None:
+    reduc_chisq, dof, pf, pferr = ret
+
 add_fit_to_plot( ax, x, fit_bounds, pf, pferr, fitfunc )
 
 mu_all.extend( [pf[5], pf[7]] )
@@ -112,7 +118,14 @@ p0 += [ 2000.0, 2895.0 ]
 p0 += [ 4000.0, 2919.0 ]
 fitfunc = n_fitfuncs_abstract( fitfunc_n_alpha_peaks, 2 )
 
-status, reduc_chisq, dof, pf, pferr = jacob_least_squares( x, efront_histo, np.sqrt(efront_histo), fit_bounds, p0, fitfunc )
+
+# apply the laest squares fit.
+ret = jacob_least_squares( x, efront_histo, np.sqrt(efront_histo), fit_bounds, p0, fitfunc )
+
+# unpack if successful
+if ret is not None:
+    reduc_chisq, dof, pf, pferr = ret
+
 add_fit_to_plot( ax, x, fit_bounds, pf, pferr, fitfunc )
 
 mu_all.extend( [pf[5], pf[7]] )
@@ -128,8 +141,16 @@ p0 = [ 4.0, 0.99, 30.0, 1.0 ]
 p0 += [ 200000.0, 3088.0 ]
 fitfunc = n_fitfuncs_abstract( fitfunc_n_alpha_peaks, 1 )
 
-status, reduc_chisq, dof, pf, pferr = jacob_least_squares( x, efront_histo, np.sqrt(efront_histo), fit_bounds, p0, fitfunc )
+# apply the laest squares fit.
+ret = jacob_least_squares( x, efront_histo, np.sqrt(efront_histo), fit_bounds, p0, fitfunc )
+
+# unpack if successful
+if ret is not None:
+    reduc_chisq, dof, pf, pferr = ret
+
 add_fit_to_plot( ax, x, fit_bounds, pf, pferr, fitfunc )
+
+plt.show()
 
 mu_all.extend( [pf[5]] )
 muerr_all.extend( [pferr[5]] )

@@ -2,7 +2,8 @@ create table fits_and_extracted_data (
     x    INTEGER NOT NULL,
     y    INTEGER NOT NULL,
     fit_id INTEGER NOT NULL,
-    needs_proccessing INTEGER NOT NULL,
+    successful_fit INTEGER NOT NULL,
+    fit_attempt INTEGER NOT NULL,
     reduc_chisq REAL,
     pf   TEXT,
     pferr TEXT,
@@ -11,3 +12,5 @@ create table fits_and_extracted_data (
     fwhm_data TEXT,
     PRIMARY KEY( x, y, fit_id )
 );
+
+

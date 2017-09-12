@@ -32,11 +32,9 @@ def xcut( x, y, newx_bounds ):
 
 
 
-# perform fit 
-def jacob_least_squares( x, y, dy, xcut_bounds, p0, fitfunc ):
-    
-    # return status 
-    status = 1
+
+# perform fit. return None if there is error.
+def jacob_least_squares( x, y, dy, xcut_bounds, p0, fitfunc, reduc_chisq_max=None ):
     
     residual_function = lambda p, x, y, dy: residual_from_fitfunc( p, x, y, dy, fitfunc )
     
@@ -44,23 +42,26 @@ def jacob_least_squares( x, y, dy, xcut_bounds, p0, fitfunc ):
     newy = xcut( x, y, xcut_bounds ) 
     newdy = xcut( x, dy, xcut_bounds )
     
-    # using optimize.leastsq. does not allow you to specify bounds for the fit . 
+    # using optimize.leastsq. does not allow you to specify bounds for the fit params. 
     try:       
         pf, cov, info, mesg, success =    \
             optimize.leastsq( residual_function, p0, args=(newx, newy, newdy), full_output=1 )  
     except ValueError:
         status = 0
-        return (status, 0, 0, [], [] )
+        return None
     
     dof = len(newx)-len(pf)
     reduc_chisq = sum(info["fvec"]*info["fvec"]) / dof
     
     if( success > 4 or len(pf)==0 or cov is None or reduc_chisq > 4):
         status = 0 
-        return (status, 0, 0, [], [] )
-             
+        return None
+
+    if (reduc_chisq_max is not None) and reduc_chisq > reduc_chisq_max:
+        return None
+    
     pferr = np.sqrt( np.diag(cov) * reduc_chisq )
-    return ( status, reduc_chisq, dof, pf, pferr )
+    return ( reduc_chisq, dof, pf.tolist(), pferr.tolist() )
 
       
 #
