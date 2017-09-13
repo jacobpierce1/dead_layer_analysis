@@ -12,7 +12,11 @@ import json
 DEBUG_DB = 0
 
 
-db_filename = '../fits_and_spectral_data.db'
+centered_db = '../centered_fits_data.db'
+rotated_db  = '../rotated_fits_data.db'
+
+
+# db_filename = '../fits_and_spectral_data.db'
 schema_filename = 'initial_schema.sql'
 tablename = 'fits_and_extracted_data'
 
@@ -54,7 +58,7 @@ def add_col( colname, datatype ):
 # query beforehand if necessary. 
 
 def insert_fit_data_into_db( sql_conn, pixel_coords, fit_id, successful_fit, \
-        fit_attempt, reduc_chisq, pf, pferr, p0, fit_bounds, fwhm_data=[0,[0,0],[0,0]], \
+        fit_attempt=-1, reduc_chisq=-1, pf=[-1], pferr=[-1], p0=[-1], fit_bounds=[-1,-1], fwhm_data=[0,[0,0],[0,0]], \
         db_is_empty=0 ):        
     
     # the c programmer within.
@@ -101,6 +105,11 @@ def insert_fit_data_into_db( sql_conn, pixel_coords, fit_id, successful_fit, \
 
 
 
+# used to update the successful_fit col if you see manually that the fit is not good.
+def change_status_in_db( sql_conn, succesful_fit ):
+    pass
+
+
 
 def read_data_from_db( sql_conn, pixel_coords, fit_id ):
         
@@ -144,11 +153,11 @@ def read_data_from_db( sql_conn, pixel_coords, fit_id ):
 
 # only needs to be called once. has guard against future calls (unless the 
 # location of the db is changed, then it won't work)
-def create_db():
+def create_db(name):
 
-    db_is_new = not os.path.exists(db_filename)
+    db_is_new = not os.path.exists(name)
     
-    with sqlite3.connect(db_filename) as conn:
+    with sqlite3.connect(name) as conn:
         if db_is_new:
             print('INFO: creating DB and schema...')
             with open(schema_filename, 'rt') as f:
@@ -157,7 +166,9 @@ def create_db():
 
         else:
             print('ERROR: database already exists, returning')
-
+            return 0
+    print 'INFO: success.'
+    return 1
 
 
 # fill the db with each fit id that we need, giving the needs update flag for
@@ -174,11 +185,12 @@ def populate_db(conn, numx, numy, numfits):
 
 
 
-def delete_db():
+def delete_db( filename ):
     ans = raw_input( 'PROMPT: delete DB, are you sure (y/n) ?  ' )
     if( ans == 'y' ):
-        os.remove( db_filename ) 
+        os.remove( filename ) 
         print 'INFO: deleted db.' 
+        
         return 1
     print 'INFO: did not delete db.'
     return 0
@@ -199,20 +211,24 @@ def reset_fit_attempt_number():
 # this should be called after a col is added to the schema or a change is made to
 # the way the db is organized. delete the old db, create a new one, and then populate it.
 # todo: option to populate relevant entries of the new db with ones from the old db.
-def recreate_db():
+def recreate_db( filename ):
     
-    if not delete_db():
+    if not delete_db( filename ):
         return 0
     
-    create_db()
+    create_db( filename )
     
-    with sqlite3.connect( db_filename ) as sql_conn:
+    with sqlite3.connect( filename ) as sql_conn:
         populate_db(sql_conn, 32, 32, 3, )
     
     print 'INFO: successfully populated the db with defaults.'
     return 1
     
-    
+
+def recreate_both_dbs():
+    recreate_db( centered_db )
+    recreate_db( rotated_db )
+
     
 #with sqlite3.connect( db_filename ) as sql_conn:
 #

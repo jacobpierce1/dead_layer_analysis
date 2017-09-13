@@ -63,14 +63,14 @@ def add_fit_to_plot( ax, x, fit_bounds, p, perr, fitfunc ):
 
 # save in high quality 
 def saveplot_high_quality( directory, fname ):
-    plt.savefig( directory + fname + '.eps', format='eps', dpi=2000)
+    plt.savefig( directory + '/' + fname + '.eps', format='eps', dpi=2000)
 
 def saveplot_med_quality( directory, fname ):
-    plt.savefig( directory + fname + '.eps', format='eps', dpi=500)
+    plt.savefig( directory + '/' + fname + '.eps', format='eps', dpi=500)
 
 
 def saveplot_low_quality( directory, fname ):
-    plt.savefig( directory + fname + '.eps', format='eps', dpi=2000)
+    plt.savefig( directory + '/' + fname, format='png') #, dpi=2000)
 
 
 

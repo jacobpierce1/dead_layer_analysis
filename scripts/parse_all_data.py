@@ -22,6 +22,11 @@ PRINT_FIT_STATUS = 0
 PRINT_FILE_NAMES = 0
 BREAK_AFTER_1_PLOT = 0
 SAVE_DATA = 1
+UPDATE_DB = 1
+
+
+logfile = '../current_fit_images/log.txt'
+data_dir = ''  # currently unused, should be implemented.
 
 
 
@@ -41,8 +46,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import time 
 import sys
-import pickle
 import sqlite3
+import os 
 # import json
 
 
@@ -62,41 +67,64 @@ def estimate_time_left( current_iteration, total_iterations, start_time, num_upd
         print "%d/%d complete, %f mins remaining" \
                     % ( estimate_time_left.counter, num_updates, \
                     (current_time - start_time) / 60.0 * (num_updates - estimate_time_left.counter ) / estimate_time_left.counter )
-estimate_time_left.counter = 1
+estimate_time_left.counter = 0
 
 
 
 
+
+
+# these are the functions that attempt to modify p0_attempt and fit_bounds_attempt.
+def attempt0( p0, p0_attempt, fit_bounds, fit_bounds_attempt, npeaks ):
+    pass 
+    
+def attempt1( p0, p0_attempt, fit_bounds, fit_bounds_attempt, npeaks ):
+    fit_bounds_attempt[0] += 10
+    
+def attempt2( p0, p0_attempt, fit_bounds, fit_bounds_attempt, npeaks ):
+    for i in range( 4, 4+npeaks*2, 2 ):
+        p0_attempt[i] = 0.4 * p0[i]
+
+def attempt3( p0, p0_attempt, fit_bounds, fit_bounds_attempt, npeaks ):
+    for i in range( 4, 4+npeaks*2, 2 ):
+        p0_attempt[i] = 0.1 * p0[i]
 
 # this function creates another guess for p0 in the case of a failed fit based on
 # observations about what is gonig wrong. the particular attempts we use depend on the peak id.
-def next_fit_attempt( p0, p0_attempt, fit_bounds, fit_bounds_attempt, npeaks, attempt ):
+def next_fit_attempt( p0, p0_attempt, fit_bounds, fit_bounds_attempt, npeaks, \
+        attempt, sql_conn=None, pixel_coords=None, fit_id=None ):
     
+    # these will be modified and used later as the initial guess.
     p0_attempt[:] = p0[:]
     fit_bounds_attempt[:] = fit_bounds[:]    
     
-    if( attempt==0 ):
-        pass
     
-    # try 2: reduce the left fit bound 
-    elif( attempt == 1 ):
-        fit_bounds_attempt[0] += 10
+    # array of functions that will be used to modify p0_attempt and fit_bounds_attempt
+    modifier_functions = [ attempt0, attempt1, attempt2 ]#, attempt3 ]
     
-    # try 1: scale down both amplitudes  
-    elif( attempt==2 ):
-        for i in range(4,4+npeaks*2,2):
-            p0_attempt[i] = 0.4 * p0[i] 
+    # this covers the case in which we have already used all the functions as recorded in the 
+    # db, so we don't bother to try again. the only way to get out of this is reset the function
+    # number in db or add another function (latter almost certainly what you need).
+    # note that we don't update the db
+    if( attempt > len(modifier_functions ) ):
+        return 0
     
-    # try 2: move back the mu values by 1.
-    elif( attempt==3 ):
-        for i in range( 5,5+npeaks*2,2):
-            p0_attempt[i] -= 2
-
-    else:
+    # this checks if we had not previously attempted all functions, but none of them succeeded
+    # on this run. in that case put it in the DB. 
+    if attempt == len(modifier_functions):
+        if UPDATE_DB and sql_conn is not None:
+            if pixel_coords is None or fit_id is None:
+                log_message( 'WARNING (%d, %d, %d): unable to insert bad fit attempt into db, \
+                        pixel_coords or fit_id not specified.' % (pixel_coords[0], pixel_coords[1], fit_id ) )
+                return 0
+            sql_db_manager.insert_fit_data_into_db( sql_conn, pixel_coords, \
+                    fit_id, 0, fit_attempt=attempt )
         return 0
 
+    # otherwise we call the current attempt function. 
+    modifier_functions[attempt]( p0, p0_attempt, fit_bounds, fit_bounds_attempt, npeaks )
     return 1
-
+    
 
 
 
@@ -108,21 +136,29 @@ def next_fit_attempt( p0, p0_attempt, fit_bounds, fit_bounds_attempt, npeaks, at
 # apply peak fit, make sure it worked, try again if not, put it in db if successful,
 # and then plot. return 1 if successful fit obtained, otherwise 0.
 
-def apply_peak_fit( ax, pixel_coords, fit_id, x, y, fit_bounds, p0, npeaks, mu_all=None, \
+def apply_peak_fit( ax, pixel_coords, fit_id, x, y, fit_bounds, p0, npeaks, last_attempt=-1, mu_all=None, \
         muerr_all=None, reduc_chisq_all=None, sql_conn=None ):
     
     fitfunc = n_fitfuncs_abstract( fitfunc_n_alpha_peaks, npeaks )
     
-    attempt=0
+    # last_attempt is the last attempt that was attempted. presumably if we are in this function
+    # then the last attempt was a failure. there is no point checking any of the previous 
+    # fit attempts if we already know they will fail, so we start at the next one. 
+    last_attempt += 1
+    
+    # these will be populated based on the current attempt number and the given p0 and fit_bounds,
+    # which are used as the first guesses. they are passed as parameters so they can be used after
+    # without returning them.
     p0_attempt = []
     fit_bounds_attempt = []
         
     status = 0
     
+    
     while( not status ):
         
         if not next_fit_attempt( p0, p0_attempt, fit_bounds, fit_bounds_attempt, \
-                npeaks, attempt ):
+                npeaks, last_attempt, sql_conn=sql_conn, pixel_coords=pixel_coords, fit_id=fit_id ):
             
             if PRINT_FIT_STATUS:
                 print "WARNING: peak failed to converge."
@@ -137,14 +173,14 @@ def apply_peak_fit( ax, pixel_coords, fit_id, x, y, fit_bounds, p0, npeaks, mu_a
         else:
             if PRINT_FIT_STATUS:
                 print "Unsuccessful fit, trying new parameters..."
-            attempt += 1
+            last_attempt += 1
 
     # now we have broken out of the loop after a successful fit. unpack the results.
     reduc_chisq, dof, pf, pferr = ret         
                               
     # write all relevant data to the db
-    if sql_conn is not None:
-        sql_db_manager.insert_fit_data_into_db( sql_conn, pixel_coords, fit_id, 1, attempt, reduc_chisq, pf, \
+    if UPDATE_DB and sql_conn is not None:
+        sql_db_manager.insert_fit_data_into_db( sql_conn, pixel_coords, fit_id, 1, last_attempt, reduc_chisq, pf, \
                 pferr, p0, fit_bounds ) 
 
     # where we are after breaking    
@@ -180,7 +216,7 @@ def process_file( ax, infile, pixel_coords, sql_conn=None ):
     try:
         f = open( infile, "rb" )
     except IOError:
-        print "ERROR: unable to open file: " + infile
+        log_message( "ERROR: unable to open file: " + infile )
         sys.exit(0)
     
     # these are passed as reference to avoid unnecessary copying
@@ -198,9 +234,25 @@ def process_file( ax, infile, pixel_coords, sql_conn=None ):
     # way to deteremine a good location for the plot boundaries. 
     
     peak_positions = peakdetect.peakdetect( efront_histo, lookahead=10 )[0]
+
+    # if 5 peaks are not there then we have a problem. this will have to be handled 
+    # eventually, for now we just log it and worry about it later.
+    if( len(peak_positions) < 5 ):
+        log_message( 'WARNING (%d,%d,*): unable to find 5 peaks, skipping this fit.' \
+                % (pixel_coords[0], pixel_coords[1] ) )
+        
+        if sql_conn is not None:
+            for fit_id in range(3):
+                sql_db_manager.insert_fit_data_into_db( sql_conn, pixel_coords, fit_id, 0 )
+        return 0
+    
+    
+    # now find the 5 largest and sort by x position.
     ind = np.argpartition( [z[1] for z in peak_positions ], -5 )[-5:]
     our_peaks = [ peak_positions[z][0] for z in sorted(ind) ]
     
+
+    # debug 
     if PRINT_PEAK_POSITIONS:
         print "INFO: attempting to process peaks " + str(our_peaks)
     
@@ -208,11 +260,11 @@ def process_file( ax, infile, pixel_coords, sql_conn=None ):
     # largest peak since it always dominates, the only potential problem is really the smallest peak in the 
     # lowest energy pair.
     if( abs(23 - (our_peaks[1] - our_peaks[0] ) ) > 10 ):
-        print "WARNING: invalid peak suspected for pair 1. " 
+        log_message( "WARNING (%d,%d,*): invalid peak suspected for pair 1. " % (pixel_coords[0], pixel_coords[1]) ) 
         # return -1
     
     if( abs(23 - (our_peaks[3] - our_peaks[2] ) ) > 10 ):
-        print "WARNING: invalid peak suspected for pair 2. " 
+        log_message( "WARNING (%d,%d,*): invalid peak suspected for pair 2. " % (pixel_coords[0], pixel_coords[1]) )
         # sys.exit -1
     
     
@@ -239,6 +291,7 @@ def process_file( ax, infile, pixel_coords, sql_conn=None ):
     
     # number of peaks for each fit, need this info before plotting anything so it is defined here.
     num_peaks = [ 2, 2, 1 ] 
+    fit_attempts = [-1, -1, -1 ]
     
     
     # determine which fits to perform, 1 = fit must be attempted. by default if no 
@@ -251,6 +304,7 @@ def process_file( ax, infile, pixel_coords, sql_conn=None ):
             result = sql_db_manager.read_data_from_db( sql_conn, pixel_coords, i )
             successful_fit, fit_attempt, reduc_chisq, pf, pferr, p0, fit_bounds, fwhm_data = result
 
+            fit_attempts[i] = fit_attempt
             fits_to_perform[i] = not successful_fit 
 
             if successful_fit:
@@ -279,7 +333,7 @@ def process_file( ax, infile, pixel_coords, sql_conn=None ):
     for i in range(len(num_peaks)):
         if fits_to_perform[i]:
             apply_peak_fit( ax, pixel_coords, i, x, efront_histo, fit_bounds[i], p0[i], \
-                    num_peaks[i], mu_all, muerr_all, reduc_chisq_all, sql_conn=sql_conn )
+                    num_peaks[i], fit_attempts[i], mu_all, muerr_all, reduc_chisq_all, sql_conn=sql_conn )
         
     #
     ## first pair 
@@ -380,13 +434,6 @@ def process_file( ax, infile, pixel_coords, sql_conn=None ):
     ax.text( 0.02, 1.05, fitstr, transform=ax.transAxes, fontsize=12, verticalalignment='top')
     ax.text( 0.03, 0.80, coordsstr, transform=ax.transAxes, fontsize=12, verticalalignment='top' )
         
-    
-
-    
-    # reduced_fitfunc = lambda x: fitfunc_n_alpha_peaks( 1, pf, x )
-    #reduced_fitfunc = lambda y: alpha_fit(pf[4+2*0],pf[4+2*0+1],pf[0],pf[1],pf[2],pf[3], y)
-    reduced_fitfunc = lambda x: alpha_fit(pf[4+2*0],pf[4+2*0+1],pf[0],pf[1],pf[2],pf[3], x)
-
     return 1
 
 
@@ -401,26 +448,25 @@ def parse_all_data():
     totalx = 32
     totaly = 32
     
-#    startx = 14
-#    starty = 14
-    
     files = [ "deadlayerdet3rt", "deadlayerdet3cent" ]
-    
+    databases = [ sql_db_manager.rotated_db, sql_db_manager.centered_db ]
+        
     start_time = time.time()
   
-    with sqlite3.connect( sql_db_manager.db_filename ) as sql_conn:
+    # loop through each file prefix / corresponding database.
+    for a in range( len(files) ):
+        fileprefix = files[a]
+        with sqlite3.connect( databases[a] ) as sql_conn:
             
-        # loop through each file type.
-        hack = 0
-        for fileprefix in files:
-                
+            
             # these 2 loops loop over grids of dimx x dimy images. 
             for x in range( totalx / dimx):
                 for y in range( 0,totaly / dimy ):
                         
                     print str([x,y])    
                     
-                    estimate_time_left( x + y*totaly + hack, 2*totalx * totaly, start_time )
+                    estimate_time_left( x*(totaly/dimy) + y + a * (totalx/dimx) * (totaly/dimy), 
+                            len(files) * (totalx/dimx) * (totaly/dimy), start_time, num_updates=50 )
 
                     plt.clf()
                     plt.close()
@@ -431,7 +477,7 @@ def parse_all_data():
                         for j in range(dimy):
                             
                             coords = ( i + x * dimx, j + y * dimy )
-                            current_file = fileprefix + "/" + files[0] + "_%d_%d.bin" % coords
+                            current_file = fileprefix + "/" + fileprefix + "_%d_%d.bin" % coords
             
                             if PRINT_FILE_NAMES:
                                 print "INFO: processing file: " + current_file
@@ -444,8 +490,8 @@ def parse_all_data():
                                 plt.show()
                                 return 1
                     
-                    saveplot_med_quality( '../current_fit_images/', fileprefix + '_4x4_%d_%d' % (x,y) )
-            hack += 32*32
+                    saveplot_low_quality( '../current_fit_images/', fileprefix + '_4x4_%d_%d' % (x,y) )
+
     # plt.setp([a.get_xticklabels() for a in axarr[0, :]], visible=False)
     # plt.setp([a.get_yticklabels() for a in axarr[:, 1]], visible=False)
 
@@ -456,21 +502,42 @@ def parse_all_data():
     
 
 def make_one_plot( coords1, coords2 ):
+    
     pixel_coords = ( coords1, coords2 )
         
+    files = [ "deadlayerdet3rt", "deadlayerdet3cent" ]
+
     plt.clf()
     ax = plt.axes()
     current_file = files[0] + "/" + files[0] + "_%d_%d.bin" % pixel_coords
     if PRINT_FILE_NAMES:
         print "INFO: processing file: " + current_file
-    current_file = "../data_from_mary/output/" + current_file
+    current_file = "../extracted_ttree_data/" + current_file
     
-    process_file( ax, current_file, pixel_coords, "../extracted_spectra_details/test.txt" )    
+    with sqlite3.connect( sql_db_manager.db_filename ) as sql_conn:
+        process_file( ax, current_file, pixel_coords, sql_conn )    
+
     plt.show()
     
     
     
     
     
+def log_message( msg ):
+    
+    if log_message.first_msg or not os.path.exists( logfile ):
+        mode = 'w'
+    else:
+        mode = 'a'
+        
+    with open( logfile, mode ) as log:
+        log.write( msg )
+    
+    print msg
+log_message.first_msg = 1
+   
+    
+     
+       
 # make_one_plot(16,16)
-parse_all_data()
+# parse_all_data()
