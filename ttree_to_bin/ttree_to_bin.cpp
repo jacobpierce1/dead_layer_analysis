@@ -57,87 +57,85 @@ int ttree_to_bin( const char *rootfile, const char *dirname )
 #else
     ret = write_all_files( rootfile, dirname );
 #endif
-// open_all_files( rootfile, dirname, outfiles );
-    // close_all_files( outfiles );
     return ret ? 0 : -1; /// convert to unix standard.
 }
 
 
 
 
-// a shoddy method of "indexing" this database: separate all the things that i already know I am going to
-// use. better would be to put everything in an SQL database and index it rather than separating by file.
-// create directory for storage as well.
-int open_all_files( const char *rootfile, const char *dirname, ofstream outfiles[32][32][2] )
-{    
-    // this shall hold the name of the file
-    char tmp_file_name[128];
+// // a shoddy method of "indexing" this database: separate all the things that i already know I am going to
+// // use. better would be to put everything in an SQL database and index it rather than separating by file.
+// // create directory for storage as well.
+// int open_all_files( const char *rootfile, const char *dirname, ofstream outfiles[32][32][2] )
+// {    
+//     // this shall hold the name of the file
+//     char tmp_file_name[128];
 
-    // remove the .root suffix
-    char prefix[64];
-    strcpy( prefix, rootfile );
-    PRINT_STR(prefix);
-    * strstr( prefix, "." ) = '\0';
-    PRINT_STR(prefix);
+//     // remove the .root suffix
+//     char prefix[64];
+//     strcpy( prefix, rootfile );
+//     PRINT_STR(prefix);
+//     * strstr( prefix, "." ) = '\0';
+//     PRINT_STR(prefix);
     
-    // in principle other "indexing" could be added here to speed up future searches. i am only indexing by detector number in the array.
-    const char location[2][10] = { "efront", "eback" };
+//     // in principle other "indexing" could be added here to speed up future searches. i am only indexing by detector number in the array.
+//     const char location[2][10] = { "efront", "eback" };
 
-    for( int i=0; i<32; i++ )
-    {
-	for( int j=0; j<32; j++ )
-	{
-	    for( int k=0; k<2; k++ )
-	    {
-		// increase readability 
-		ofstream *current_file = &( outfiles[i][j][k] );
+//     for( int i=0; i<32; i++ )
+//     {
+// 	for( int j=0; j<32; j++ )
+// 	{
+// 	    for( int k=0; k<2; k++ )
+// 	    {
+// 		// increase readability 
+// 		ofstream *current_file = &( outfiles[i][j][k] );
 
-		// construct outfile name
-		sprintf( tmp_file_name, "%s%s_%s_%d_%d.bin", dirname, prefix, location[k], i, j );
+// 		// construct outfile name
+// 		sprintf( tmp_file_name, "%s%s_%s_%d_%d.bin", dirname, prefix, location[k], i, j );
 
-		// open and check that it was successful
-		current_file->open( tmp_file_name );
-		if( ! current_file->is_open() )
-		{
-		    printf( "ERROR: failed to open %s\n", tmp_file_name );
-		    return 0;
-		}
+// 		// open and check that it was successful
+// 		current_file->open( tmp_file_name );
+// 		if( ! current_file->is_open() )
+// 		{
+// 		    printf( "ERROR: failed to open %s\n", tmp_file_name );
+// 		    return 0;
+// 		}
 
-		// test write
-		*current_file << tmp_file_name << endl; // remove
-	    }
-	}
-    }
+// 		// test write
+// 		*current_file << tmp_file_name << endl; // remove
+// 	    }
+// 	}
+//     }
 
-    return 1;
-}
-
-
+//     return 1;
+// }
 
 
 
 
-int close_all_files( ofstream outfiles[32][32][2] )
-{
-    for( int i=0; i<num_channels; i++)
-    {
+
+
+// int close_all_files( ofstream outfiles[32][32][2] )
+// {
+//     for( int i=0; i<num_channels; i++)
+//     {
 	
-	for( int j=0; j<num_channels; j++)
-	{
-	    for( int k=0; k<2; k++ )
-	    {
-		ofstream *current_file = &( outfiles[i][j][k] );
-		current_file->close();
-		if( current_file->is_open() )
-		{
-		    printf( "ERROR: failed to close file (%d, %d, %d)\n", i, j, k );
-		    return 0;
-		}
-	    }
-	}
-    }
-    return 1;
-}
+// 	for( int j=0; j<num_channels; j++)
+// 	{
+// 	    for( int k=0; k<2; k++ )
+// 	    {
+// 		ofstream *current_file = &( outfiles[i][j][k] );
+// 		current_file->close();
+// 		if( current_file->is_open() )
+// 		{
+// 		    printf( "ERROR: failed to close file (%d, %d, %d)\n", i, j, k );
+// 		    return 0;
+// 		}
+// 	    }
+// 	}
+//     }
+//     return 1;
+// }
 
 
 
@@ -352,7 +350,9 @@ void debug( TTree *tree, Int_t *singles_scalers, double *singles_energies )
 int get_prefix( char *prefix, const char *rootfile )
 {
 #ifndef USE_TEST_TREE
-    strcpy( prefix, rootfile );
+    const char *last_slash = strrchr( rootfile, '/' );
+    if( ! last_slash ) last_slash = rootfile;
+    strcpy( prefix, last_slash + 1 );
     * strstr( prefix, "." ) = '\0';
 #else
     strcpy( prefix, "test" );

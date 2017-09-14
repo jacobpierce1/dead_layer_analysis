@@ -1,7 +1,7 @@
 scripts/*.pyc
 extracted_ttree_data/*
 current_fit_images/*
-ttree_to_bin/*.root
+root_tree_data/*
 images/*
 junk/*
 databases/*
