@@ -1,0 +1,8 @@
+scripts/*.pyc
+extracted_ttree_data/*
+current_fit_images/*
+ttree_to_bin/*.root
+images/*
+junk/*
+databases/*
+data_from_mary/

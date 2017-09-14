@@ -12,8 +12,8 @@ import json
 DEBUG_DB = 0
 
 
-centered_db = '../centered_fits_data.db'
-rotated_db  = '../rotated_fits_data.db'
+centered_db = '../databases/centered_fits_data.db'
+rotated_db  = '../databases/rotated_fits_data.db'
 
 
 # db_filename = '../fits_and_spectral_data.db'
@@ -159,7 +159,7 @@ def create_db(name):
     
     with sqlite3.connect(name) as conn:
         if db_is_new:
-            print('INFO: creating DB and schema...')
+            print('INFO: creating DB and schema for ' + name + '...')
             with open(schema_filename, 'rt') as f:
                 schema = f.read()
             conn.executescript(schema)    
@@ -169,6 +169,7 @@ def create_db(name):
             return 0
     print 'INFO: success.'
     return 1
+
 
 
 # fill the db with each fit id that we need, giving the needs update flag for
@@ -186,14 +187,18 @@ def populate_db(conn, numx, numy, numfits):
 
 
 def delete_db( filename ):
-    ans = raw_input( 'PROMPT: delete DB, are you sure (y/n) ?  ' )
-    if( ans == 'y' ):
-        os.remove( filename ) 
-        print 'INFO: deleted db.' 
+    
+    if os.path.exists( filename ):
         
-        return 1
-    print 'INFO: did not delete db.'
-    return 0
+        ans = raw_input( 'PROMPT: delete ' + filename + ', are you sure (y/n) ?  ' )
+
+        if( ans == 'y' ):
+            os.remove( filename ) 
+            print 'INFO: deleted db.'         
+            return 1
+        print 'INFO: did not delete db.'
+        return 0
+    return 1
     
 
 

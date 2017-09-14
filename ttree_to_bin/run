@@ -42,7 +42,7 @@ fi
 
 
 # in principle u could supply different output path here and the cpp program would work as expected. 
-OUTPUT_DIR=output/$arg/
+OUTPUT_DIR=../extracted_ttree_data/$arg/
 
 
 # give warning if this dir exists

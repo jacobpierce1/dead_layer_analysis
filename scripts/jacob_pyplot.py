@@ -70,7 +70,7 @@ def saveplot_med_quality( directory, fname ):
 
 
 def saveplot_low_quality( directory, fname ):
-    plt.savefig( directory + '/' + fname, format='png') #, dpi=2000)
+    plt.savefig( directory + '/' + fname + '.png', format='png') #, dpi=2000)
 
 
 

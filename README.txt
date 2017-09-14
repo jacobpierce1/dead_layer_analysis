@@ -8,3 +8,4 @@ the data contained demonstrates that when alpha particles pass through the detec
 data_from_mary obtains the data obtained from mary, including ROOT tree with the data necessary for the test.
 
 
+current_fit_images contains the current 4x4 images of all fits from the db. 

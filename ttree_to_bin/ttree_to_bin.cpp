@@ -213,7 +213,9 @@ int write_all_files( const char *rootfile, const char *dirname )
 	// construct file  name and open stream 
 	int fstrip = singles_scalers[2];
 	int bstrip = singles_scalers[3];
-	sprintf( tmp_file_name, "%s%s_%d_%d.bin", dirname, prefix, fstrip, bstrip );
+
+	// subtract 1 from fstrip and bstrip in order to correct original start-at-1 indexing
+	sprintf( tmp_file_name, "%s%s_%d_%d.bin", dirname, prefix, fstrip-1, bstrip-1 );
 #ifdef WRITE_ONE_FILE
 	PRINT_STR( tmp_file_name );
 #endif
@@ -298,9 +300,9 @@ int clear_all_files( const char *rootfile, const char *dirname )
     char prefix[64];
     get_prefix( prefix, rootfile );
     
-    for( int i=1; i<=num_channels; i++)
+    for( int i=0; i<num_channels; i++)
     {
-	for( int j=1; j<=num_channels; j++)
+	for( int j=0; j<num_channels; j++)
 	{
 	    sprintf( tmp_file_name, "%s%s_%d_%d.bin", dirname, prefix, i, j );
 	    ofstream current_file;
