@@ -28,19 +28,26 @@ def residual_from_fitfunc( p, x, y, yerr, fitfunc ):
 def xcut( x, y, newx_bounds ):
     x = np.array(x) 
     y = np.array(y)
-    return np.array( y[ np.logical_and( (x >= newx_bounds[0]), (x <= newx_bounds[1]) ) ] )
+    return np.asarray( y[ np.logical_and( (x >= newx_bounds[0]), (x <= newx_bounds[1]) ) ] )
 
 
 
 
 # perform fit. return None if there is error.
-def jacob_least_squares( x, y, dy, xcut_bounds, p0, fitfunc, reduc_chisq_max=None ):
+def jacob_least_squares( x, y, dy, p0, fitfunc, reduc_chisq_max=np.inf, fit_bounds=None ):
     
     residual_function = lambda p, x, y, dy: residual_from_fitfunc( p, x, y, dy, fitfunc )
     
-    newx = xcut( x, x, xcut_bounds) 
-    newy = xcut( x, y, xcut_bounds ) 
-    newdy = xcut( x, dy, xcut_bounds )
+    # construct fit bounds
+    if fit_bounds is None:
+        fit_bounds = [ min(x), max(x) ]
+        newx = x
+        newy = y
+        newdy = dy
+    else:
+        newx = xcut( x, x, fit_bounds) 
+        newy = xcut( x, y, fit_bounds ) 
+        newdy = xcut( x, dy, fit_bounds )
     
     # using optimize.leastsq. does not allow you to specify bounds for the fit params. 
     try:       
@@ -52,8 +59,10 @@ def jacob_least_squares( x, y, dy, xcut_bounds, p0, fitfunc, reduc_chisq_max=Non
     
     dof = len(newx)-len(pf)
     reduc_chisq = sum(info["fvec"]*info["fvec"]) / dof
-    
-    if( success > 4 or len(pf)==0 or cov is None or reduc_chisq > 4):
+
+    # detect and handle errors 
+    error = success > 4 or len(pf)==0 or cov is None or reduc_chisq > reduc_chisq_max
+    if error:
         status = 0 
         return None
 
@@ -110,6 +119,29 @@ def jacob_least_squares( x, y, dy, xcut_bounds, p0, fitfunc, reduc_chisq_max=Non
     
 
 
+
+
+# # may want to look into scipy.stats.linregress
+# # perform linear regression on arrays x, y, yerr. add to the plot if
+# # and axes() is supplied. p0 is a guess [m,b] for the slope and y
+# # intercept. default fit bounds are min and max of x.
+# def jacob_linear_fit( x, y, dy, p0, fit_bounds=None, ax=None ):
+
+#     x = np.asarray(x)
+#     y = np.asarray(y)
+    
+#     linear_fit = lambda p, x_: p[0]*x_ + p[1]
+#     ret = jacob_least_squares( x, y, dy, p0, linear_fit, fit_bounds=fit_bounds )
+
+#     # extract data from the fit if successful
+#     if ret is None:
+#         print 'ERROR: linear fit did not converge.'
+        
+#     return ret
+
+
+
+
 # evaluate the fwhm on the set of points provided. up to used to specify an appropriate
 # number of entries to balance speed and precision. function must be scalar outupt for 
 # scalar input. assumes that x is a sorted array, otherwise this function would take forever.
@@ -118,6 +150,8 @@ def width_at_frac_of_max_from_func( function, bounds, N=2, num_samples=1000, dx=
     y = function( x )
     return width_at_frac_of_max( y, bounds, N, num_samples, dx )
     
+
+
 
 # this returns the fwhm if N=2, otherwise it is the full width at 1/N fraction of the max.
 def width_at_frac_of_max( y, bounds, N=2, num_samples=1000, dx=[] ):

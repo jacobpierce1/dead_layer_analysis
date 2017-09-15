@@ -1,0 +1,1 @@
+these are scripts that parse_all_data() is based on. they are no longer supported, in particular when changes are made to the jacoblib functions i am not bothering to make these work again. they will deleted eventually but for now may be useful to keep. in particular these plots were created for good label formatting which i will need eventually for demo plots. 

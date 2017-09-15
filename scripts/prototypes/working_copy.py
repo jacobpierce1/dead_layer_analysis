@@ -100,8 +100,8 @@ def fwhm_from_data( x, y, dx=[] ):
 
 
 ## constants
-test_dir = '../data_from_mary/'
-test_file = "output/deadlayerdet3rt/deadlayerdet3rt_16_16.bin"
+test_dir = '../extracted_ttree_data/'
+test_file = "deadlayerdet3rt/deadlayerdet3rt_16_16.bin"
 test_file = test_dir + test_file
 # test_file = "output/deadlayerdet3cent/deadlayerdet3cent_1_1.txt"
 # test_file = "output/test/test_29_25.bin"

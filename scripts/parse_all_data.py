@@ -221,7 +221,7 @@ def apply_peak_fit( ax, pixel_coords, fit_id, x, y, fit_bounds, p0, npeaks, last
                 print "WARNING: peak failed to converge."
             return 0
                 
-        ret = jacob_least_squares( x, y, np.sqrt(y), fit_bounds_attempt, p0_attempt, fitfunc )
+        ret = jacob_least_squares( x, y, np.sqrt(y), p0_attempt, fitfunc, fit_bounds=fit_bounds_attempt )
         
         if ret is not None:
             if PRINT_FIT_STATUS:
@@ -269,20 +269,14 @@ def process_file( ax, infile, pixel_coords, sql_conn=None ):
 
     # x axis, needed no matter what.
     x = np.array( range(5000) )
-        
-    # EXTRACT ALL DATA
-    try:
-        f = open( infile, "rb" )
-    except IOError:
+
+
+    # create and populate the histogram array 
+    efront_histo = [0] * len(x)
+    if not construct_histo_array( infile, efront_histo ):
         log_message( "ERROR: unable to open file: " + infile )
         sys.exit(0)
     
-    # these are passed as reference to avoid unnecessary copying
-    efront_histo = [0] * len(x)
-    
-    # creat the histogram
-    construct_histo_array( f, efront_histo )
-    f.close()
     
     # get the 5 suspected peaks, return 0 if less than 5 found (rare)
     our_peaks = [0] * 5
@@ -533,7 +527,7 @@ def log_message( msg ):
         mode = 'a'
         
     with open( logfile, mode ) as log:
-        log.write( msg )
+        log.write( msg + '\n' )
     
     print msg
 log_message.first_msg = 1

@@ -71,8 +71,7 @@ def fill_redundant_source_geometry_data( source_geometry_data ):
     
     
     
-print source_geometry_data
-
+# print source_geometry_data
 
 
 
@@ -133,7 +132,7 @@ def analysis():
         with sqlite3.connect( databases[i] ) as sql_conn:
             # df = pd.read_sql_table( sql_db_manager.tablename, sql_conn )
             dataframes[i] = pd.read_sql_query( 'SELECT * from ' + sql_db_manager.tablename, sql_conn )
-    # plot_mu_variations( dataframes[0] )
+    # plot_mu_variations( dataframes[0] )x
     
     # todo: regression on  each plot 
     
@@ -173,7 +172,7 @@ def get_costheta_delta( x,dx, y,dy, z,dz ) :
 # the index of the peak within pf. a dedicated function is necessary because of 
 # the convoluted way in which the data is stored. 
 def get_fitnum_and_index_in_pf( peaknum ):
-    return ( peaknum // 2, 5 + 2* peaknum % 2 )
+    return ( peaknum // 2, 5 + 2* (peaknum % 2) )
 
 
 
@@ -187,6 +186,8 @@ def plot_mu_differences_grid_3d( ax, peaknum, df1, df2 ):
     X, Y = np.meshgrid( range(32), range(32) )
     mu_differences_grid = get_mu_differences_grid( peaknum, df1, df2 )
     imshow_3d( ax, X, Y, mu_differences_grid )
+
+
     
     # im = ax.imshow( mu_differences_grid, cmap='plasma', interpolation='none' )
     # plt.colorbar(im)
@@ -212,7 +213,8 @@ def get_mu_differences_grid( peaknum, df1, df2 ):
     
 
     
-    
+# if populating an entire array, we can get a bit more efficiency by not calling
+# get_mu_values
 def get_mu_grid_where_valid( peaknum, df ):
     fitnum, peaknum_in_pf = get_fitnum_and_index_in_pf( peaknum )
     successful_fit_values = df.successful_fit.values[ fitnum : : NUM_FITS_PER_PIXEL ]
