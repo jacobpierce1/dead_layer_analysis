@@ -435,14 +435,23 @@ def parse_all_data():
     totalx = 32
     totaly = 32
     
-    files = [ "deadlayerdet3rt", "deadlayerdet3cent" ]
-    databases = [ sql_db_manager.rotated_db, sql_db_manager.centered_db ]
+#    files = [ "deadlayerdet3rt", "deadlayerdet3cent" ]
+    #databases = [ sql_db_manager.rotated_db, sql_db_manager.centered_db ]
+
+    files = [ "srcdeadlayerflat", "srcdeadlayerangle" ]
+    databases = [ sql_db_manager.flat_db, sql_db_manager.sliced_db ]
         
     start_time = time.time()
   
     # loop through each file prefix / corresponding database.
     for a in range( len(files) ):
         fileprefix = files[a]
+        
+        # make dir for output images
+        current_outdir = '../current_fit_images/' + fileprefix + '/'
+        if not os.path.exists( current_outdir ):
+            os.mkdir( current_outdir )
+        
         with sqlite3.connect( databases[a] ) as sql_conn:
             
             
@@ -464,12 +473,12 @@ def parse_all_data():
                         for j in range(dimy):
                             
                             coords = ( i + x * dimx, j + y * dimy )
-                            current_file = fileprefix + "/" + fileprefix + "_%d_%d.bin" % coords
+                            current_file = fileprefix + "_%d_%d.bin" % coords
             
                             if PRINT_FILE_NAMES:
                                 print "INFO: processing file: " + current_file
             
-                            current_file = "../extracted_ttree_data/" + current_file
+                            current_file = "../extracted_ttree_data/" + fileprefix + '/' + current_file
                 
                             process_file( axarr[i,j], current_file, coords, sql_conn=sql_conn)
                             
@@ -477,7 +486,7 @@ def parse_all_data():
                                 plt.show()
                                 return 1
                     
-                    saveplot_low_quality( '../current_fit_images/', fileprefix + '_4x4_%d_%d' % (x,y) )
+                    saveplot_low_quality( current_outdir, fileprefix + '_grid_%d_%d' % (x,y) )
 
     # plt.setp([a.get_xticklabels() for a in axarr[0, :]], visible=False)
     # plt.setp([a.get_yticklabels() for a in axarr[:, 1]], visible=False)

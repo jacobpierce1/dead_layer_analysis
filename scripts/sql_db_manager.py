@@ -15,6 +15,12 @@ DEBUG_DB = 0
 centered_db = '../databases/centered_fits_data.db'
 rotated_db  = '../databases/rotated_fits_data.db'
 
+flat_db = '../databases/flat_fits_data.db'
+sliced_db = '../databases/sliced_fits_data.db'
+
+
+all_dbs = [ centered_db, rotated_db, flat_db, sliced_db ]
+
 
 # db_filename = '../fits_and_spectral_data.db'
 schema_filename = 'initial_schema.sql'
@@ -167,8 +173,11 @@ def create_db(name):
         else:
             print('ERROR: database already exists, returning')
             return 0
-    print 'INFO: success.'
-    return 1
+    print 'INFO: success, now populating...'
+    
+    with sqlite3.connect( name ) as sql_conn:
+        populate_db(sql_conn, 32, 32, 3, )
+    
 
 
 
@@ -222,9 +231,6 @@ def recreate_db( filename ):
         return 0
     
     create_db( filename )
-    
-    with sqlite3.connect( filename ) as sql_conn:
-        populate_db(sql_conn, 32, 32, 3, )
     
     print 'INFO: successfully populated the db with defaults.'
     return 1

@@ -1,0 +1,3 @@
+http://www.nndc.bnl.gov/chart/decaysearchdirect.jsp?nuc=249CF&unc=nds
+http://www.nndc.bnl.gov/chart/decaysearchdirect.jsp?nuc=240PU&unc=nds
+http://www.nndc.bnl.gov/chart/decaysearchdirect.jsp?nuc=238PU&unc=nds
