@@ -1,6 +1,6 @@
 # my includes 
 import sql_db_manager
-import jacob_file_parsers
+# import jacoblib.jacob_file_parsers as fparsers
 
 ## includes 
 from mpl_toolkits.mplot3d import axes3d
@@ -35,6 +35,7 @@ FILE_NNDC_CF_249 = DIR_NNDC_ALPHA_SPECTRA + 'cf_249.txt'
 NUM_FITS_PER_PIXEL = 3
 NUM_PEAKS_PER_FIT = [ 2, 2, 1 ]
 MM_PER_INCH = 25.4 
+
 
 # these are the distances from the cylinder containing the source to the edge of the 
 # container. each element of the list is a single measurement, so the actual measurement
@@ -266,6 +267,52 @@ def imshow_3d( ax, X, Y, Z ):
     ax.bar3d( x, y, np.zeros(len(z)), 1, 1, z )
     ax.set_zlim( min(z), max(z) )
     # ax.plot_surface(X, Y, Z, rstride=8, cstride=8, alpha=0.3)
+
+
+
+
+
+
+# input filename of database, return DataFrame containing the DB  
+def read_db_into_df( db_name ):
+    with sqlite3.connect( db_name ) as conn:
+        return pd.read_sql_query( 'SELECT * from ' + sql_db_manager.tablename, conn )
+    return None
+
+
+
+# input: dataframe in the format of the sql tables storing data
+def get_mu_values( df, coords ):
+    return get_values( df, coords, 'pf' )
+            
+
+
+def get_mu_delta_values( df, coords ):
+    return get_values( df, coords, 'pferr' )
+
+
+
+# function for retrieveing arrays of mu values or mu uncertainty values.
+# currently cannot handle anything else because of dependence on get_fitnum_and_index.
+# used to construct get_mu_values and get_mu_delta_values 
+def get_values( df, coords, col_name ):
+    # read in data: the 5 mu values for a particular fit
+    values = []
+
+    # for each peak: look up value and appned to mu_values either mu or np.nan 
+    for peaknum in np.arange(5):
+        fitnum, index_in_pf = get_fitnum_and_index_in_pf( peaknum )
+        successful_fit = df.successful_fit.values[ coords[0]*32 + coords[1] + fitnum ]
+
+        if successful_fit:
+            pf = json.loads( df[col_name].loc[ coords[0]*32 + coords[1] + fitnum ] ) 
+            values.append( pf[ index_in_pf ] )
+        else:
+            values.append( np.nan )
+
+    return np.asarray(values)
+
+
 
 
 

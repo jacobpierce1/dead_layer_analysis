@@ -14,7 +14,7 @@ warnings.simplefilter("error", OptimizeWarning)
 
 
 
-# plot the histogram
+# plot a histogram with my usual settings 
 def plot_histo( ax, x, histo_array, plot_bounds=None, xlabel="", ylabel="", title="", logscale=0 ):
     
     # clever
@@ -55,7 +55,7 @@ def add_legend(ax):
 # set the scale so that the fractional space between the edges of the plot
 # are away from the farthest data points such that xbuf, ybuf are the fractional
 # size of the plot occupied by empty space.
-def set_linear_scale_plot_bounds( ax, x, y, xbuf=0.05, ybuf=0.05 ):
+def set_linear_scale_plot_bounds( ax, x, y, xbuf=0.20, ybuf=0.20 ):
 
     x1 = min(x)
     y1 = min(y)
@@ -67,7 +67,7 @@ def set_linear_scale_plot_bounds( ax, x, y, xbuf=0.05, ybuf=0.05 ):
     bottom = min(y) - ybuf * (y2 - y1)
     top = max(y) + ybuf * (y2 - y1)
 
-    ax.axis( (left, right, top, bottom) )
+    ax.axis( (left, right, bottom, top) )
   
         
         

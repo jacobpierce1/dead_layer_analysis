@@ -1,3 +1,7 @@
+# the purpose of this script is to read in data for the energies of known alphas
+# in the spectra of the 3 sources used in the calibration and plot it, using calibration 
+
+
 ## includes 
 import numpy as np
 import pandas as pd
@@ -16,17 +20,13 @@ import deadlayer_analysis
 
 
 
-# configurable test file for example
+# configurable test file for example()
 test_dir = '../data/extracted_ttree_data/'
-test_file = test_dir + '/deadlayerdet3rt/deadlayerdet3rt_16_16.bin'
+test_file = test_dir + '/deadlayerdet3rt/deadlayerdet3cent_31_31.bin'
 
 
-
-
-
-# do an example on the test data 
-def sample_calibration():
-        
+def plot_suspected_peaks():
+    
     # need db / coords for which every fit converged.
     db_name = sql_db_manager.centered_db
     df = dl.read_db_into_df( db_name )
@@ -50,14 +50,9 @@ def sample_calibration():
     jstats.linear_calibration( energies, mu_values, mu_delta_values, p0, print_fit_data=0, ax=ax )
 
     # customize 
-    plt.show()       
-
-    return 1
-
-
-
-sample_calibration()
-
-
-
+    plt.show()      
     
+    
+    
+    
+plot_suspected_peaks()

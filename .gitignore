@@ -1,8 +1,8 @@
-scripts/*.pyc
-extracted_ttree_data/*
-current_fit_images/*
-root_tree_data/*
+*.pyc
+**/extracted_ttree_data/*
+**/current_fit_images/*
+**/root_tree_data/*
 images/*
 junk/*
 databases/*
-data_from_mary/
+stuff_from_mary/*
