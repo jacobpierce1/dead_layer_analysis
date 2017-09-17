@@ -16,7 +16,7 @@
 # config parameters in an abnormal situtation (e.g. debugging). any mistake in
 # the db can be very costly in time, either through repairing db which will 
 # probably required a specialized function or through rerunnnig the program.
-DEBUG = 1   # this will make it do 2 plots instead of 32 * 2
+
 SHOW_PLOT = 0
 PRINT_PEAK_POSITIONS = 0
 PRINT_PF = 0
@@ -29,7 +29,6 @@ UPDATE_DB = 1
 PRINT_FIT_ATTEMPT = 0
 
 logfile = '../current_fit_images/log.txt'
-data_dir = ''  # currently unused, should be implemented.
 
 
 
@@ -72,50 +71,6 @@ def estimate_time_left( current_iteration, total_iterations, start_time, num_upd
                     (current_time - start_time) / 60.0 * (num_updates - estimate_time_left.counter ) / estimate_time_left.counter )
 estimate_time_left.counter = 0
 
-
-
-
-# detect the positions of the 5 highest peaks. peak_positions is an array of tuples (peakpos, value)
-# https://stackoverflow.com/questions/6910641/how-to-get-indices-of-n-maximum-values-in-a-numpy-array
-# even if we found all the fits, for simplicity we still do the peak detection since it is the easiest
-# way to deteremine a good location for the plot boundaries. 
-
-def get_5_peak_positions( pixel_coords, our_peaks, efront_histo, sql_conn=None ):
-
-    # peakdetect returns 2 tuples: positions and counts of peaks
-    peak_positions = peakdetect.peakdetect( efront_histo, lookahead=10 )[0]
-
-    # if 5 peaks are not there then we have a problem. this will have to be handled 
-    # eventually, for now we just log it and worry about it later.
-    if( len(peak_positions) < 5 ):
-        log_message( 'WARNING (%d,%d,*): unable to find 5 peaks, skipping this fit.' \
-                % (pixel_coords[0], pixel_coords[1] ) )
-        
-        if sql_conn is not None:
-            for fit_id in range(3):
-                sql_db_manager.insert_fit_data_into_db( sql_conn, pixel_coords, fit_id, 0 )
-        return 0
-    
-    # now find the 5 largest and sort by x position.
-    ind = np.argpartition( [z[1] for z in peak_positions ], -5 )[-5:]
-    our_peaks[:] = [ peak_positions[z][0] for z in sorted(ind) ]
-    
-    # debug 
-    if PRINT_PEAK_POSITIONS:
-        print "INFO: found peaks " + str(our_peaks)
-    
-    # do a check on peak values: energy differenc for the pairs should be constant. no check necessary on the 
-    # largest peak since it always dominates, the only potential problem is really the smallest peak in the 
-    # lowest energy pair.
-    if( abs(23 - (our_peaks[1] - our_peaks[0] ) ) > 10 ):
-        log_message( "WARNING (%d,%d,*): invalid peak suspected for pair 1. " % (pixel_coords[0], pixel_coords[1]) ) 
-        # return -1
-    
-    if( abs(23 - (our_peaks[3] - our_peaks[2] ) ) > 10 ):
-        log_message( "WARNING (%d,%d,*): invalid peak suspected for pair 2. " % (pixel_coords[0], pixel_coords[1]) )
-        # sys.exit -1
-    
-    return 1
 
 
 
@@ -171,7 +126,8 @@ def next_fit_attempt( p0, p0_attempt, fit_bounds, fit_id, fit_bounds_attempt, np
         if UPDATE_DB and sql_conn is not None:
             if pixel_coords is None or fit_id is None:
                 log_message( 'WARNING (%d, %d, %d): unable to insert bad fit attempt into db, \
-                        pixel_coords or fit_id not specified.' % (pixel_coords[0], pixel_coords[1], fit_id ) )
+                        pixel_coords or fit_id not specified.' % (pixel_coords[0], pixel_coords[1], fit_id ),
+                             logfile )
                 return 0
             sql_db_manager.insert_fit_data_into_db( sql_conn, pixel_coords, \
                     fit_id, 0, fit_attempt=attempt )
@@ -274,15 +230,28 @@ def process_file( ax, infile, pixel_coords, sql_conn=None ):
     # create and populate the histogram array 
     efront_histo = [0] * len(x)
     if not construct_histo_array( infile, efront_histo ):
-        log_message( "ERROR: unable to open file: " + infile )
+        log_message( "ERROR: unable to open file: " + infile, logfile )
         sys.exit(0)
     
     
     # get the 5 suspected peaks, return 0 if less than 5 found (rare)
     our_peaks = [0] * 5
     if not get_5_peak_positions( pixel_coords, our_peaks, efront_histo, sql_conn ):
-        return 0
+
+        msg = 'WARNING (%d,%d,*): unable to find 5 peaks, skipping this fit.'
+        msg %= (pixel_coords[0], pixel_coords[1] ) )
+        log_message( msg, logfile )
+        
+        if sql_conn is not None:
+            for fit_id in range(3):
+                sql_db_manager.insert_fit_data_into_db( sql_conn, pixel_coords, fit_id, 0 )
+
+
+    # debug 
+    if PRINT_PEAK_POSITIONS:
+        print "INFO: found peaks " + str(our_peaks)
     
+                
     # set the x axis according to the peak position 
     plot_bounds = [our_peaks[0] - 60, our_peaks[-1]+100 ]
 
@@ -516,22 +485,7 @@ def make_one_plot( coords1, coords2, filenum ):
     
     
     
-    
-# print message to the console and write it to a log file.
-def log_message( msg ):
-    
-    if log_message.first_msg or not os.path.exists( logfile ):
-        log_message.first_msg = 0
-        mode = 'w'
-    else:
-        mode = 'a'
-        
-    with open( logfile, mode ) as log:
-        log.write( msg + '\n' )
-    
-    print msg
-log_message.first_msg = 1
-   
+       
 
 
 

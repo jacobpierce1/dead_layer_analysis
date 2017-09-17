@@ -1,8 +1,8 @@
 import array
 import numpy as np
 from scipy import special
-
-
+import peakdetect.peakdetect as peakdetect
+import sql_db_manager 
 
 # extract next row from the file. file assumed to already be opened.
 def read_doubles_from_bin( f, buf ):
@@ -52,6 +52,66 @@ def construct_histo_array( infile, efront_histo ):
 #write_info_to_file( fitfunc, pf, chisq ):
 #    return
 #    
+
+
+
+
+# print message to the console and write it to a log file.
+def log_message( msg, logfile ):
+    
+    if log_message.first_msg or not os.path.exists( logfile ):
+        log_message.first_msg = 0
+        mode = 'w'
+    else:
+        mode = 'a'
+        
+    with open( logfile, mode ) as log:
+        log.write( msg + '\n' )
+    
+    print msg
+log_message.first_msg = 1
+
+
+
+
+
+
+
+# detect the positions of the 5 highest peaks. peak_positions is an array of tuples (peakpos, value)
+# https://stackoverflow.com/questions/6910641/how-to-get-indices-of-n-maximum-values-in-a-numpy-array
+# even if we found all the fits, for simplicity we still do the peak detection since it is the easiest
+# way to deteremine a good location for the plot boundaries. 
+
+def get_5_peak_positions( our_peaks, efront_histo, sql_conn=None, pixel_coords=None, check_warnings=0 ):
+
+    # peakdetect returns 2 tuples: positions and counts of peaks
+    peak_positions = peakdetect.peakdetect( efront_histo, lookahead=10 )[0]
+
+    # if 5 peaks are not there then we have a problem. this will have to be handled 
+    # eventually, for now we just log it and worry about it later.
+    if( len(peak_positions) < 5 ):
+        return 0
+    
+    # now find the 5 largest and sort by x position.
+    ind = np.argpartition( [z[1] for z in peak_positions ], -5 )[-5:]
+    our_peaks[:] = [ peak_positions[z][0] for z in sorted(ind) ]
+    
+    # do a check on peak values: energy differenc for the pairs should be constant. no check necessary on the 
+    # largest peak since it always dominates, the only potential problem is really the smallest peak in the 
+    # lowest energy pair.
+    if check_warnings:
+        if( abs(23 - (our_peaks[1] - our_peaks[0] ) ) > 15 ):
+            log_message( "WARNING (%d,%d,*): invalid peak suspected for pair 1. " % (pixel_coords[0], pixel_coords[1]) ) 
+    
+        if( abs(23 - (our_peaks[3] - our_peaks[2] ) ) > 15 ):
+            log_message( "WARNING (%d,%d,*): invalid peak suspected for pair 2. " % (pixel_coords[0], pixel_coords[1]) )
+    
+    return 1
+
+
+
+
+
 
 
 # in this case you supply all args as fit params, even the det ones which should be fixed. 

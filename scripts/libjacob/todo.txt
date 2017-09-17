@@ -1,0 +1,9 @@
+todo for next version: 
+
+* remove 'jacob' prefix from everything 
+
+* jacob_least_squares should return a pandas.Series
+
+* add option to use lm_fit 
+
+* add function for xcut_sorted that is faster on a sorted set of x values, which is what we have most of the time .

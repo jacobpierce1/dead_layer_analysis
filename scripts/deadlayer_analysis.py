@@ -22,19 +22,21 @@ import json
 
 
 # modifiable config
-FILE_SILICON_STOPPING_POWER = '../stopping_power_data/alpha_in_si_stopping_power.txt'
+FILE_SILICON_STOPPING_POWER = '../data/stopping_power_data/alpha_in_si_stopping_power.txt'
 
-DIR_NNDC_ALPHA_SPECTRA = '../source_alpha_spectrum_data/'
+DIR_NNDC_ALPHA_SPECTRA = '../data/alpha_spectrum_data/'
 
 FILE_NNDC_CF_249 = DIR_NNDC_ALPHA_SPECTRA + 'cf_249.txt'
-FILE_NNDC_CF_249 = DIR_NNDC_ALPHA_SPECTRA + 'cf_249.txt'
-FILE_NNDC_CF_249 = DIR_NNDC_ALPHA_SPECTRA + 'cf_249.txt'
-
+FILE_NNDC_PU_240 = DIR_NNDC_ALPHA_SPECTRA + 'pu_240.txt'
+FILE_NNDC_PU_238 = DIR_NNDC_ALPHA_SPECTRA + 'pu_238.txt'
+FILE_NNDC_ALL_SPECTRA = [ FILE_NNDC_CF_249, FILE_NNDC_PU_240, FILE_NNDC_PU_238 ]
 
 # constants, do not touch
 NUM_FITS_PER_PIXEL = 3
 NUM_PEAKS_PER_FIT = [ 2, 2, 1 ]
 MM_PER_INCH = 25.4 
+NUM_SOURCES = 3
+
 
 
 # these are the distances from the cylinder containing the source to the edge of the 
@@ -69,7 +71,12 @@ def fill_redundant_source_geometry_data( source_geometry_data ):
 
     #  more to be dnoe here ...
     
-    
+
+
+
+def get_all_alpha_spectra():
+    return pd.Series( [ read_nndc_alpha_data( FILE_NNDC_ALL_SPECTRA[i] ) for i in range(NUM_SOURCES) ],
+                        index = [ 'cf249', 'pu240', 'pu238' ] )
     
     
 # print source_geometry_data
@@ -110,7 +117,8 @@ si_stopping_power = pd.Series( [] )
 # read in the alpha spectrum provided by nndc, requires a bit of modification
 # of the file. 
 def read_nndc_alpha_data( filename ):
-    return pd.read_table( filename, delim_whitespace=1, header=0, usecols=(0,2), dtype=np.float64 )
+    return pd.read_table( filename, delim_whitespace=1, names=('energy','intensity'), skiprows=1,
+                          usecols=(0,2), dtype=np.float64 )
 
 
 def populate_si_stopping_power( si_stopping_power ):
@@ -302,10 +310,11 @@ def get_values( df, coords, col_name ):
     # for each peak: look up value and appned to mu_values either mu or np.nan 
     for peaknum in np.arange(5):
         fitnum, index_in_pf = get_fitnum_and_index_in_pf( peaknum )
-        successful_fit = df.successful_fit.values[ coords[0]*32 + coords[1] + fitnum ]
+        row =  3*(coords[0]*32 + coords[1]) + fitnum 
+        successful_fit = df.successful_fit.values[ row ]
 
         if successful_fit:
-            pf = json.loads( df[col_name].loc[ coords[0]*32 + coords[1] + fitnum ] ) 
+            pf = json.loads( df[col_name].loc[ row ] )
             values.append( pf[ index_in_pf ] )
         else:
             values.append( np.nan )

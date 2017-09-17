@@ -18,7 +18,7 @@ warnings.simplefilter("error", OptimizeWarning)
 def plot_histo( ax, x, histo_array, plot_bounds=None, xlabel="", ylabel="", title="", logscale=0 ):
     
     # clever
-    if( plot_bounds==None ):
+    if plot_bounds is 'minmax':
         plot_bounds = [ f(x) for f in [min,max] ] 
     
     # ensure that we are working with arrays.
@@ -40,15 +40,29 @@ def plot_histo( ax, x, histo_array, plot_bounds=None, xlabel="", ylabel="", titl
         ax.set_title (title, fontsize=22)
     
     yexpand = 3 if logscale else 1.1
-    # ax.legend(loc='upper right', fancybox=True, shadow=True)
-    ax.axis((plot_bounds[0], plot_bounds[1], 0, max(histo_array) * yexpand))
-    # plt.show()
+
+    if plot_bounds is not None:
+        ax.axis((plot_bounds[0], plot_bounds[1], 0, max(histo_array) * yexpand))
 
 
 
-def add_legend(ax):
-    ax.legend(loc='upper right', fancybox=True, shadow=True)
+def add_legend(ax, loc=0):
+    if loc==1:
+        locstr = 'upper right'
+    elif loc==2:
+        locstr = 'lower right'
+    elif loc==-1:
+        locstr = 'upper left'
+    elif loc==-2:
+        locstr = 'lower left'
+    else:
+        print 'USAGE for jacob_pyplot.add_legend : loc=1 -> upper right, loc=2 -> lower right, ' + \
+                   'loc=-1 -> upper left, loc=-2 -> lower left'
 
+        return 0 
+    
+    ax.legend(loc=locstr, fancybox=True, shadow=True)
+    return 1
 
 
     
