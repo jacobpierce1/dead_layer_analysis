@@ -5,6 +5,7 @@ from jacob_math import xcut
 import array
 import numpy as np
 import matplotlib.pyplot as plt
+from collections import OrderedDict
 
 import sys
 import warnings
@@ -60,8 +61,13 @@ def add_legend(ax, loc=0):
                    'loc=-1 -> upper left, loc=-2 -> lower left'
 
         return 0 
+
+    # remove duplicates
+    handles, labels = ax.get_legend_handles_labels()
+    by_label = OrderedDict(zip(labels, handles))
+    # plt.legend(
     
-    ax.legend(loc=locstr, fancybox=True, shadow=True)
+    ax.legend(by_label.values(), by_label.keys(), loc=locstr, fancybox=True, shadow=True)
     return 1
 
 

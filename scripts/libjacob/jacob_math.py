@@ -1,7 +1,8 @@
 ## includes 
 # import array
 import numpy as np
-from scipy import optimize, special
+import scipy.optimize
+import scipy.special
 from math import log10, floor
 import pandas as pd 
 
@@ -56,10 +57,10 @@ def jacob_least_squares( x, y, dy, p0, fitfunc, reduc_chisq_max=np.inf, fit_boun
         newy = xcut( x, y, fit_bounds ) 
         newdy = xcut( x, dy, fit_bounds )
     
-    # using optimize.leastsq. does not allow you to specify bounds for the fit params. 
+    # using e.leastsq. does not allow you to specify bounds for the fit params. 
     try:       
         pf, cov, info, mesg, success =    \
-            optimize.leastsq( residual_function, p0, args=(newx, newy, newdy), full_output=1 )  
+            scipy.optimize.leastsq( residual_function, p0, args=(newx, newy, newdy), full_output=1 )  
     except ValueError:
         status = 0
         return None
@@ -128,53 +129,6 @@ def jacob_least_squares( x, y, dy, p0, fitfunc, reduc_chisq_max=np.inf, fit_boun
 
 
 
-# detect the positions of the 5 highest peaks. peak_positions is an array of tuples (peakpos, value)
-# https://stackoverflow.com/questions/6910641/how-to-get-indices-of-n-maximum-values-in-a-numpy-array
-# even if we found all the fits, for simplicity we still do the peak detection since it is the easiest
-# way to deteremine a good location for the plot boundaries. 
-
-def get_5_peak_positions( n, pixel_coords, our_peaks, efront_histo, sql_conn=None ):
-
-    # peakdetect returns 2 tuples: positions and counts of peaks
-    peak_positions = peakdetect.peakdetect( efront_histo, lookahead=10 )[0]
-
-    # if 5 peaks are not there then we have a problem. this will have to be handled 
-    # eventually, for now we just log it and worry about it later.
-    if( len(peak_positions) < 5 ):
-        log_message( 'WARNING (%d,%d,*): unable to find 5 peaks, skipping this fit.' \
-                % (pixel_coords[0], pixel_coords[1] ) )
-        
-        if sql_conn is not None:
-            for fit_id in range(3):
-                sql_db_manager.insert_fit_data_into_db( sql_conn, pixel_coords, fit_id, 0 )
-        return 0
-    
-    # now find the 5 largest and sort by x position.
-    ind = np.argpartition( [z[1] for z in peak_positions ], -5 )[-5:]
-    our_peaks[:] = [ peak_positions[z][0] for z in sorted(ind) ]
-    
-    # debug 
-    if PRINT_PEAK_POSITIONS:
-        print "INFO: found peaks " + str(our_peaks)
-    
-    # do a check on peak values: energy differenc for the pairs should be constant. no check necessary on the 
-    # largest peak since it always dominates, the only potential problem is really the smallest peak in the 
-    # lowest energy pair.
-    if( abs(23 - (our_peaks[1] - our_peaks[0] ) ) > 10 ):
-        log_message( "WARNING (%d,%d,*): invalid peak suspected for pair 1. " % (pixel_coords[0], pixel_coords[1]) ) 
-        # return -1
-    
-    if( abs(23 - (our_peaks[3] - our_peaks[2] ) ) > 10 ):
-        log_message( "WARNING (%d,%d,*): invalid peak suspected for pair 2. " % (pixel_coords[0], pixel_coords[1]) )
-        # sys.exit -1
-    
-    return 1
-
-
-
-
-
-
 
 # input: a function that takes array of parameters and a scalar variable x, same as input of
 # optimize.least_sq; pf and pferr, obtained from jacob_least_squares; peakpos_guess, estimate of
@@ -187,12 +141,16 @@ def get_5_peak_positions( n, pixel_coords, our_peaks, efront_histo, sql_conn=Non
 # return: peakpos (average), peakpos_delta (std of mean), peakval (function at peakpos),
 # peakval_delta (estimated using 2nd order taylor expansion of f; first order normally works,
 # but in this case we know that f'(x) = 0 at the max so it will give 0.
-def estimate_peakpos( f, p0, p0_delta, peakpos_guess, num_iterations=1000 ):
-    peakpos_arr = np.empty( num_iterations )
+def estimate_peakpos( f, p, p_delta, peakpos_guess, num_iterations=1000 ):
+    peakpos_arr = np.empty( num_iterations, dtype=np.float64 )
+    # peakpos_guess *= 1.0
     for i in range(num_iterations):
-        current_p = np.random.normal( p0, p0_delta )
+        current_p = np.random.normal( p, p_delta )
+        # print current_p  # verify that its randomizing.
         current_inverted_f = lambda x_: 0 - f( current_p, x_ )  
-        peakpos_arr[i] = scipy.optimize.fmin( current_inverted_f, peakpos_guess )
+        result = scipy.optimize.fmin( current_inverted_f, peakpos_guess, disp=0 )
+        # print result
+        peakpos_arr[i] = result
     return peakpos_arr
     
 

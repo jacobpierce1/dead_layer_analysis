@@ -103,6 +103,9 @@ def get_all_alpha_spectra():
 peak_energies = [ [ 5123.68, 5168.17 ], [ 5456.3, 5499.03 ], [5813.10] ]
 peak_energies_delta = [ [0.23, 0.15], [0.3, 0.20], [0.10] ]
 
+# intensities of the highest peaks
+max_peak_intensities = pd.Series( [ 72.80, 70.91, 82.2 ],  index=['pu240', 'pu238', 'cf249'] )
+
 # https://physics.nist.gov/cgi-bin/Star/compos.pl?mode=text&refer=ap&matno=014 
 density_silicon = 2.33000E+00  
 
@@ -180,7 +183,7 @@ def get_costheta_delta( x,dx, y,dy, z,dz ) :
 # fitnum is the fit that this peak belongs to and index_in_pf is 
 # the index of the peak within pf. a dedicated function is necessary because of 
 # the convoluted way in which the data is stored. 
-def get_fitnum_and_index_in_pf( peaknum ):
+def get_fitnum_and_mu_index_in_pf( peaknum ):
     return ( peaknum // 2, 5 + 2* (peaknum % 2) )
 
 
@@ -225,7 +228,7 @@ def get_mu_differences_grid( peaknum, df1, df2 ):
 # if populating an entire array, we can get a bit more efficiency by not calling
 # get_mu_values
 def get_mu_grid_where_valid( peaknum, df ):
-    fitnum, peaknum_in_pf = get_fitnum_and_index_in_pf( peaknum )
+    fitnum, peaknum_in_pf = get_fitnum_and_mu_index_in_pf( peaknum )
     successful_fit_values = df.successful_fit.values[ fitnum : : NUM_FITS_PER_PIXEL ]
     pf_values = df.pf.values [ fitnum : : NUM_FITS_PER_PIXEL ]
     return np.array( [ json.loads(pf_values[i])[ peaknum_in_pf ] if successful_fit_values[i] \
@@ -309,7 +312,7 @@ def get_values( df, coords, col_name ):
 
     # for each peak: look up value and appned to mu_values either mu or np.nan 
     for peaknum in np.arange(5):
-        fitnum, index_in_pf = get_fitnum_and_index_in_pf( peaknum )
+        fitnum, index_in_pf = get_fitnum_and_mu_index_in_pf( peaknum )
         row =  3*(coords[0]*32 + coords[1]) + fitnum 
         successful_fit = df.successful_fit.values[ row ]
 
@@ -322,6 +325,56 @@ def get_values( df, coords, col_name ):
     return np.asarray(values)
 
 
+
+# this function returns a list of 5 entries. each entry gives the fit parameters for a
+# SINGLE alpha peak. note that this is not the same as the peak parameters obtained since
+# we actually only do 3 fits. this is meant to be used for processing data from the single
+# peak parameters, such as FWHM coords or peak positions.
+def get_all_single_peak_fit_parameters( df, coords ):
+
+    # to be returned
+    pf_arr = []
+    pf_delta_arr = []
+        
+    for peaknum in np.arange(5):
+
+        # these will accumulate the fit params and be appended to pf_arr and pf_delta_arr
+        pf_current = []
+        pf_delta_current = []
+
+        fitnum, mu_index_in_pf = get_fitnum_and_mu_index_in_pf( peaknum )
+        row =  3*(coords[0]*32 + coords[1]) + fitnum 
+        successful_fit = df.successful_fit.values[ row ]
+
+        if successful_fit:
+
+            # read from db
+            pf_from_db = json.loads( df['pf'].loc[row] )
+            pf_delta_from_db = json.loads( df['pferr'].loc[row] ) 
+            
+            # add in the 2 tau values, sigma, and eta value
+            pf_current.extend( pf_from_db[ 0:4 ] )
+            pf_delta_current.extend( pf_delta_from_db[ 0:4 ] )
+            
+            # add in the A and mu values
+            A = pf_from_db[ mu_index_in_pf - 1 ]
+            mu = pf_from_db[ mu_index_in_pf ]
+            A_delta = pf_delta_from_db[ mu_index_in_pf - 1 ]
+            mu_delta = pf_delta_from_db[ mu_index_in_pf ]
+
+            # extend current arrays 
+            pf_current.extend( [A, mu] )
+            pf_delta_current.extend( [A_delta, mu_delta ] )
+            
+            # add to pf_arr
+            pf_arr.append( pf_current )
+            pf_delta_arr.append( pf_delta_current )
+            
+        else:
+            pf_arr.append( [np.nan]*6 )
+            pf_delta_arr.append( [np.nan]*6 ) 
+            
+    return pd.Series( [ pf_arr, pf_delta_arr ], index=[ 'pf_arr', 'pf_delta_arr' ] )
 
 
 

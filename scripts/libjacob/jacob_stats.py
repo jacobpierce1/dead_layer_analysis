@@ -36,7 +36,7 @@ def linear_calibration( x, y, dy, p0, print_fit_data=0, ax=None, invert=0 ):
         # add data
         ax.errorbar( x, y, dy, fmt='None', errorevery=1 )
         jplt.set_linear_scale_plot_bounds( ax, x, y )
-        jplt.add_legend(ax) 
+        jplt.add_legend(ax, 2) 
 
     # invert everything if invert is supplied 
     if invert:
