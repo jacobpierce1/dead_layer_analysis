@@ -143,14 +143,27 @@ def jacob_least_squares( x, y, dy, p0, fitfunc, reduc_chisq_max=np.inf, fit_boun
 # but in this case we know that f'(x) = 0 at the max so it will give 0.
 def estimate_peakpos( f, p, p_delta, peakpos_guess, num_iterations=1000 ):
     peakpos_arr = np.empty( num_iterations, dtype=np.float64 )
-    # peakpos_guess *= 1.0
+    print 'p: ' + str(p) 
+    
     for i in range(num_iterations):
-        current_p = np.random.normal( p, p_delta )
-        # print current_p  # verify that its randomizing.
+
+        # keep picking p until the amplitude is positive
+        while 1:
+            current_p = np.random.normal( p, p_delta )
+            if current_p[4] > 0 and current_p[1] < 1:
+                break
+            
         current_inverted_f = lambda x_: 0 - f( current_p, x_ )  
         result = scipy.optimize.fmin( current_inverted_f, peakpos_guess, disp=0 )
+
+        if abs( result - peakpos_guess ) > 10:
+            print current_p
+            print result
+        
+        # result = scipy.optimize.fmin( current_inverted_f, peakpos_guess, disp=0, full_output=1 )
         # print result
         peakpos_arr[i] = result
+    # print f( p, [ peakpos_arr[0] ] )[0]
     return peakpos_arr
     
 

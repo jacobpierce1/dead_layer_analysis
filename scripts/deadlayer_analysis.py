@@ -34,42 +34,9 @@ FILE_NNDC_ALL_SPECTRA = [ FILE_NNDC_CF_249, FILE_NNDC_PU_240, FILE_NNDC_PU_238 ]
 # constants, do not touch
 NUM_FITS_PER_PIXEL = 3
 NUM_PEAKS_PER_FIT = [ 2, 2, 1 ]
-MM_PER_INCH = 25.4 
 NUM_SOURCES = 3
 
 
-
-# these are the distances from the cylinder containing the source to the edge of the 
-# container. each element of the list is a single measurement, so the actual measurement
-# is the result of averaging the numbers. i am putting all measurements here instead of 
-# average value out of principle.
-source_geometry_data = \
-    pd.DataFrame( 
-        { 
-            'bottom'   :  [ [0.1570,0.1613], [1.2335,1.2300], [0.6830,0.6920], [0.5725,0.5775], [], []   ],
-            'top'      :  [ [1.8220,1.8285], [0.0580,0.0615], [0.5840,0.5885], [0.6883,0.6853], [], []   ],
-            'left'     :  [ [2.0470,2.0355], [1.7343,1.7383], [3.8443,3.8480], [6.9030,6.8973], [], []   ],
-            'right'    :  [ [6.4445,6.4420], [6.0085,6.0040], [3.8980,3.8965], [0.8380,0.8380], [], []   ],
-            'diameter' :  [ [1.0040,1.0045,1.0040], [1.7520,1.7510,1.7517], [1.7525,1.7515,1.7530], [], [], [] ],
-            'height'   :  [ [3.0020,3.0030,3.0025], [3.0055,3.0070,3.0055], [3.0015,3.0070, 3.0055], [], [], [] ], 
-            'wafer'    :  [ [0.0320,0.0326,0.0300], [0.052,0.0515,0.0530], [0.051,0.050,0.049], [], [], [] ]
-        },
-        index = [ 'pu_240', 'cf_249', 'pu_238_centered', 'pu_238_moved', 'pu_238_flat', 'pu_238_tilted' ] 
-    )
-
-
-
-# fill in the redundant pu_238 entries 
-def fill_redundant_source_geometry_data( source_geometry_data ):
-    reference_source = 'pu_238_centered'
-
-    redundant_sources = ['pu_238_moved', 'pu_238_flat' ] 
-    redundant_cols = [ 'diameter', 'height', 'wafer' ]
-            
-    for col in redundant_cols:
-        source_geometry_data[col].loc[redundant_sources] = source_geometry_data[col].loc[reference_source]
-
-    #  more to be dnoe here ...
     
 
 
@@ -167,17 +134,6 @@ def analysis():
 
 
 
-
-# return angle between source and detector pixel (i,j) given all relevant parameters. 
-# this angle and the uncertainty in it are returned as a tuple (angle, delta_anle ).
-def get_costheta( x, y, z ):
-    return z / np.sqrt( x**2.0 + y**2.0 + z**2.0 )
-    
-    
-def get_costheta_delta( x,dx, y,dy, z,dz ) :
-    return ( ( z**2 * ( (x*dx)**2 + (y*dy)**2 )  +
-                    ( x**2 + y**2 )**2 * dz**2 )  /
-                        (x**2 + y**2 + z**2 )**3 )
 
 
 # fitnum is the fit that this peak belongs to and index_in_pf is 

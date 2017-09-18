@@ -92,9 +92,9 @@ def set_linear_scale_plot_bounds( ax, x, y, xbuf=0.20, ybuf=0.20 ):
         
         
 # add fit to the plot 
-def add_fit_to_plot( ax, x, fit_bounds, p, perr, fitfunc ):
+def add_fit_to_plot( ax, x, fit_bounds, p, perr, fitfunc, color='-r' ):
     newx = xcut( x, x, fit_bounds )
-    fit = ax.plot( newx, fitfunc(p, newx), '-r', label="Fit")
+    fit = ax.plot( newx, fitfunc(p, newx), color, label="Fit")
     plt.setp(fit[0], linewidth=2)
 
 
