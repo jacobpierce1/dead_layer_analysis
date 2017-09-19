@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import scipy.optimize
 
 # my lib 
-import ..libjacob import jacob_math#  as jmath
+import libjacob.jacob_math as jmath
 import libjacob.jacob_pyplot as jplt
 import libjacob.jacob_utils as jutils 
 import libjacob.jacob_stats as jstats
