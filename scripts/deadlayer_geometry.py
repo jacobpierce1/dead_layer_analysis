@@ -1,6 +1,13 @@
+# the purpose of this module is to construct several global variables that are extremely
+# useful, such as grids of cosine theta values for all the detector pixels.
+# the goal is that geometry issues and calculations will never need to be considered outside the
+# module.
+
+
 # my includes 
 import sql_db_manager
-# import jacoblib.jacob_file_parsers as fparsers
+import error 
+
 
 ## includes 
 from mpl_toolkits.mplot3d import axes3d
@@ -11,21 +18,30 @@ import sqlite3
 import json
 
 
-
 CM_PER_INCH = 2.54 
 
 
-sources_index = [ 'pu_240', 'cf_249', 'pu_238_centered', 'pu_238_moved', 'pu_238_flat', 'pu_238_tilted' ] 
-all_objects_index = sources_index.append( 'detector' )
-values_index = [ 'value', 'delta' ]
+sources = [ 'pu_240', 'cf_249', 'pu_238_centered', 'pu_238_moved', 'pu_238_flat', 'pu_238_tilted' ]
+all_objects = sources + [ 'detector' ]
+
+# indices to be used for constructing DataFrames
+sources_index = pd.Index( sources )
+all_objects_index = pd.Index( all_objects )
+
+
+
+# uncertainty for all measurements. note that this is 
+
+source_data_delta = 0.005
+
 
 
 # these are the distances from the cylinder containing the source to the edge of the 
 # container. each element of the list is a single measurement, so the actual measurement
 # is the result of averaging the numbers. i am putting all measurements here instead of 
 # average value out of principle.
-source_data = pd.DataFrame
-( 
+
+source_data = pd.DataFrame.from_dict( 
     { 
         'bottom'   :  [ [0.1570,0.1613], [1.2335,1.2300], [0.6830,0.6920], [0.5725,0.5775],
                         [], []   ],
@@ -47,20 +63,27 @@ source_data = pd.DataFrame
         
         'wafer'    :  [ [0.0320,0.0326,0.0300], [0.052,0.0515,0.0530], [0.051,0.050,0.049],
                         [], [], [] ]
-    },
-    index = sources_index
+    } 
 )
 
-source_data_uncertainty = 0.005
+
+# measurements used to construct tilt angle of pu_238_tilted
+pu_238_tilted_data = pd.Series(
+    {
+        'lower_height' : [1,1,1],
+        'upper_height' : [2,2,2]
+    }
+)
 
 
 
 
+# measurements relevant to the detector
 # all in cm
 detector_data = pd.Series(
     {
-        'x_offset' : [5.0, 5.0 ],
-        'y_offset' : [ 0.1 ],
+        'x_offset' : [0.266,0.273,0.263],  # left, or right. todo: figure out.
+        'y_offset' : [0.1555, 0.1575],
         'height' : [0.1]
     }
 )
@@ -70,11 +93,11 @@ detector_data = pd.Series(
 # all in cm
 enclosure_data = pd.Series(
     {
-        'total_z' : [ 100.0 ],
-        'top_offset' : [ 5.0 ],
-        'bottom_offset' : [ 5.0 ],
-        'total_x' : [ 50.0 ],
-        'total_y' : [ 50.0 ]
+        'top_offset' : [ 1.0 ],
+        'bottom_offset' : [ 1.0 ],
+        'total_x' : [ 151.696 ],
+        'total_y' : [ 50.0 ],
+        'total_z' : [ 100.0 ]
     }
 )
 
@@ -83,16 +106,24 @@ enclosure_data = pd.Series(
 
 # fill in the redundant pu_238 entries 
 def fill_redundant_source_data( source_data ):
+
+    # these sources share the same diam, height, and wafer because they are the same, just moved.
     reference_source = 'pu_238_centered'
-
-    redundant_sources = ['pu_238_moved', 'pu_238_flat' ] 
+    redundant_sources = ['pu_238_moved', 'pu_238_flat', 'pu_238_tilted' ] 
     redundant_cols = [ 'diameter', 'height', 'wafer' ]
-            
     for col in redundant_cols:
-        source_data[col].loc[redundant_sources] = source_data[col].loc[reference_source]
-
-    #  more to be dnoe here ...
-
+        for redundant_source in redundant_sources:
+            source_data.set_value( redundant_source, col, source_data.loc[ reference_source, col ] )
+            
+    # in addition these two share the same position with the centered source:
+    reference_source = 'pu_238_centered'
+    redundant_sources = [ 'pu_238_flat', 'pu_238_tilted' ]
+    redundant_cols = [ 'top', 'bottom', 'left', 'right' ]
+    for col in redundant_cols:
+        for redundant_source in redundant_sources:
+            source_data.set_value( redundant_source, col, source_data.loc[ reference_source, col ] )
+        
+    
 
 
     
@@ -130,57 +161,75 @@ def get_costheta_delta( x,dx, y,dy, z,dz ) :
 # )
 
 
-all_coords = pd.DataFrame(
-    columns = values_index,
-    index = all_objects_index 
-)
-
 
 
 
 # use the measurements in source_data to obtain the coordinates of each source and a
 # edge of the detector. 
-def populate_source_coords( source_coords ):
+def populate_all_coords( source_coords, all_coords ):
 
-    # xyz is 3 tuple storing coordinates, xyz_delta stores uncertainties.
-    xyz = np.empty(3)
-    xyz_delta = np.empty(3)
+    # # xyz is 3 tuple storing coordinates, xyz_delta stores uncertainties.
+    # xyz = np.empty(3)
+    # xyz_delta = np.empty(3)
 
-    # first handle the detector separately
-    ## TODO URGENT
-    all_coords[values_index[0]].loc['detector'] = ( 1.0, 2.0, 3.0 ) # xyz
-    all_coords[values_index[1]].loc['detector'] = ( 0.1, 0.2, 0.3 )  # xyz_delta* CM_PER_IN
+    # # first handle the detector separately
+    # ## TODO URGENT
+    # todo_det_coords =  ( 1.0, 2.0, 3.0 )
+    # all_coords.set_value( 'detector', (  # xyz
+    # # all_coords[values_index[1]].loc['detector'] = ( 0.1, 0.2, 0.3 )  # xyz_delta* CM_PER_IN
     
 
+
+    
     # now populate all the source indices
     for source in sources_index:
         
         # first get x and y from the diameters / distance to edges.
-        configurations = [ ['left','right','diameter'], ['top','bottom','diameter'] ]
-        for i in range(len(configurations)):
+        #  configurations = [ ['left','right','diameter'], ['top','bottom','diameter'] ]
+        # for i in range(len(configurations)):
+        
+        # start off only using the left and bottom  measurements. TODO: use value of total_x
+        x, y = [ error.esum( error.emean( source_data.loc[ source, col ], source_data_delta ),
+                             error.emean( np.asarray( source_data.loc[ source, 'diameter' ] )  / 2,
+                                          source_data_delta ) )
+                 for col in [ 'left', 'bottom' ] ]
 
-            # these coords are the sum of the diameter plus distance to walls over 2 
-            xyz[i] = np.sum( [ np.mean( source_data[col].loc[source] )
-                               for col in configurations[i] ] ) / 2
-            
-            # for uncertainty: square root of sums squared. the uncertainty of each mean
-            # is source_data_uncertainty / sqrt(num_measurements).
-            xyz_delta[i] = source_data_uncertainty * np.sqrt(
-                np.sum( [ 1 / len( source_data[col].loc[source] ) )
-                    for col in configurations[i] ] ) ) / 2
+
+        # for the top measurement, reference to the bottom of the enclosure.
+        z = error.esum_n( error.emean( enclosure_data['bottom_offset'], source_data_delta ),
+                          error.emean( source_data.loc[ source, 'height' ],
+                                       source_data_delta )
+                          error.emean( soure_data.loc[ source, 'wafer' ], source_data_delta )
+
+        xyz = np.array( [ var['value'] for var in [x,y,z] ] ) 
+        xyz_delta =  np.array( [ var['delta'] for var in [x,y,z] ] )
+        m = error.measurement( xyz, xyz_delta )
+        all_coords.loc[source] = m * CM_PER_INCH
+                                       
+        # # these coords are the sum of the diameter plus distance to walls over 2 
+        # xyz[i] = np.sum( [ np.mean( source_data[col].loc[source] )
+        #                    for col in configurations[i] ] ) / 2
+        
+        # # for uncertainty: square root of sums squared. the uncertainty of each mean
+        # # is source_data_uncertainty / sqrt(num_measurements).
+        # xyz_delta[i] = source_data_uncertainty * np.sqrt(
+        #     np.sum( [ 1 / len( source_data[col].loc[source] ) 
+        #         for col in configurations[i] ] ) ) / 2
 
         # add the coordinates and uncertainties to the source_data. convert from in to cm.
-        all_coords[values_index[0]].loc[source] = xyz * CM_PER_IN
-        all_coords[values_index[1]].loc[source] = xyz_delta* CM_PER_IN
+        # all_coords[values_index[0]].loc[source] = xyz * CM_PER_INCH
+        # all_coords[values_index[1]].loc[source] = xyz_delta* CM_PER_INCH
 
         
+
+
 
     
 # in: 3-tuple of x,y,z coordinates
 # out: rotated vector about z axis by theta
 def rotate_z( theta, x ):
-    value = np.dot( np.array( [ np.cos(theta), 0-np.sin(theta), 0 ],
-                       [ np.sin(theta),   np.cos(theta), 0 ],
+    value = np.dot( np.array( [ np.cos(theta['value']), 0-np.sin(theta['value']), 0 ],
+                       [ np.sin(theta['value']),   np.cos(theta['value']), 0 ],
                              [ 0, 0, 1 ]  ),  x  )
     delta = np.empty(3)
     delta[0:1] = rotation_matrix_delta( theta, x )
@@ -191,8 +240,8 @@ def rotate_z( theta, x ):
     
 def rotate_x( phi, x ):
     value = np.dot( np.array( [1,0,0],
-                             [ 0, np.cos(phi), 0-np.sin(phi) ],
-                             [ 0, np.sin(phi), np.cos(phi) ] ),  x  )
+                             [ 0, np.cos(phi['value']), 0-np.sin(phi['value']) ],
+                             [ 0, np.sin(phi['value']), np.cos(phi['value']) ] ),  x  )
     delta = np.empty(3)
     delta[0] = x['delta'][0]
     delta[1:2] = rotation_matrix_delta( theta, x[1:2] )
@@ -284,3 +333,28 @@ def get_costheta_grid( det_coords, source_coords, theta_phi=(0,0) ):
                 grid['source_costheta_deltas'][i][j] = source_costheta['delta']
 
     return grid
+
+
+
+
+
+
+
+
+########################################################################
+# construct relevant variables that will be accessed from this module.
+
+
+# inefficient but it works.
+source_data = source_data.set_index( sources_index ) 
+fill_redundant_source_data( source_data )
+# print source_data
+
+# declare dataframe to store all coordinates, which are pd.Series of two 3-tuples, one for
+# value and one for delta.
+all_coords = pd.DataFrame( columns = error.values_index, index = all_objects_index )
+# all_coords = pd.DataFrame( columns=error.values, index = all_objects_index )
+print all_coords
+
+populate_all_coords( source_data, all_coords ) 
+print all_coords 
