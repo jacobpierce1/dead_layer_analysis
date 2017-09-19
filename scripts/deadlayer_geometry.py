@@ -179,14 +179,25 @@ def populate_source_coords( source_coords ):
 # in: 3-tuple of x,y,z coordinates
 # out: rotated vector about z axis by theta
 def rotate_z( theta, x ):
-    return np.dot( np.array( [ np.cos(theta), 0-np.sin(theta), 0 ],
+    value = np.dot( np.array( [ np.cos(theta), 0-np.sin(theta), 0 ],
                        [ np.sin(theta),   np.cos(theta), 0 ],
                              [ 0, 0, 1 ]  ),  x  )
-
+    delta = np.empty(3)
+    delta[0:1] = rotation_matrix_delta( theta, x )
+    delta[2] = x['delta'][2]
+    return pd.Series( [ value, delta ], values_index )
+                                             
+                        
+    
 def rotate_x( phi, x ):
-    return np.dot( np.array( [1,0,0],
+    value = np.dot( np.array( [1,0,0],
                              [ 0, np.cos(phi), 0-np.sin(phi) ],
                              [ 0, np.sin(phi), np.cos(phi) ] ),  x  )
+    delta = np.empty(3)
+    delta[0] = x['delta'][0]
+    delta[1:2] = rotation_matrix_delta( theta, x[1:2] )
+    return pd.Series( [ value, delta ], values_index )
+
     
 # unused
 def rotate_y( theta, x ):
@@ -197,12 +208,23 @@ def rotate_y( theta, x ):
 # permutations of the 3-tuple vector x. not meant to be used more generally outside these
 # uncertainty calculations. x assumed to have 3 'value' and 'delta' entries.
 def rotated_delta_entry( theta, x ):
-    return ( ( x['value'][0] * np.cos(theta['value']) * theta['delta'] )**2.0  +
-             ( np.cos(theta['value'] ) 
-             x['value'][1] * np.sin
+    return np.sqrt(
+        ( ( x['value'][0] * np.cos(theta['value']) + x['value'][1] * np.sin(theta['value']) ) * theta['delta'] ) **2 + \
+        ( x['value'][0] * np.cos(theta['value']))**2 + \
+        ( x['value'][1] * np.sin(theta['value']))**2 
+)
 
 
 
+# return the uncertainty for a standard 2x2 rotation matrix. since the 2x2 rotation matrix
+# is embedded in the higher order versions, this can be used to construct their uncertainties.
+def rotation_matrix_delta( theta, x ):
+    return np.array( [  rotated_delta_entry( theta, x ),
+                        rotated_delta_entry( theta, x[1,0,2] * np.array( -1,1,1) )
+                        ] )
+
+
+                        
 # in: 3-tuple coords of detector, coords of a particular source, and theta / phi 2-tuple of the
 # source if it is rotated (only used for source deadlayer calculation )
 # out: pd.Series containing 32x32 matrix of penetration angle for each
@@ -229,24 +251,36 @@ def get_costheta_grid( det_coords, source_coords, theta_phi=(0,0) ):
             displacement_delta = np.sqrt( det_coords['delta']**2 + source_coords['delta']**2 ) 
 
             # get angle rel to detector pixel, put in the arrays
-            costheta = get_costheta( pd.Series( { 'value' : displacement_value,
+            det_costheta = get_costheta( pd.Series( { 'value' : displacement_value,
                                                   'delta' : displacemnet_delta } ) )
-            grid['det_costheta_values'][i][j] = costheta['value']
-            grid['det_costheta_deltas'][i][j] = costheta['delta']
+            grid['det_costheta_values'][i][j] = det_costheta['value']
+            grid['det_costheta_deltas'][i][j] = det_costheta['delta']
 
             # now find penetration angle rel to source deadlayer.
             # see function description for definition of theta and phi
 
-            # avoid the computation if we can. if it is (0,0) then the planes of the detector and
-            # source deadlayer are parallel. in this case we have that the angle through the detector
-            # is the same as through the source deadlayer. this is the case most of the time.
             if theta_phi is (0,0):
-                grid['source_costheta_values'][i][j] = costheta['value']
-                grid['source_costheta_deltas'][i][j] = costheta['delta']
 
-            # if not, then we rotate the displacement vector by 0-theta about the z axis, then
-            # 0-phi about the x axis, then take costheta. this is because rotating by the negative
-            # angles is equivalent to rotating the source by positive angles, which is the
-            # definition of the theta/phi angles.
-            rotated_displacement_value = rotate_x( theta_phi[1],
-                                                   rotate_z( theta_phi[0], displacement_value ) ) 
+                # avoid the computation if we can. if it is (0,0) then the planes of the detector and
+                # source deadlayer are parallel. in this case we have that the angle through the detector
+                # is the same as through the source deadlayer. this is the case most of the time.
+
+                grid['source_costheta_values'][i][j] = det_costheta['value']
+                grid['source_costheta_deltas'][i][j] = det_costheta['delta']
+
+                
+            else:
+                
+                # if not, then we rotate the displacement vector by 0-theta about the z axis, then
+                # 0-phi about the x axis, then take costheta. this is because rotating by the negative
+                # angles is equivalent to rotating the source by positive angles, which is the
+                # definition of the theta/phi angles. note that this is independent of the other
+                # det_costheta value.
+
+                rotated_displacement = rotate_x( 0-theta_phi[1],
+                                                 rotate_z( 0-theta_phi[0], displacement_value ) ) 
+                source_costheta = get_costheta( rotated_displacement )
+                grid['source_costheta_values'][i][j] = source_costheta['value']
+                grid['source_costheta_deltas'][i][j] = source_costheta['delta']
+
+    return grid
