@@ -1,3 +1,5 @@
 http://www.nndc.bnl.gov/chart/decaysearchdirect.jsp?nuc=249CF&unc=nds
 http://www.nndc.bnl.gov/chart/decaysearchdirect.jsp?nuc=240PU&unc=nds
 http://www.nndc.bnl.gov/chart/decaysearchdirect.jsp?nuc=238PU&unc=nds
+
+cf249, pu240, pu238 are the sources present. 245 Cm, 236 U, 234 U are daughters respectively.
