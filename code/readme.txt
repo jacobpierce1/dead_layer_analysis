@@ -1,4 +1,14 @@
-NOTES: 
+AUTHOR: JACOB PIERCE
+LOCATION: SAVARD GROUP, ARGONNE NATIONAL LAB
+DATE: SEP 2017
+
+
+
+To prepare for using the python scripts, run the command:
+   $ source init.sh
+
+This sets the PYTHONPATH environment variable so that the scripts can find the libraries for helper functions.
+
 
 Structural mistakes in this lib:
 

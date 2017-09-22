@@ -11,7 +11,7 @@ import pandas as pd
 
 # config: stopping power files 
 
-file_si = '../data/stopping_power_data/alpha_in_si_stopping_power.txt'
+file_si = '../../data/stopping_power_data/alpha_stopping_power_si.txt'
 density_si = 2.328  # g/mL
 
 def _run():

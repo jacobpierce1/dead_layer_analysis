@@ -6,7 +6,7 @@
 
 # my includes 
 import sql_db_manager
-import error 
+import libjacob.error as error
 
 
 ## includes 
@@ -25,13 +25,16 @@ _MM_PER_INCH = 25.4
 sources = [ 'pu_240', 'cf_249', 'pu_238_centered', 'pu_238_moved', 'pu_238_flat', 'pu_238_tilted' ]
 all_objects = sources + [ 'detector' ]
 
+source_deadlayers = [ 'si' ] * 6
+
 # indices to be used for constructing DataFrames
 sources_index = pd.Index( sources )
 all_objects_index = pd.Index( all_objects )
 
 
-costheta_labels = [ 'det_costheta_grid', 'source_costheta_grid' ]
-costheta_labels_index = pd.Index( costheta_labels )
+
+# costheta_labels = [ 'det_costheta_grid', 'source_costheta_grid' ]
+# costheta_labels_index = pd.Index( costheta_labels )
 
 
 
@@ -40,10 +43,12 @@ _source_data_delta = 0.005
 
 
 
-# these are the distances from the cylinder containing the source to the edge of the 
-# container. each element of the list is a single measurement, so the actual measurement
-# is the result of averaging the numbers. i am putting all measurements here instead of 
-# average value out of principle.
+# these are the distances from the cylinder containing the source to
+# the edge of the container. each element of the list is a single
+# measurement, so the actual measurement is the result of averaging
+# the numbers. i am putting all measurements here instead of average
+# value out of principle. empty entries are filled in by
+# _fill_redundant_source_data.
 
 def _get_source_data():
 
@@ -340,8 +345,7 @@ def _populate_source_theta_phi( source_theta_phi, source_data, pu_238_tilted_dat
 # same as the direction of 'right'
 
 def _populate_costheta_grid( cosine_matrices, all_coords, source_theta_phi ):
-
-    
+       
     det_coords = all_coords.loc['detector']
     
     # loop through all sources
@@ -418,13 +422,32 @@ def _populate_costheta_grid( cosine_matrices, all_coords, source_theta_phi ):
 
 ######################################################################## MAIN ##########################
 
-# call get_costheta_grid in order to populate the cosine matrices with uncertainties.
-# construct all unnecessary (outside this module) intermediaries, such as source
-# coordinates.
+# call get_costheta_grid in order to populate the cosine matrices with
+# uncertainties.  construct all unnecessary (outside this module)
+# intermediaries, such as source coordinates.
 
-def _main( cosine_matrices ):
+# data structure to hold the cosine matrices: ( source ) -> ( detector
+# angle, source angle ) -> ( value, delta )
 
+#  i thought for a while about what pandas data structure to use
+# before realizing that they all kind of suck. i am just going to
+# declare an array here that has the labels for each dimension. if you
+# really need to look up by a particular label, just figure out the
+# index and do it. good riddance. in retrospect i probably will never
+# use pandas again and always take the route of using an array with
+# labels stored elsewhere.
+
+# use debug = 1 to return an array of the same type but all entries are 0.5
+
+def get_cosine_matrices( debug=0 ):
+
+
+    if debug:
+        return np.ones( ( len(sources), 2, 2, 32, 32 ) ) / 2.0
+    
     print 'INFO: constructing costheta grid...'
+    cosine_matrices_labels = [ sources, ['detector', 'source'], ['value', 'delta'] ]
+    cosine_matrices = np.empty( ( len(sources), 2, 2, 32, 32 ) )
 
     # inefficient but it works.
     source_data = _get_source_data() 
@@ -447,24 +470,8 @@ def _main( cosine_matrices ):
     # get each array of values / uncertainties and add to the grid.
     _populate_costheta_grid( cosine_matrices, all_coords, source_theta_phi )
     
-
+    return cosine_matrices
     
 
 
-# data structure to hold the cosine matrices: ( source ) -> ( detector angle, source angle ) ->
-# ( value, delta )
 
-#  i thought for a while about what
-# pandas data structure to use before realizing that they all kind of suck. i am just going to declare
-# an array here that has the labels for each dimension. if you really need to look up by a particular
-# label, just figure out the index and do it. good riddance. in retrospect i probably will never use
-# pandas again and always take the route of using an array with labels stored elsewhere.
-
-cosine_matrices_labels = [ sources, ['detector', 'source'], ['value', 'delta'] ]
-cosine_matrices = np.empty( ( len(sources), 2, 2, 32, 32 ) )
-
-
-# this function does everything necessary in order to construct the cosine_matrices.
-_main( cosine_matrices )
-
-print cosine_matrices 

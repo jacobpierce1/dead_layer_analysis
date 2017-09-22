@@ -31,7 +31,7 @@ def esum( x, y ):
 
 # in: 2 options, 1: array of measurements with value and delta.
 # 2: a pd.Series of value and delta arrays.
-def esum_n( measurements ):
+def esum_n( measurements, axis=None ):
     x, dx = measvec_to_arrays( measurements )
     return measurement( np.sum(x), np.sqrt( np.sum( dx**2 ) ) ) 
 
@@ -39,7 +39,7 @@ def esum_n( measurements ):
 
 
 # entries of xlist must be uncorrelated 
-def emean( xlist, dx=None ):
+def emean( xlist, dx=None, axis=None ):
 
     if dx is not None:
 
@@ -48,10 +48,10 @@ def emean( xlist, dx=None ):
             print 'ERROR: dx must be scalar'
             return None
 
-        return measurement(  np.mean(xlist), dx / np.sqrt(len(xlist)) )
+        return measurement(  np.mean(xlist, axis=axis ), dx / np.sqrt(len(xlist)) )
 
     else:
-        return esum_n( xlist ) / xlist['value'].size
+        return esum_n( xlist, axis ) / xlist['value'].size
                             
 
 
@@ -62,8 +62,9 @@ def edivide( num, denom ):
     denomx, denomdx = measvec_to_arrays( denom )
     value = numx / denomx
     return measurement( value,
-                        value * np.sqrt( (numdx / numx)**2.0 +
-                                         (denomdx / denomx )**2.0 ) )
+                        np.abs(value) * np.sqrt(
+                            (numdx / numx)**2.0 +
+                            (denomdx / denomx )**2.0 ) )
                         
         
 
