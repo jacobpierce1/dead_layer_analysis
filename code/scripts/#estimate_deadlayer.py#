@@ -75,7 +75,7 @@ def calibrated_energy( p, x, stop_power_interp_functions, cosine_matrices ):
         # later.
 
         E_current[i] = (
-            energy_entering_detector( p[0], p[1], p[2],
+            energy_entering_detector( p[0], p[1], p[2], p[4],
                                       stop_power_interp_funcs[-1],
                                       x[i], cosine_matrices[i] ) )
         
@@ -108,6 +108,8 @@ def _energy_entering_detector( det_dl_efficiency, a, b, stop_power_interp_func, 
 
     # guess for solution: calibration ignoring the dead layer
     E0_guess = a*x + b
+
+    distance_matrix = error.edivide( 
     
     func = lambda E0: ( det_dl_efficiency * (E0 - stop_power_interp_func( E0 ) ) +
                         stop_power_interp_func(E0) - ( a * channel + b ) )
