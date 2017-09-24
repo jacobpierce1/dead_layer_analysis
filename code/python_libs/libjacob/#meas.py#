@@ -10,6 +10,10 @@ import numpy as np
 class InputError( Exception ):
     pass
 
+class NotImplemented( Exception ):
+    pass
+
+
 
 class meas( object ):
 
@@ -27,7 +31,7 @@ class meas( object ):
                 raise InputError( 'x must have numeric dtype.' )
 
             if not np.issubdtype( dx.dtype, np.number ):
-                raise InputError( 'dxx must have numeric dtype.' )
+                raise InputError( 'dx must have numeric dtype.' )
 
                 
         # if dx.ndims is 0 then dx was input as scalar. in this case, no matter
@@ -58,63 +62,62 @@ class meas( object ):
         self.dx = dx
         return None                    
 
+
+    # construct a new measurement from a list of other measurements
+    @classmethod
+    def from_list( cls, measlist ):
+        return _meas_no_checks( [ measlist[i].x for i in range(len(measlist)) ],
+                                [ measlist[i].dx for i in range(len(measlist)) ] )
     
+        
     
     # OVERLOAD ALL ARITHMETIC OPERATIONS.
     # x and y must be uncorrelated for any of these to make sense.
     def __add__( self, y ):
 
         if np.isscalar( y ):
-            return meas( self.x + y,
-                         self.dx,
-                         checksize = 0 )
-
+            return _meas_no_checks( self.x + y,
+                                    self.dx )
+                                     
         else:
-            return meas( self.x + y.x,
-                         np.sqrt( self.dx **2 + y.dx **2 ),
-                         checksize=0 )
-    
-
+            return _meas_no_checks( self.x + y.x,
+                                    np.sqrt( self.dx **2 + y.dx **2 ) )
+        
+        
     def __sub__( self, y ):
-
+        
         if np.isscalar( y ):
-            return meas( self.x - y,
-                         self.dx,
-                         checksize = 0 )
-
-        else:
-            return meas( self.x - y.x,
-                         np.sqrt( self.dx ** 2 + y.dx ** 2 ),
-                         checksize=0 )
-
-
-    def __mul__( self, y ):
-
-        if np.isscalar( y ):
-            return meas( self.x * y,
-                         self.dx * y,
-                         checksize = 0 )
+            return _meas_no_checks( self.x - y,
+                                    self.dx )
         
         else:
-            return meas( self.x * y.x,
-                     np.sqrt( ( self.x * y.dx ) ** 2 +
-                              ( y.x * self.dx ) ** 2 ),
-                     checksize=0 )
-
-
+            return _meas_no_checks( self.x - y.x,
+                                    np.sqrt( self.dx ** 2 + y.dx ** 2 ) )
+        
+        
+    def __mul__( self, y ):
+        
+        if np.isscalar( y ):
+            return _meas_no_checks( self.x * y,
+                                    self.dx * y )
+        
+        else:
+            return _meas_no_checks( self.x * y.x,
+                                    np.sqrt( ( self.x * y.dx ) ** 2 +
+                                             ( y.x * self.dx ) ** 2 ) )
+        
+        
     def __div__( self, y ):
 
         if np.isscalar(y):
-            return meas( self.x / y,
-                         self.dx / y,
-                         checksize = 0 )
+            return _meas_no_checks( self.x / y,
+                         self.dx / y )
 
         else:
             val = self.x / y.x
-            return meas( val,
-                         np.abs( val ) * np.sqrt( ( self.dx / self.x ) ** 2 +
-                                                  ( y.dx / y.x ) ** 2 ),
-                         checksize=0 )
+            return _meas_no_checks( val,
+                                    np.abs( val ) * np.sqrt( ( self.dx / self.x ) ** 2 +
+                                                             ( y.dx / y.x ) ** 2 ) )
         
 
     # only arithmetic operation that needs to be defined differently if
@@ -135,18 +138,17 @@ class meas( object ):
     
     # other common operations 
     def __abs__( self ):
-        return meas( np.abs( self.x ),
-                     self.dx,
-                     checksize=0 )
+        return _meas_no_checks( np.abs( self.x ),
+                                self.dx )
 
     def __neg__( self ):
-        return meas( 0-self.x, self.dx, checksize=0 )
+        return _meas_no_checks( 0-self.x, self.dx )
 
     def __str__( self ):
         return 'x: %s\ndx: %s' % ( str( self.x ), str( self.dx ) )
 
     def __eq__( self, y ):
-        return ( self.x == y.x ) & ( self.dx == y.dx )
+        return ( self.x == y.x ) and ( self.dx == y.dx )
 
     def __ne__( self, y ):
         return not self.__eq__( y )
@@ -156,9 +158,8 @@ class meas( object ):
 
     # use the power law of calculus
     def __pow__( self, n ):
-        return meas( self.x ** n,
-                     np.abs( n * self.x ** (n-1) ) * self.dx,
-                     checksize=0 ) 
+        return _meas_no_checks( self.x ** n,
+                                np.abs( n * self.x ** (n-1) ) * self.dx )
 
         
     
@@ -166,38 +167,77 @@ class meas( object ):
 
     # use chain rule of calculus. f and fprime must be callable.
     def apply( self, f, fprime ):
-        return meas( f( self.x ),
-                     np.abs( fprime( self.x ) ) * self.dx,
-                     checksize=0 )
+        return _meas_no_checks( f( self.x ),
+                                np.abs( fprime( self.x ) ) * self.dx )
 
 
-        
-    # todo: methods for summing an input list or summing an 
+    # input: list of 
+    def apply_nd( self, f, fprime ):
+        pass
     
-    # 2: a pd.Series of value and delta arrays.
-    @staticmethod
+    # sum the entries of the measurement along specified axis.
+    # input is one measurement with an x value that is a vector,
+    # not a list of measurements. for that see the non-class method
+    # sum.
     def sum( measurements, axis=None ):
         #x, dx = measvec_to_arrays( measurements )
-        return meas( np.sum( x.x, axis=axis ),
-                     np.sqrt( np.sum( x.dx **2, axis=axis ) ),
-                     checksize=0 ) 
+        return _meas_no_checks( np.sum( x.x, axis=axis ),
+                                np.sqrt( np.sum( x.dx **2, axis=axis ) ) )
     
     
-    
-    # input: xlist, a list or numpy array of measurements.
-    # entries of xlist must be uncorrelated for error to make sense.
+    # analagous to above sum(). a non-class mean is implemented which can
+    # be used for a list input.
     def mean( xlist, axis=None ):
-        return meas( np.mean( x.x, axis=axis ),
-                     np.sqrt( np.sum( x.dx ** 2, axis=axis ) / x.x.size ),
-                     checksize=0 )
-            
-            
+        return _meas_no_checks( np.mean( x.x, axis=axis ),
+                                np.sqrt( np.sum( x.dx ** 2, axis=axis ) / x.x.size ) )
+
+
+
+    # access functions: when pulling out an index of a measurement
+    # storing an ndarray, return a measurement with the corresponding
+    # indexed x and dx.
+    def __getitem__( self, key ):
+        return _meas_no_checks( self.x[key], self.dx[key] )
+
+    # value must be a meas
+    def __setitem__( self, key, value ):
+        self.x[key] = value.x
+        self.dx[key] = value.dx
+        return self
+
+    def __delitem__( self, key ):
+        raise NotImplemented( 'Have not decided on best functionality here.' )
+
+
     
+
+#########################################
+#### FAST ALLOC SUBCLASS ################
+#########################################
+# this class is equivalent to meas except the constrcutor is more
+# efficient. note that type errors resulting from using this will
+# most likely result in unintelligible errors. designed for absolute
+# efficiency
+class _meas_no_checks( meas ):
+
+    def __init__( self, x, dx ):
+
+        if np.isscalar(x):
+            self.x = x
+            self.dx = dx
+            return None
+
+        else: 
+            self.x = np.asarray( x )
+            self.dx = np.asarray( dx )
+            return None
+
+
 
 
 ############################################
-# NON CLASS METHODS
-
+# NON CLASS METHODS ########################
+############################################
 # common functions
 def cos( _meas ):
     return _meas.apply( np.cos, np.sin )
@@ -229,8 +269,20 @@ def log( _meas ):
 # act on an input list along the specified axis. both of these return a single
 # measurement with the same dimensions as the measurements in the input list.
 # note that the 
-def sum(                 
-    
+def sum( measlist, axis=0 ):
+    return _meas_no_checks( np.sum( [ measlist[i].x for i in np.arange(len(measlist)) ],
+                                    axis=axis ),
+                            np.sqrt( np.sum( [ measlist[i].dx
+                                               for i in np.arange( len( measlist ) ) ],
+                                             axis = axis ) ) )
+
+def mean( measlist, axis=0 ):
+    return _meas_no_checks( np.mean( [ measlist[i].x for i in np.arange(len(measlist)) ],
+                                     axis=axis ),
+                            np.sqrt( np.sum( [ measlist[i].dx
+                                               for i in np.arange( len( measlist ) ) ],
+                                             axis = axis ) ) )
+
     # # convert either list of measurements or measurement of lists into two tuples.
     # def measvec_to_arrays( measurements ):
         

@@ -190,11 +190,15 @@ def _populate_all_coords( all_coords, source_data ):
 # x, y, z must all be a series or dict with entries for 'value' and 'delta'
 def get_costheta( coords ):
 
-    x, y, z = coords.x
-    dx, dy, dz = coords['delta']
+    # todo: support for nd
     
-    value= z / np.sqrt( x**2.0 + y**2.0 + z**2.0 )
-    delta = get_costheta_delta( x, dx, y, dy, z, dz )
+    x = coords[2] / np.sqrt( np.sqrt( 
+    
+    # x, y, z = coords.x
+    # dx, dy, dz = coords['delta']
+    
+    # value= z / np.sqrt( x**2.0 + y**2.0 + z**2.0 )
+    # delta = get_costheta_delta( x, dx, y, dy, z, dz )
 
 
 
