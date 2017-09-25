@@ -1,3 +1,4 @@
+*#*
 *.pyc
 **/extracted_ttree_data/*
 **/current_fit_images/*
@@ -6,3 +7,4 @@ images/*
 junk/*
 databases/*
 stuff_from_mary/*
+*.DS_Store

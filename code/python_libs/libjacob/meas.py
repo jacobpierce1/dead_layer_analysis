@@ -31,7 +31,7 @@ class meas( object ):
                 raise InputError( 'x must have numeric dtype.' )
 
             if not np.issubdtype( dx.dtype, np.number ):
-                raise InputError( 'dxx must have numeric dtype.' )
+                raise InputError( 'dx must have numeric dtype.' )
 
                 
         # if dx.ndims is 0 then dx was input as scalar. in this case, no matter
@@ -171,7 +171,33 @@ class meas( object ):
                                 np.abs( fprime( self.x ) ) * self.dx )
 
 
-        
+    
+    # very useful function here. handles uncertainty calculation for a map
+    # f: R^n to R with continuous first derivatives. the coordinates must
+    # be indepdendent for this to make sense, but a typical function can always
+    # be written in such a way that this is the case.
+    #
+    # input:
+    #   1: function from R^n to R. No reference to x or dx should occur. 
+    #   2: tuple (preferred) or list containing the first partial derivatives of f in order.
+    #      So the first coordinate needs to be df/dx_0, and so on.
+    # output:
+    #   uncertainty using the chain rule of several variables.
+    #
+    # info: there is no check on the size of fprime_tuple for maximal efficiency. you
+    # will probably get an index out of range error if the tuple is too small
+    # and no error otherwise.
+    
+    def apply_nd( self, f, fprime_tuple ):
+        val = f( self.x )
+        partials_evaluated = fprime_tuple( self.x )
+        delta = np.sqrt( np.sum( [ ( partials_evaluated[i] * self.dx[i] ) ** 2
+                                   for i in np.arange( len( fprime_tuple ) ) ] ) )
+        return _meas_no_checks( val, delta )
+                         
+
+
+    
     # sum the entries of the measurement along specified axis.
     # input is one measurement with an x value that is a vector,
     # not a list of measurements. for that see the non-class method

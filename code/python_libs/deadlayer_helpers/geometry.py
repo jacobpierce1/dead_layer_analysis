@@ -182,32 +182,18 @@ def _populate_all_coords( all_coords, source_data ):
         all_coords.loc[source] = xyz * _MM_PER_INCH
                                     
         
-    
 
 
-# return angle between source and detector pixel (i,j) given all relevant parameters. 
-# this angle and the uncertainty in it are returned as a tuple (angle, delta_anle ).
-# x, y, z must all be a series or dict with entries for 'value' and 'delta'
-def get_costheta( coords ):
-
-    x, y, z = coords.x
-    dx, dy, dz = coords['delta']
-    
-    value= z / np.sqrt( x**2.0 + y**2.0 + z**2.0 )
-    delta = get_costheta_delta( x, dx, y, dy, z, dz )
+# these functions to be used as input for apply_nd
+def costheta_from_3d_f( coords ):
+    return coords[2] / np.sqrt( np.sum( coords ** 2 ) )  
 
 
-
-
-
-# def get_costheta_delta( x,dx, y,dy, z,dz ) :
-#     return ( ( z**2 * ( (x*dx)**2 + (y*dy)**2 )  +
-#                     ( x**2 + y**2 )**2 * dz**2 )  /
-#                         (x**2 + y**2 + z**2 )**3 )
-
-
-
-
+def costheta_from_3d_fprime_tuple( coords ):
+    r_sq = np.sum( coords ** 2 )
+    return np.asarray ( [ -coords[0]*coords[2] / ( r_sq ** (3/2) ),
+                          -coords[1]*coords[2] / ( r_sq ** (3/2) ),
+                          ( r_sq - coords[3]**2 ) / ( r_sq ** (3/2) ) ] )
 
 
     
@@ -356,10 +342,9 @@ def _populate_costheta_grid( cosine_matrices, all_coords, source_theta_phi ):
                 displacement = error.measurement( displacement_value,
                                                   displacement_delta )
                 
-                # get angle rel to detector pixel, put in the arrays
-                det_costheta = get_costheta( displacement ) 
-                det_costheta_grid_value[i][j] = det_costheta['value']
-                det_costheta_grid_delta[i][j] = det_costheta['delta']
+                # get angle rel to detector pixel
+                det_costheta_grid_delta[i][j] = displacement.apply_nd( costheta_from_3d_f,
+                                                                       costheta_from_3d_fprime_tuple )
                 
                 # now find penetration angle rel to source deadlayer.
                 # see function description for definition of theta and phi
