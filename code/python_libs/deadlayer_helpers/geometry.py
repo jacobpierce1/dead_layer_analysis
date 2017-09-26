@@ -117,9 +117,9 @@ enclosure_data = pd.Series(
 )
 
 
-###########################################################################################################
-#################################### FUNCTIONS FOR POPULATING THE DATAFRAMES ###############################
-###########################################################################################################
+##############################################################################################
+#################################### FUNCTIONS FOR POPULATING THE DATAFRAMES #################
+##############################################################################################
 
 
 
@@ -156,8 +156,8 @@ def _populate_all_coords( all_coords, source_data ):
     
     # first handle the detector separately
     ## TODO URGENT
-    all_coords.loc['detector'] = error.measurement( np.array( [10.0,10.0,10.0]),
-                                                    np.array( [0.01,0.01,0.01] ) )
+    all_coords.loc['detector'] = meas.meas( np.array( [10.0,10.0,10.0]),
+                                            np.array( [0.01,0.01,0.01] ) )
 
     
     # now populate all the source indices
@@ -170,15 +170,16 @@ def _populate_all_coords( all_coords, source_data ):
         # start off only using the left and bottom  measurements. TODO: use value of total_x
         x, y = [ meas.meas( source_data.loc[ source, col ],
                             _source_data_delta ).mean()
-                 + meas.meas( source_data.loc[ source, 'diameter' ] / 2,
-                         source_data_delta ) for col in [ 'left', 'bottom' ]  ]
+                 + meas.meas( source_data.loc[ source, 'diameter' ],
+                              _source_data_delta ).mean() / 2 
+                 for col in [ 'left', 'bottom' ]  ]
 
         # for the top measurement, reference to the bottom of the enclosure.
         z = meas.sum( [ meas.meas( enclosure_data['bottom_offset'], _source_data_delta ).mean(),
                         meas.meas( source_data.loc[ source, 'height' ], _source_data_delta ).mean(),                                                                  meas.meas( source_data.loc[ source, 'wafer' ], _source_data_delta ).mean()
         ] )
 
-        xyz = meas.meas.fromlist( [ x, y, z ] )
+        xyz = meas.meas.from_list( [ x, y, z ] )
         all_coords.loc[source] = xyz * _MM_PER_INCH
                                     
         
@@ -193,10 +194,44 @@ def costheta_from_3d_fprime_tuple( coords ):
     r_sq = np.sum( coords ** 2 )
     return np.asarray ( [ -coords[0]*coords[2] / ( r_sq ** (3/2) ),
                           -coords[1]*coords[2] / ( r_sq ** (3/2) ),
-                          ( r_sq - coords[3]**2 ) / ( r_sq ** (3/2) ) ] )
+                          ( r_sq - coords[2]**2 ) / ( r_sq ** (3/2) ) ] )
 
 
+
+
+# rotate meas x about an axis ( 0 = x, 1 = y, 2 = z ) by theta 
+def rotate_3d_meas( axis, theta, x ):
+
+    # select the correct components to be rotated, using the fact that the
+    # 3D rotation is identity for one component and 2d rotation of the other
+    # two components 
+    rot_indices = np.arange(3)
+    np.delete( rot_indices, axis )
+
+    # set the component that doesn't change.
+    ret = np.empty(3)
+    ret[axis] = x[axis]
     
+    # do the 2D rotation and add it to ret
+    rot_matrix = get_rotate_2d_matrix( theta )
+    ret[ rot_indices ] = meas.dot( rot_matrix, x[ rot_indices ] )
+
+    return ret
+
+
+
+
+# get 2d rotation matrix, can be used for different things.
+def get_rotate_2d_matrix( theta ):
+    return np.array( [ [ np.cos(theta), -np.sin(theta) ],
+                       [ np.sin(theta),  np.cos(theta) ] ] )
+
+
+
+def rotate_2d( x, theta ):
+    return np.dot( get_rotate_2d_matrix( theta, x ) )
+                       
+                    
 # in: 3-tuple of x,y,z coordinates
 # out: rotated vector about z axis by theta
 def rotate_z( theta, x ):
@@ -242,6 +277,14 @@ def rotated_delta_entry( theta, x ):
                     + ( x['value'][1] * np.sin(theta['value']))**2 )
 
 
+# generate a unit vec in R^n with entry 1 at k 
+def unit_vec( k, n ):
+    if k > n:
+        raise ValueError( 'k must be less than n' )
+    ret = np.zeros( n )
+    ret[k] = 1
+    return ret
+    
 
 # return the uncertainty for a standard 2x2 rotation matrix. since the 2x2 rotation matrix
 # is embedded in the higher order versions, this can be used to construct their uncertainties.
@@ -266,37 +309,36 @@ def rotation_matrix_delta( theta, x ):
 
 
 
-def _populate_source_theta_phi( source_theta_phi, source_data, pu_238_tilted_data ):
+def _populate_source_theta_phi( source_theta, source_phi, source_data, pu_238_tilted_data ):
 
     # assume all measured (or implicitly measured, e.g. assuming something is flat ) are known to
     # 1 degree.
     angle_data_delta = np.deg2rad( 1.0 / 360 ) 
 
+    radius = meas.meas( source_data.loc[ 'pu_238_tilted', 'diameter' ],
+                        _source_data_delta ).mean()
     
-    # get the theta of pu_238_tilted. assuming phi = 0, which mary told me.
-    radius = error.emean( error.measurement( source_data.loc[ 'pu_238_tilted', 'diameter' ],
-                                             _source_data_delta ) ) / 2.0
-    
-    height_diff = error.esum( error.emean( pu_238_tilted_data[ 'upper_height' ],
-                                           _source_data_delta ),
-                              error.emean( pu_238_tilted_data[ 'lower_height' ],
-                                           _source_data_delta ) )
+    height_diff = ( meas.meas( pu_238_tilted_data[ 'upper_height' ],
+                               _source_data_delta ).mean() +
+                    meas.meas( pu_238_tilted_data[ 'lower_height' ],
+                               _source_data_delta ).mean() )
 
-    tantheta = error.edivide( height_diff, radius )
-    theta_value = np.arctan( tantheta['value'] )
-
-    theta_delta = angle_data_delta  # todo
+    # take inverse tan of opposite over adjacent
+    theta = meas.arctan( height_diff / radius ) 
+     
+    source_theta[ 'pu_238_tilted' ] = theta
+    source_phi[ 'pu_238_tilted' ] = meas.meas( 0, angle_data_delta )
     
-    source_theta_phi.loc[ 'pu_238_tilted' ] = error.measurement( [ theta_value, 0.0 ],
-                                                                 [ theta_delta, angle_data_delta ] )
     
     # add in theta_phi values for everything except pu_238_tilted.
     upright_sources = list(sources)
     upright_sources.remove( 'pu_238_tilted' )
-    for source in upright_sources:
-        source_theta_phi.loc[ source ] = error.measurement( [0,0], 2*[angle_data_delta] )
 
-                                    
+    # loop through and add the same angles for the other sources.
+    for source in upright_sources:
+        source_theta[ source ] = meas.meas( 0, angle_data_delta )
+        source_phi[ source ] = meas.meas( 0, angle_data_delta )
+                                            
                                     
 
 
@@ -310,40 +352,34 @@ def _populate_source_theta_phi( source_theta_phi, source_data, pu_238_tilted_dat
 # theta is measured from 0 to pi with 0 on the z axis, phi from 0 to 2pi with 0 on the x axis,
 # same as the direction of 'right'
 
-def _populate_costheta_grid( cosine_matrices, all_coords, source_theta_phi ):
+def _populate_costheta_grid( cosine_matrices, all_coords, source_theta, source_phi ):
        
     det_coords = all_coords.loc['detector']
     
     # loop through all sources
     for sourcenum in range(len(sources)):
 
-        print str(sourcenum) + ' / ' + str(len(sources))
+        print str(sourcenum) + ' / ' + str(len(sources)) + '...'
 
+        # extract coords and angels 
         source_coords = all_coords.loc[ sources[sourcenum] ]
-        theta_phi = source_theta_phi.loc[ sources[sourcenum] ]
+        theta = source_theta[ sources[sourcenum] ]
+        phi = source_theta[ sources[sourcenum] ]
         
-        theta, phi = [ error.measurement( theta_phi['value'][i], theta_phi['delta'][i] )
-                       for i in range(2) ]
 
-        # pre-index the current values in order to enhance readability 
-        det_costheta_grid_value = cosine_matrices[sourcenum, 0, 0]
-        det_costheta_grid_delta = cosine_matrices[sourcenum, 0, 1]
-        source_costheta_grid_value = cosine_matrices[sourcenum, 1, 0]
-        source_costheta_grid_delta = cosine_matrices[sourcenum, 1, 1]
+        # rename matrices in order to enhance readability 
+        det_costheta_grid = cosine_matrices[sourcenum, 0 ]
+        source_costheta_grid = cosine_matrices[sourcenum, 1 ]
         
         
         # keep shifting by 1mm to get next coord 
         for i in range(32):
             for j in range(32):
-                
-                    
-                displacement_value = det_coords['value'] + np.array( [i*1.0, j*1.0, 0 ] ) - source_coords['value']
-                displacement_delta = np.sqrt( det_coords['delta']**2 + source_coords['delta']**2 ) 
-                displacement = error.measurement( displacement_value,
-                                                  displacement_delta )
+                                    
+                displacement = det_coords + np.array([ i, j, 0 ]) - source_coords
                 
                 # get angle rel to detector pixel
-                det_costheta_grid_delta[i][j] = displacement.apply_nd( costheta_from_3d_f,
+                det_costheta_grid[i][j] = displacement.apply_nd( costheta_from_3d_f,
                                                                        costheta_from_3d_fprime_tuple )
                 
                 # now find penetration angle rel to source deadlayer.
@@ -359,28 +395,24 @@ def _populate_costheta_grid( cosine_matrices, all_coords, source_theta_phi ):
                 #     source_costheta_grid_delta[i][j] = det_costheta['delta']
                     
                     
-                if 1:
-                    
-                    # if not, then we rotate the displacement vector by 0-theta about the z axis, then
-                    # 0-phi about the x axis, then take costheta. this is because rotating by the negative
-                    # angles is equivalent to rotating the source by positive angles, which is the
-                    # definition of the theta/phi angles. note that this is independent of the other
-                    # det_costheta value.
-                    
-                    rotated_displacement = rotate_x( 0-phi,
-                                                     rotate_z( 0-theta, displacement ) ) 
-                    source_costheta = get_costheta( rotated_displacement )
-                    source_costheta_grid_value[i][j] = source_costheta['value']
-                    source_costheta_grid_delta[i][j] = source_costheta['delta']
-                    
+                                   
+                # if not, then we rotate the displacement vector
+                # by 0-theta about the z axis, then 0-phi about
+                # the x axis, then take costheta. this is because
+                # rotating by the negative angles is equivalent to
+                # rotating the source by positive angles, which is
+                # the definition of the theta/phi angles. note
+                # that this is independent of the other
+                # det_costheta value.
+                
+                rotated_displacement = rotate_x( 0-phi,
+                                                 rotate_z( 0-theta, displacement ) ) 
+                source_costheta_grid[i][j] = get_costheta( rotated_displacement )
+                                    
                     
                     
                     
                         
-    
-                    
-
-
 
 
 
@@ -411,10 +443,10 @@ def get_cosine_matrices( debug=0 ):
         return np.ones( ( len(sources), 2, 2, 32, 32 ) ) / 2.0
     
     print 'INFO: constructing costheta grid...'
-    cosine_matrices_labels = [ sources, ['detector', 'source'], ['value', 'delta'] ]
-    cosine_matrices = np.empty( ( len(sources), 2, 2, 32, 32 ) )
+    cosine_matrices_labels = [ sources, ['detector', 'source'] ]
+    cosine_matrices = np.empty( ( len(sources), 2, 32, 32 ), dtype='object' )
 
-    # inefficient but it works.
+    # measurements 
     source_data = _get_source_data() 
     source_data = source_data.set_index( sources_index )
     _fill_redundant_source_data( source_data )
@@ -422,18 +454,20 @@ def get_cosine_matrices( debug=0 ):
     
     # this shall be populated with the theta_phi angles for all detectors, which are 0
     # for all but the pu_238_tilted
-    source_theta_phi = pd.DataFrame( columns = error.values_index, index = sources_index )
-    _populate_source_theta_phi( source_theta_phi, source_data, pu_238_tilted_data )
+    source_theta = pd.Series( sources_index )
+    source_phi = pd.Series( sources_index )
+    _populate_source_theta_phi( source_theta, source_phi, source_data, pu_238_tilted_data )
     
         
     # declare dataframe to store all coordinates, which are pd.Series of two 3-tuples, one for
     # value and one for delta.
-    all_coords = pd.DataFrame( columns = error.values_index, index = all_objects_index )
+    all_coords = pd.Series( index = all_objects_index )
     _populate_all_coords( all_coords, source_data ) 
 
 
     # get each array of values / uncertainties and add to the grid.
-    _populate_costheta_grid( cosine_matrices, all_coords, source_theta_phi )
+    _populate_costheta_grid( cosine_matrices, all_coords, source_theta, source_phi )
+
     
     return cosine_matrices
     

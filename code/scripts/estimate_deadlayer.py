@@ -8,7 +8,7 @@
 
 
 import libjacob.jacob_pyplot as jplt
-import libjacob.error as error
+import libjacob.meas as meas
 import libjacob.jacob_utils as jutils
 
 import deadlayer_helpers.stopping_power_interpolation as stop
@@ -75,7 +75,7 @@ def calibrated_energy( p, x, stop_power_interp_functions, cosine_matrices ):
         # later.
 
         E_current[i] = (
-            energy_entering_detector( p[0], p[1], p[2],
+            energy_entering_detector( p[0], p[1], p[2], p[4],
                                       stop_power_interp_funcs[-1],
                                       x[i], cosine_matrices[i] ) )
         
@@ -108,6 +108,7 @@ def _energy_entering_detector( det_dl_efficiency, a, b, stop_power_interp_func, 
 
     # guess for solution: calibration ignoring the dead layer
     E0_guess = a*x + b
+
     
     func = lambda E0: ( det_dl_efficiency * (E0 - stop_power_interp_func( E0 ) ) +
                         stop_power_interp_func(E0) - ( a * channel + b ) )
@@ -146,7 +147,7 @@ def _populate_stop_power_interp_funcs( stop_power_interp_funcs, all_objects_dead
 def _main( average=0 ):
 
     # this takes a while to populate. use debug=1 option when developing.
-    cosine_matrices = geom.get_cosine_matrices( debug=1 )
+    cosine_matrices = geom.get_cosine_matrices( debug=0 )
 
     # guess 100 nm depth for all dead layers, both detector and source.
     # calculation is 100 nm * ( 1 m / 10^9 nm ) * 1000 mm / nm 
@@ -169,7 +170,7 @@ def _main( average=0 ):
     # make the estimate by ignoring the variations in pixel array, only
     # considering the strip number.
     if average:
-        cosine_matrices = error.emean( cosine_matrices )
+        cosine_matrices = cosine_matrices.mean( axis=4 )
         estimate_deadlayers_from_average_strip_position()
         
     else:

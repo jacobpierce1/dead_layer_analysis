@@ -17,6 +17,7 @@ class NotImplemented( Exception ):
 
 class meas( object ):
 
+
     # CONSTRUCTOR
     # https://stackoverflow.com/questions/29318459/python-function-that-handles-scalar-or-arrays
     def __init__( self, x, dx, checksize=1, checktype=1 ):
@@ -63,7 +64,7 @@ class meas( object ):
         return None                    
 
 
-    # construct a new measurement from a list of other measurements
+    # construct a new measurement from a list of other measurements.
     @classmethod
     def from_list( cls, measlist ):
         return _meas_no_checks( [ measlist[i].x for i in range(len(measlist)) ],
@@ -75,49 +76,52 @@ class meas( object ):
     # x and y must be uncorrelated for any of these to make sense.
     def __add__( self, y ):
 
-        if np.isscalar( y ):
-            return _meas_no_checks( self.x + y,
-                                    self.dx )
-                                     
-        else:
+        if hasattr( y, 'x' ):
             return _meas_no_checks( self.x + y.x,
                                     np.sqrt( self.dx **2 + y.dx **2 ) )
+
+        else:
+            return _meas_no_checks( self.x + y,
+                                    self.dx )
+                                                 
         
         
     def __sub__( self, y ):
         
-        if np.isscalar( y ):
+        if hasattr( y, 'x' ):
+            return _meas_no_checks( self.x - y.x,
+                                    np.sqrt( self.dx ** 2 + y.dx ** 2 ) )
+
+        else:
             return _meas_no_checks( self.x - y,
                                     self.dx )
         
-        else:
-            return _meas_no_checks( self.x - y.x,
-                                    np.sqrt( self.dx ** 2 + y.dx ** 2 ) )
         
         
     def __mul__( self, y ):
         
-        if np.isscalar( y ):
-            return _meas_no_checks( self.x * y,
-                                    self.dx * y )
-        
-        else:
+        if hasattr( y, 'x' ):
             return _meas_no_checks( self.x * y.x,
                                     np.sqrt( ( self.x * y.dx ) ** 2 +
                                              ( y.x * self.dx ) ** 2 ) )
+
+        else:
+            return _meas_no_checks( self.x * y,
+                                    self.dx * y )
+                
         
         
     def __div__( self, y ):
 
-        if np.isscalar(y):
-            return _meas_no_checks( self.x / y,
-                         self.dx / y )
-
-        else:
+        if hasattr( y, 'x' ):
             val = self.x / y.x
             return _meas_no_checks( val,
                                     np.abs( val ) * np.sqrt( ( self.dx / self.x ) ** 2 +
                                                              ( y.dx / y.x ) ** 2 ) )
+        else:
+            return _meas_no_checks( self.x / y,
+                                    self.dx / y )
+        
         
 
     # only arithmetic operation that needs to be defined differently if
@@ -192,7 +196,8 @@ class meas( object ):
         val = f( self.x )
         partials_evaluated = fprime_tuple( self.x )
         delta = np.sqrt( np.sum( [ ( partials_evaluated[i] * self.dx[i] ) ** 2
-                                   for i in np.arange( len( fprime_tuple ) ) ] ) )
+                                   for i in np.arange( len( partials_evaluated ) ) ] ) )
+        print _meas_no_checks( val, delta )
         return _meas_no_checks( val, delta )
                          
 
@@ -202,17 +207,26 @@ class meas( object ):
     # input is one measurement with an x value that is a vector,
     # not a list of measurements. for that see the non-class method
     # sum.
-    def sum( measurements, axis=None ):
+    def sum( self, axis=None ):
         #x, dx = measvec_to_arrays( measurements )
-        return _meas_no_checks( np.sum( x.x, axis=axis ),
-                                np.sqrt( np.sum( x.dx **2, axis=axis ) ) )
+        return _meas_no_checks( np.sum( self.x, axis=axis ),
+                                np.sqrt( np.sum( self.dx ** 2, axis=axis ) ) )
     
     
     # analagous to above sum(). a non-class mean is implemented which can
     # be used for a list input.
-    def mean( xlist, axis=None ):
-        return _meas_no_checks( np.mean( x.x, axis=axis ),
-                                np.sqrt( np.sum( x.dx ** 2, axis=axis ) / x.x.size ) )
+    def mean( self, axis=None ):
+
+        if np.isscalar( self.x ):
+            return self
+        
+        if axis is None:
+            num_entries = self.x.size
+        else:
+            num_entries = self.x.shape[ axis ]
+
+        return _meas_no_checks( np.mean( self.x, axis=axis ),
+                                np.sqrt( np.sum( self.dx ** 2, axis=axis ) ) / num_entries )
 
 
 
@@ -306,40 +320,48 @@ def mean( measlist, axis=0 ):
                                                for i in np.arange( len( measlist ) ) ],
                                              axis = axis ) ) )
 
-    # # convert either list of measurements or measurement of lists into two tuples.
-    # def measvec_to_arrays( measurements ):
+# only defined for 1D and 2D matrices.
+def dot( x, y ):
+
+    ndim = x.x.ndim
+
+    # general case of 2x2 matrices.
+    if ndim == 2:
+        xshape = x.x.shape
+        yshape = y.x.shape
         
+        # value is easy to get.
+        val = np.dot( x.x, y.x )
         
-    #     if isinstance( measurements, pd.Series ):
-    #         x = measurements['value']
-    #         dx = measurements['delta']
-    #     else:
-    #         x = np.array( [ measurements[i]['value'] for i in range(len(measurements)) ] )
-    #         dx = np.array( [ measurements[i]['delta'] for i in range(len(measurements)) ] )
+        # compute the uncertainty
+        delta = np.empty( (xshape[0], yshape[1] ) )
+
+        for i in range( xshape[0] ):
+            for j in range( yshape[1] ):
+                delta[i,j] = np.sqrt( np.sum( ( x.x[ i,: ] * y.dx[ :,j ] ) ** 2 )  + 
+                                      np.sum( ( x.dx[ i,: ] * y.x[ :,j] ) ** 2 )  )
+
+        return meas( val, delta )
+
+
+    # same thing but easier here.
+    elif ndim == 1:
+
+        val = np.dot( x.x, y.x )
+        size = len( x.x )
+        delta = np.emppty( size ) 
+        
+        for i in range( size ):
+            delta[i] = np.sqrt( np.sum( ( x.x * y.dx ) ** 2 )  + 
+                                np.sum( ( x.dx * y.x ) ** 2 )  )
             
-    #         return ( x, dx )
-                
-                
 
-# # deprecated
-# # "constructor" offers several different modes.
-# def measurement( x, dx ):
+    # scalar case
+    elif ndim == 0:
+        return x * y
 
-#     # if not scalar, attempt to convert to np.array.
-#     if not np.isscalar(x):
-#         x = np.asarray(x)
+    else:
+        raise NotImplemented( 'meas.dot not implemented for 2 or greater dimensions.' )
 
-#     if not np.isscalar(dx):
-#         dx = np.asarray(dx)
+    
         
-#     if type(x) is np.ndarray and np.isscalar(x):
-#         dx = dx * np.ones_like( x )
-
-#     return pd.Series( [x,dx], values_index )
-
-
-
-
-
-# def ndarray_or_scalar( x ):
-#     return np.isscalar(x) or ( type(x) is np.ndarray )
