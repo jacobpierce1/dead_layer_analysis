@@ -1,6 +1,6 @@
 ## includes 
 
-from jacob_math import xcut
+from jmath import xcut
 
 import array
 import numpy as np

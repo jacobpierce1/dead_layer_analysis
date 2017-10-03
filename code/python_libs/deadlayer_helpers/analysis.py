@@ -1,3 +1,5 @@
+import libjacob.jmeas as meas
+
 # my includes 
 import sql_db_manager
 # import jacoblib.jacob_file_parsers as fparsers
@@ -82,6 +84,7 @@ si_stopping_power = pd.Series( [] )
 
 
 
+
 ######################
 
 
@@ -101,7 +104,14 @@ def populate_si_stopping_power( si_stopping_power ):
 def estimate_dead_layer_thickness( ):
     pass
     
-        
+
+
+# extract everything in a given db into a pandas dataframe for future processing.
+def read_all( dbname ):
+    with sqlite3.connect( dbname ) as sql_conn:
+        return pd.read_sql_query( 'SELECT * from ' + sql_db_manager.tablename, sql_conn )
+
+
 def analysis():
     
     # attempt to load our sql databases into a DataFrame    
@@ -185,13 +195,38 @@ def get_mu_differences_grid( peaknum, df1, df2 ):
 # if populating an entire array, we can get a bit more efficiency by not calling
 # get_mu_values
 def get_mu_grid_where_valid( peaknum, df ):
+    
     fitnum, peaknum_in_pf = get_fitnum_and_mu_index_in_pf( peaknum )
+
     successful_fit_values = df.successful_fit.values[ fitnum : : NUM_FITS_PER_PIXEL ]
-    pf_values = df.pf.values [ fitnum : : NUM_FITS_PER_PIXEL ]
-    return np.array( [ json.loads(pf_values[i])[ peaknum_in_pf ] if successful_fit_values[i] \
-            else np.nan for i in range(pf_values.size) ] ).reshape(32,32) 
+    pfs = df.pf.values [ fitnum : : NUM_FITS_PER_PIXEL ]
+    pf_deltas = df.pferr.values[ fitnum : : NUM_FITS_PER_PIXEL ]
+    
+    # return meas constructed from the mu and mu_delta values
+    # return np.asarray( [ json.loads(pfs[i])[ peaknum_in_pf ] if successful_fit_values[i]
+    #                 else np.nan for i in range(pfs.size) ] ).reshape(32,32)
+
+    vals = np.asarray( [ json.loads(pfs[i])[ peaknum_in_pf ] if successful_fit_values[i]
+                         else np.nan for i in range(pfs.size) ] ).reshape(32,32)
+
+    deltas = np.asarray( [ json.loads( pf_deltas[i][ peaknum_in_pf ] ) if successful_fit_values[i]
+                           else np.nan for i in range(pf_deltas.size) ] ).reshape(32,32) 
+
+    return meas.meas( vals, deltas )
+    
+    # return meas.meas(
+    #     np.asarray( [ json.loads(pfs[i])[ peaknum_in_pf ] if successful_fit_values[i] 
+    #                 else np.nan for i in range(pfs.size) ] ).reshape(32,32),
+    #     np.asarray( [ json.loads( pf_deltas[i][ peaknum_in_pf ] if successful_fit_values[i]
+    #                   else np.nan for i in range(pf_deltas.size) ] ).reshape(32,32) ) 
+
+
+
+# # same as get_mu_grid_where_valid except reads in for peaks 0,1,2,3,4,5
+# def get_all_mu_values( db_name ): 
     
     
+
     ## populate 
     #mu_differences_grid = np.empty(32,32)
     #count = 0

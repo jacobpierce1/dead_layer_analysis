@@ -195,9 +195,11 @@ class meas( object ):
     def apply_nd( self, f, fprime_tuple ):
         val = f( self.x )
         partials_evaluated = fprime_tuple( self.x )
+
         delta = np.sqrt( np.sum( [ ( partials_evaluated[i] * self.dx[i] ) ** 2
-                                   for i in np.arange( len( partials_evaluated ) ) ] ) )
-        print _meas_no_checks( val, delta )
+                                   for i in np.arange( len( partials_evaluated ) ) ],
+                                 axis = 0 ) )
+
         return _meas_no_checks( val, delta )
                          
 
@@ -244,7 +246,6 @@ class meas( object ):
 
     def __delitem__( self, key ):
         raise NotImplemented( 'Have not decided on best functionality here.' )
-
 
     
 
@@ -365,3 +366,16 @@ def dot( x, y ):
 
     
         
+
+    
+# concatenate the current measurement to another
+# measurement. since all measurements are constructed with the
+# right shape, we don't have to do a check on the shapes of these
+# things.  todo: determine the most efficient way to implement this.
+
+def append( x, y ):
+    
+    retx = np.append( x.x, y.x )
+    retdx = np.append( x.dx, y.dx )
+
+    return _meas_no_checks( retx, retdx )

@@ -7,12 +7,14 @@
 # the pixel dead layer depth.
 
 
-import libjacob.jacob_pyplot as jplt
-import libjacob.meas as meas
-import libjacob.jacob_utils as jutils
+import libjacob.jpyplot as jplt
+import libjacob.jmeas as meas
+import libjacob.jutils as jutils
+import libjacob.jmath as jmath
 
 import deadlayer_helpers.stopping_power_interpolation as stop
 import deadlayer_helpers.geometry as geom
+import deadlayer_helpers.sql_db_manager as db
 import deadlayer_helpers.analysis as anal
 
 import matplotlib.pyplot as plt
@@ -62,7 +64,7 @@ _stop_power_interp_funcs = [0] * len(_deadlayer_ids)
 # separately.
 #
 # the x array must have one entry for each source.
-def calibrated_energy( p, x, stop_power_interp_functions, cosine_matrices ):
+def calibrated_energy( p, x, stop_power_interp_functions ):
 
     E_current = np.empty( x.shape )
     
@@ -75,7 +77,7 @@ def calibrated_energy( p, x, stop_power_interp_functions, cosine_matrices ):
         # later.
 
         E_current[i] = (
-            energy_entering_detector( p[0], p[1], p[2], p[4],
+            _energy_entering_detector( p[0], p[1], p[2], p[4],
                                       stop_power_interp_funcs[-1],
                                       x[i], cosine_matrices[i] ) )
         
@@ -90,6 +92,13 @@ def calibrated_energy( p, x, stop_power_interp_functions, cosine_matrices ):
 
     return E_current
 
+
+
+# map from E_0 to a spectrum feature, e.g. mu value or peak value.
+# p[0] = linear coefficient, p[1] = const offset, p[2] = distance of the
+# deadlayre in mm
+def energy_to_feature( p, E0, energy_loss_func ):
+    return p[0]*( E0 - energy_loss_func( E0, p[2] ) ) + p[1] 
 
 
 
@@ -141,42 +150,116 @@ def _populate_stop_power_interp_funcs( stop_power_interp_funcs, all_objects_dead
             ).interp
         )
 
-        
 
 
-def _main( average=0 ):
+# def _estimate_deadlayer( cosine_matrices, alpha_energies, p0 ):
+    
+
+
+def _main():
 
     # this takes a while to populate. use debug=1 option when developing.
     cosine_matrices = geom.get_cosine_matrices( debug=0 )
 
+    # read in grid of the mu values 
+    mu_grid_center = anal.get_mu_grid_where_valid( 2, get_db_contents(
+        sql_db_manager.centered_db ) )
+
+    # anal.get_mu_grid_where_valid( 
+    
     # guess 100 nm depth for all dead layers, both detector and source.
     # calculation is 100 nm * ( 1 m / 10^9 nm ) * 1000 mm / nm 
-    deadlayer_depth_guess = [ 100.0 / 1e9 * 1000 ] * len( _all_objects )
 
-    # guess for the fraction of energy that is collected in the detector deadlayer
-    deadlayer_efficiency_guess = 0.5
+    # deadlayer_depth_guess = [ 100.0 / 1e9 * 1000 ] * len( _all_objects )
+    det_deadlayer_depth_guess = [ 100.0 / 1e9 * 1000 ]
+    
+    # # guess for the fraction of energy that is collected in the detector deadlayer
+    # deadlayer_efficiency_guess = 0.5
 
     # actual energies of the 5 peaks we are looking at:
     alpha_energies = jutils.flatten_list( anal.peak_energies )
-
-    # guess for all params
-    p0 = [ deadlayer_efficiency_guess, 2.0, 50.0, 100.0, 100.0, 100.0, 100.0 ]
-
 
     # construct the stopping power interpolation functions
     _populate_stop_power_interp_funcs( _stop_power_interp_funcs,
                                        _deadlayer_ids )
 
-    # make the estimate by ignoring the variations in pixel array, only
-    # considering the strip number.
-    if average:
-        cosine_matrices = cosine_matrices.mean( axis=4 )
-        estimate_deadlayers_from_average_strip_position()
-        
-    else:
-        print 'AVERAGE=0 NOT IMPLEMENTED'
+    # guess for all params: A, B, det deadlayer guess,
+    p0 = [ 2.0, 50.0, det_deadlayer_depth_guess ]
+    #    estimate_deadlayer( cosine_matrices, alpha_energies, p0 )
 
-    return 1
+    current_row_cosines = cosine_matrices[:,:,0,:]
+
+
+    calibration = lambda _p, _x: calibrated_energy( _p, _x,
+                                                    stop_power_interp_functions )
+
+    
+    ret = jmath.jacob_least_squares( current_row_cosines.x, mu_values, mu_values_delta,
+                                     p0, calibrated_energy )
+
+
     
 
-_main( average=1 )
+# in principle we should be able to see the expected effect for any source
+# because of small angular variation throughout pixels.
+# this function makes an estimate using this fact. for each strip we
+# look at small angular variations and fit to a line to extract the
+# parameter identified as the dead layer distance. then we look at the
+# distribution of results obtained using this method.
+def example_estimate_for_one_source():
+
+    # this takes a while to populate. use debug=1 option when developing.
+    cosine_matrices = geom.get_cosine_matrices( debug=0 )
+
+    # read in grid of the mu values as meas class
+    mu_grid_center = anal.get_mu_grid_where_valid( 2, anal.read_all( db.centered_db ) )
+    
+    # guess 100 nm depth for all dead layers, both detector and source.
+    # calculation is 100 nm * ( 1 m / 10^9 nm ) * 1000 mm / nm 
+
+    det_deadlayer_depth_guess = 100.0 / 1e9 * 1000 
+    
+    # # guess for the fraction of energy that is collected in the detector deadlayer
+    # deadlayer_efficiency_guess = 0.5
+
+    # actual energies of the 5 peaks we are looking at:
+    alpha_energies = jutils.flatten_list( anal.peak_energies )
+
+    # construct the stopping power interpolation functions
+    _populate_stop_power_interp_funcs( _stop_power_interp_funcs,
+                                       _deadlayer_ids )
+
+    # guess for all params: A, B, det deadlayer guess,
+    p0 = [ 2.0, 50.0, det_deadlayer_depth_guess ]
+    #    estimate_deadlayer( cosine_matrices, alpha_energies, p0 )
+
+    current_row_cosines = cosine_matrices[:,:,0,:]
+
+
+    calibration = lambda _p, _x: calibrated_energy( _p, _x,
+                                                    stop_power_interp_functions )
+
+    
+    ret = jmath.jacob_least_squares( current_row_cosines.x, mu_values, mu_values_delta,
+                                     p0, calibrated_energy )
+
+
+
+    
+
+    
+    # # make the estimate by ignoring the variations in pixel array, only
+    # # considering the strip number.
+    # if average:
+    #     cosine_matrices = cosine_matrices.mean( axis=3 )
+    #     estimate_deadlayers_from_average_strip_position()
+        
+    # else:
+    #     print 'AVERAGE=0 NOT IMPLEMENTED'
+
+    # return 1
+    
+
+
+
+example_estimate_for_one_source()

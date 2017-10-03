@@ -6,7 +6,7 @@
 
 # my includes 
 import sql_db_manager
-import libjacob.meas as meas
+import libjacob.jmeas as meas
 
 
 ## includes 
@@ -196,11 +196,19 @@ def costheta_from_3d_fprime_tuple( coords ):
                           -coords[1]*coords[2] / ( r_sq ** (3/2) ),
                           ( r_sq - coords[2]**2 ) / ( r_sq ** (3/2) ) ] )
 
+# input: measurement coords.
+# output: cosine of angle between coords and z axis,
+# along with uncertainty estimate
+def costheta_from_3d( coords ):
+    return coords.apply( costheta_from_3d_f,
+                         costheta_from_3d_fprime_tuple )
 
 
+    
 
-# rotate meas x about an axis ( 0 = x, 1 = y, 2 = z ) by theta 
-def rotate_3d_meas( axis, theta, x ):
+# rotate a vector x about an axis ( 0 = x, 1 = y, 2 = z ) by theta
+# applies to a np.ndarray
+def rotate_3d( axis, theta, x ):
 
     # select the correct components to be rotated, using the fact that the
     # 3D rotation is identity for one component and 2d rotation of the other
@@ -213,13 +221,43 @@ def rotate_3d_meas( axis, theta, x ):
     ret[axis] = x[axis]
     
     # do the 2D rotation and add it to ret
-    rot_matrix = get_rotate_2d_matrix( theta )
-    ret[ rot_indices ] = meas.dot( rot_matrix, x[ rot_indices ] )
+    ret[ rot_indices ] = rotate_2d( theta, x[ rot_indices ] )
 
     return ret
 
 
 
+
+# rotate meas x about an axis ( 0 = x, 1 = y, 2 = z ) by theta
+# accounts for uncertainty calculation, hence the _meas suffix.
+# we do not use the apply_nd function which is well-suited for
+# maps from R^n to R. hopefully eventually there will be a similar
+# function that can handle maps R^n to R^m
+def rotate_3d_meas( axis, theta, x ):
+
+    combined_meas = meas.append( theta, x )
+
+    f = lambda _combined_meas : _rotate_3d_meas_f( axis, _combined_meas )
+    fprime_tuple = lambda _combined_meas : _rotate_3d_meas_fprime_tuple( axis, _combined_meas )
+
+    return combined_meas.apply_nd( f, fprime_tuple )
+
+    # return combined_meas.apply_nd( _rotate_3d_meas_f,
+    #                                _rotate_3d_meas_fprime_tuple )
+    
+
+
+    
+# wrapper for the rotate_3d function for an input of
+# (theta, x ) combined into same measurement.
+def _rotate_3d_meas_f( axis, combined_meas ):
+
+    theta = combined_meas[0]
+    x = combined_meas[1:]
+
+    return rotate_3d( axis, theta, x ) 
+
+        
 
 # get 2d rotation matrix, can be used for different things.
 def get_rotate_2d_matrix( theta ):
@@ -228,53 +266,100 @@ def get_rotate_2d_matrix( theta ):
 
 
 
-def rotate_2d( x, theta ):
-    return np.dot( get_rotate_2d_matrix( theta, x ) )
-                       
-                    
-# in: 3-tuple of x,y,z coordinates
-# out: rotated vector about z axis by theta
-def rotate_z( theta, x ):
 
-    R = np.array( [ [ np.cos(theta['value']), 0-np.sin(theta['value']), 0 ],
-                    [ np.sin(theta['value']),   np.cos(theta['value']), 0 ],
-                    [ 0, 0, 1 ] ] )
+
+def rotate_2d( x, theta ):
+    return np.dot( get_rotate_2d_matrix( theta), x )
+
+
+
+# these are the partial derivatives of the 2x2 rotation
+# matrix
+def _rotate_2d_fprime_tuple( theta, x ):
+
+    a = x[0]
+    b = x[1]
+    
+    return np.array( [ [ -a*np.sin(theta) - b*np.cos(theta),
+                         a*np.cos(theta) - b*np.sin(theta) ],
+                       [ np.cos(theta), np.sin(theta) ],
+                       [ -np.sin(theta), np.cos(theta) ] ] )
+
+    
+
+def _rotate_3d_meas_fprime_tuple( axis, combined_meas ):
+
+    theta = combined_meas[0]
+    x = combined_meas[1:]
+
+    # ret shall store 4 entries of 3-vectors. 0th entry is partial of R_{theta}(
+    # x ) with respect to theta, rest are with respect to spatial
+    # coords.
+    ret = np.empty((4,3))
+
+    rot_indices = np.array( range( 0, axis ) + range( axis+1, 3 ) )
+    
+    fprime_tuple_2d = _rotate_2d_fprime_tuple( theta, x[ rot_indices ] )
+
+    # this is the partial derivative of the 3-vec resultant wrt theta.
+    ret[0][rot_indices] = fprime_tuple_2d[0] 
+    ret[0][axis] = 0
+
+    # now handle the spatial coords.
+    ret[ np.ix_( rot_indices + 1, rot_indices ) ] = fprime_tuple_2d[ 1: ]
+    ret[ rot_indices + 1, axis ] = 0
+
+    # evaluated at axis + 1 since 0th entry is reserved for theta derivative.
+    ret[axis + 1] = unit_vec( axis, 3 )
+
+    return ret
+
+
+
+# # in: 3-tuple of x,y,z coordinates
+# # out: rotated vector about z axis by theta
+# def rotate_z( theta, x ):
+
+#     R = np.array( [ [ np.cos(theta['value']), 0-np.sin(theta['value']), 0 ],
+#                     [ np.sin(theta['value']),   np.cos(theta['value']), 0 ],
+#                     [ 0, 0, 1 ] ] )
        
-    value = np.dot( R, x['value'] )
-    delta = np.empty(3)
-    delta[0:2] = rotation_matrix_delta( theta, x )
-    delta[2] = x['delta'][2]
-    return pd.Series( [ value, delta ], error.values_index )
+#     value = np.dot( R, x['value'] )
+#     delta = np.empty(3)
+#     delta[0:2] = rotation_matrix_delta( theta, x )
+#     delta[2] = x['delta'][2]
+#     return pd.Series( [ value, delta ], error.values_index )
                                              
                         
     
-def rotate_x( phi, x ):
-    value = np.dot( np.array( [ [ 1, 0, 0],
-                                [ 0, np.cos(phi['value']), 0-np.sin(phi['value']) ],
-                                [ 0, np.sin(phi['value']), np.cos(phi['value']) ] ] ),
-                    x['value']  )
+# def rotate_x( phi, x ):
+#     value = np.dot( np.array( [ [ 1, 0, 0],
+#                                 [ 0, np.cos(phi['value']), 0-np.sin(phi['value']) ],
+#                                 [ 0, np.sin(phi['value']), np.cos(phi['value']) ] ] ),
+#                     x['value']  )
 
-    delta = np.empty(3)
-    delta[0] = x['delta'][0]
-    delta[1:3] = rotation_matrix_delta( phi, x )
-    return pd.Series( [ value, delta ], error.values_index )
+#     delta = np.empty(3)
+#     delta[0] = x['delta'][0]
+#     delta[1:3] = rotation_matrix_delta( phi, x )
+#     return pd.Series( [ value, delta ], error.values_index )
 
     
-# unused
-def rotate_y( theta, x ):
-    pass 
+# # unused
+# def rotate_y( theta, x ):
+#     pass 
 
 
-# all uncertainty calculations with the rotation matrices use this formula for different
-# permutations of the 3-tuple vector x. not meant to be used more generally outside these
-# uncertainty calculations. x assumed to have 3 'value' and 'delta' entries.
-def rotated_delta_entry( theta, x ):
+# # all uncertainty calculations with the rotation matrices use this formula for different
+# # permutations of the 3-tuple vector x. not meant to be used more generally outside these
+# # uncertainty calculations. x assumed to have 3 'value' and 'delta' entries.
+# def rotated_delta_entry( theta, x ):
     
-    return np.sqrt( ( ( x['value'][0] * np.sin(theta['value'])
-                        + x['value'][1] * np.cos(theta['value']) )
-                      * theta['delta'] )**2 +
-                    + ( x['value'][0] * np.cos(theta['value']))**2 
-                    + ( x['value'][1] * np.sin(theta['value']))**2 )
+#     return np.sqrt( ( ( x['value'][0] * np.sin(theta['value'])
+#                         + x['value'][1] * np.cos(theta['value']) )
+#                       * theta['delta'] )**2 +
+#                     + ( x['value'][0] * np.cos(theta['value']))**2 
+#                     + ( x['value'][1] * np.sin(theta['value']))**2 )
+
 
 
 # generate a unit vec in R^n with entry 1 at k 
@@ -405,9 +490,10 @@ def _populate_costheta_grid( cosine_matrices, all_coords, source_theta, source_p
                 # that this is independent of the other
                 # det_costheta value.
                 
-                rotated_displacement = rotate_x( 0-phi,
-                                                 rotate_z( 0-theta, displacement ) ) 
-                source_costheta_grid[i][j] = get_costheta( rotated_displacement )
+                rotated_displacement = rotate_3d_meas( 0, -phi,
+                                                       rotate_3d_meas( 2, -theta, displacement ) ) 
+
+                source_costheta_grid[i][j] = costheta_from_3d( rotated_displacement )
                                     
                     
                     
@@ -440,7 +526,7 @@ def get_cosine_matrices( debug=0 ):
 
 
     if debug:
-        return np.ones( ( len(sources), 2, 2, 32, 32 ) ) / 2.0
+        return np.ones( ( len(sources), 2, 32, 32 ) ) / 2.0
     
     print 'INFO: constructing costheta grid...'
     cosine_matrices_labels = [ sources, ['detector', 'source'] ]

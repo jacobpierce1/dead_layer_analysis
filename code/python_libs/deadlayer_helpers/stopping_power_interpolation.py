@@ -10,7 +10,7 @@ import pandas as pd
 from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
 
-import libjacob.jacob_utils as jutils
+import libjacob.jutils as jutils
 
 
 
@@ -87,14 +87,14 @@ class stopping_power_interpolation( object ):
     # input: initial energy E0, distance traveled.  output: final
     # energy Ef, calculated assuming that the distance traveled is
     # small enough that no numerical integration is required.
-    def stopping_power_loss_naive( self, E0, dist ):
-        return E0 - self.interp(E0) * dist
+    def energy_loss_naive( self, E0, dist ):
+        return self.interp(E0) * dist
         
 
 
     # input: initial energy E0, distance traveled.  output: final
     # energy Ef, calculated using numerical integration.
-    def stopping_power_loss( self, E0, dist ):
+    def energy_loss( self, E0, dist ):
         pass
 
     
