@@ -42,25 +42,30 @@ def xcut( x, y, newx_bounds, sorted=0 ):
 
 
 # perform fit. return None if there is error.
-def jacob_least_squares( x, y, dy, p0, fitfunc, reduc_chisq_max=np.inf, fit_bounds=None ):
+def jacob_least_squares( x, y, dy, p0, fitfunc, dx=None, reduc_chisq_max=np.inf, fit_bounds=None ):
     
     residual_function = lambda p, x, y, dy: residual_from_fitfunc( p, x, y, dy, fitfunc )
     
-    # construct fit bounds
+    # construct args for the fitfunc
+    precut = [ x, y ]
+    if dx is not None:
+        precut += dx
+    precut += dy
+
+
+    # cut the args as appropriate
     if fit_bounds is None:
-        fit_bounds = [ min(x), max(x) ]
-        newx = x
-        newy = y
-        newdy = dy
+        fit_bounds = [ min(x), max(x) ]  # used for plots 
+        args = precut
+
     else:
-        newx = xcut( x, x, fit_bounds) 
-        newy = xcut( x, y, fit_bounds ) 
-        newdy = xcut( x, dy, fit_bounds )
-    
-    # using e.leastsq. does not allow you to specify bounds for the fit params. 
+        args = [ xcut( x, _z, fit_bounds ) for _z in precut ]
+        
+        
+    # using scipy.leastsq. does not allow you to specify bounds for the fit params. 
     try:       
         pf, cov, info, mesg, success =    \
-            scipy.optimize.leastsq( residual_function, p0, args=(newx, newy, newdy), full_output=1 )  
+            scipy.optimize.leastsq( residual_function, p0, args=args, full_output=1 )  
     except ValueError:
         status = 0
         return None

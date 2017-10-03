@@ -13,9 +13,8 @@ DEBUG_DB = 0
 
 
 centered_db = os.path.dirname( __file__ ) + '/../../../databases/centered_fits_data.db'
-print 'centered_db: ' + centered_db
-rotated_db  = '../../databases/rotated_fits_data.db'  # obsolete
-right_db =  '../../databases/right_fits_data.db' 
+# right_db  = '../../databases/rotated_fits_data.db'  # obsolete
+moved_db =  '../../databases/moved_fits_data.db' 
 
 
 flat_db = '../../databases/flat_fits_data.db'

@@ -187,7 +187,7 @@ def _main():
     p0 = [ 2.0, 50.0, det_deadlayer_depth_guess ]
     #    estimate_deadlayer( cosine_matrices, alpha_energies, p0 )
 
-    current_row_cosines = cosine_matrices[:,:,0,:]
+    current_row_cosines = cosine_matrices[2,0,0,:]
 
 
     calibration = lambda _p, _x: calibrated_energy( _p, _x,
@@ -206,60 +206,147 @@ def _main():
 # look at small angular variations and fit to a line to extract the
 # parameter identified as the dead layer distance. then we look at the
 # distribution of results obtained using this method.
+#
+# results: mostly unsuccessful. the plot shows the opposite trend,
+# namely increasing mu with cos theta. the angles are just too
+# sensitive to the position of the sources and detector, which are
+# simply not known that well.  proceeding to another test.
+
+_DEBUG = 0
+
 def example_estimate_for_one_source():
 
+    strip = 14
+
     # this takes a while to populate. use debug=1 option when developing.
+    # [i,j,k,l] = [ sourcenum, det or source (0 or 1 ), xcoord, ycoord ] 
     cosine_matrices = geom.get_cosine_matrices( debug=0 )
 
     # read in grid of the mu values as meas class
-    mu_grid_center = anal.get_mu_grid_where_valid( 2, anal.read_all( db.centered_db ) )
+    mu_grid_center = anal.get_mu_grid_where_valid( 2, anal.read_all( db.rotated_db ) )
+
+    if _DEBUG:
+        print_strip_stds( mu_grid_center )
     
-    # guess 100 nm depth for all dead layers, both detector and source.
-    # calculation is 100 nm * ( 1 m / 10^9 nm ) * 1000 mm / nm 
+    # # guess 100 nm depth for all dead layers, both detector and source.
+    # # calculation is 100 nm * ( 1 m / 10^9 nm ) * 1000 mm / nm 
 
-    det_deadlayer_depth_guess = 100.0 / 1e9 * 1000 
+    # det_deadlayer_depth_guess = 100.0 / 1e9 * 1000 
     
-    # # guess for the fraction of energy that is collected in the detector deadlayer
-    # deadlayer_efficiency_guess = 0.5
+    # # # guess for the fraction of energy that is collected in the detector deadlayer
+    # # deadlayer_efficiency_guess = 0.5
 
-    # actual energies of the 5 peaks we are looking at:
-    alpha_energies = jutils.flatten_list( anal.peak_energies )
+    # # actual energies of the 5 peaks we are looking at:
+    # alpha_energies = jutils.flatten_list( anal.peak_energies )
 
-    # construct the stopping power interpolation functions
-    _populate_stop_power_interp_funcs( _stop_power_interp_funcs,
-                                       _deadlayer_ids )
+    # # construct the stopping power interpolation functions
+    # _populate_stop_power_interp_funcs( _stop_power_interp_funcs,
+    #                                    _deadlayer_ids )
 
-    # guess for all params: A, B, det deadlayer guess,
-    p0 = [ 2.0, 50.0, det_deadlayer_depth_guess ]
-    #    estimate_deadlayer( cosine_matrices, alpha_energies, p0 )
-
-    current_row_cosines = cosine_matrices[:,:,0,:]
-
-
-    calibration = lambda _p, _x: calibrated_energy( _p, _x,
-                                                    stop_power_interp_functions )
+    # # guess for all params: A, B, det deadlayer guess,
+    # p0 = [ 2.0, 50.0, det_deadlayer_depth_guess ]
 
     
+    # get 1 / mu and 1 / cosine for the current strip 
+    cosine_recip_row = meas.abs( 1 / meas.meas.from_list( cosine_matrices[ 3,0,strip,: ] ) )
+    mu_row = mu_grid_center[strip,:]
+
+    # make a plot and display it.
+    ax = plt.axes()
+
+    jplt.plot( ax, cosine_recip_row.x, mu_row.x,
+               # xerr = cosine_recip_row.dx,
+               yerr = mu_row.dx,
+               title = r'Sample Plot: Angular Variation of $\mu$ for One Strip',
+               xlabel = r'$ 1 / \cos \theta $' ,
+               ylabel = r'$\mu$ (Alpha Energy Cutoff)' )
+
+    plt.show()
+    
+       
     ret = jmath.jacob_least_squares( current_row_cosines.x, mu_values, mu_values_delta,
                                      p0, calibrated_energy )
 
 
+    
 
+# print std of x and y strips. the interpretation of this is that the
+# smaller std values correspond to the same detector properties
+# and admit valid comparison. turns out that stripy is the one with a much lower
+# standard deviation (about 0.7)
+def print_strip_stds( mu_grid ):
+
+    stripx = mu_grid[ :, 15 ]
+    stripy = mu_grid[ 15, : ]
+    # stripx = meas.meas.from_list( mu_grid[ :, 15 ] )
+    # stripy = meas.meas.from_list( mu_grid[ 15, : ] )
+
+    print 'stripx: ' + str( stripx )
+    print 'stripy: ' + str( stripy )
+    
+    print 'stripx mean: ' + str( stripx.nanmean() )
+    print 'stripx std: ' + str( stripx.nanstd() )
+    print 'stripy mean: ' + str( stripy.nanmean() )
+    print 'stripy std: ' + str( stripy.nanstd() )
     
 
     
-    # # make the estimate by ignoring the variations in pixel array, only
-    # # considering the strip number.
-    # if average:
-    #     cosine_matrices = cosine_matrices.mean( axis=3 )
-    #     estimate_deadlayers_from_average_strip_position()
+
+# DESCRIPTION: with this function we make a few significant
+# improvements over example_estimate_for_one_source(). for one, we are
+# no longer sensitive to small variations in the detector / source
+# position.  as another (which could have been incorporated in the
+# previous function but was not) is that we look at the extrapolated
+# peak positoins in the alpha spectra instead of the mu values. the
+# peak positions are more likely to be correlated with the energy of
+# the alpha.
+#
+# RESULTS:
+
+def estimate_deadlayer_from_moved_source():
+
+    
+    # 1. estimate the peak position of each pixel. they are stored in
+    # lists of 6 indices, one for each peak. each entry is a meas object
+    # of 32 x 32 matrix for each peak position. put a nan entry in
+    # places where there was not a convergent fit.
+
+    peak_positions_centered = np.empty( 6 )
+    peak_positions_moved = np.empty( 6 )
+
+    # make life easier
+    peak_positions = [ peak_positions_centered, peak_positions_moved ]
+    dbs = [ db.
+    
+    for peakpos in range( 6 ):
         
-    # else:
-    #     print 'AVERAGE=0 NOT IMPLEMENTED'
-
-    # return 1
     
+    
+    right_db_name = db.rotated_db  # the name 
+    
+    
+    # 2. read in geometry data for the centered and right peaks.
 
 
 
-example_estimate_for_one_source()
+
+    # 3. get stopping power interpolation functoin for silicon
+
+
+
+    
+    # 4. plot delta mu against  - S(E0) delta (1 / cos theta) 
+
+
+
+    # 5. if successful: fit to a line
+
+
+
+
+
+    
+# example_estimate_for_one_source()
+estimate_deadlayer_from_moved_source()
+
+

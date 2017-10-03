@@ -64,21 +64,34 @@ class meas( object ):
         return None                    
 
 
+    
     # construct a new measurement from a list of other measurements.
     @classmethod
     def from_list( cls, measlist ):
         return _meas_no_checks( [ measlist[i].x for i in range(len(measlist)) ],
                                 [ measlist[i].dx for i in range(len(measlist)) ] )
     
-        
+
     
+    # # construct a new measurement from an ndarr along specified axis. if not specified,
+    # # then construct by assuming that measurements are stored in the most deeply
+    # # nested entries.
+    # def from_ndarray( cls, array, axis = -1 ):
+
+    #     if axis == -1:
+    #         axis = array.ndim
+
+    #     return _meas_no_checks( 
+
+    
+            
     # OVERLOAD ALL ARITHMETIC OPERATIONS.
     # x and y must be uncorrelated for any of these to make sense.
     def __add__( self, y ):
 
         if hasattr( y, 'x' ):
             return _meas_no_checks( self.x + y.x,
-                                    np.sqrt( self.dx **2 + y.dx **2 ) )
+                                    np.sqrt( self.dx ** 2 + y.dx ** 2 ) )
 
         else:
             return _meas_no_checks( self.x + y,
@@ -193,6 +206,7 @@ class meas( object ):
     # and no error otherwise.
     
     def apply_nd( self, f, fprime_tuple ):
+
         val = f( self.x )
         partials_evaluated = fprime_tuple( self.x )
 
@@ -231,6 +245,69 @@ class meas( object ):
                                 np.sqrt( np.sum( self.dx ** 2, axis=axis ) ) / num_entries )
 
 
+    # same as mean but call np.nanmean
+    def nanmean( self, axis=None ):
+
+        if axis is not None:
+            raise NotImplemented
+        
+        if np.isscalar( self.x ):
+            return self
+        
+        if axis is None:
+            num_entries = self.x.size
+        else:
+            num_entries = self.x.shape[ axis ]
+
+        return _meas_no_checks( np.nanmean( self.x, axis=axis ),
+                                np.sqrt( np.nansum( self.dx ** 2, axis=axis ) )
+                                / len( self.x != np.nan )  )
+
+    
+    # take std of the elements about specified axis.
+    # assume that the self.x is a np.ndarray.
+    # todo: someone verify that this is correct.
+    def std( self, axis=None ):
+
+        if axis is not None:
+            raise NotImplemented
+
+        std_x = np.std( self.x, axis = None )
+
+        if axis is not None:
+            N = self.x.shape[axis]
+        else:
+            N = self.x.size
+
+        # formula derived from error analysis.
+        std_dx = 1 / ( N * std_x ) * np.sqrt(
+            np.sum( ( self.x - np.mean( self.x ) * self.dx ) ** 2,
+                    axis = axis ) )
+        
+        return _meas_no_checks( std_x, std_dx )
+                                
+
+    # same as std but call nanstd
+    def nanstd( self, axis=None ):
+
+        if axis is not None:
+            raise NotImplemented
+
+        std_x = np.nanstd( self.x, axis = None )
+
+        if axis is not None:
+            N = self.x.shape[axis]
+        else:
+            N = ( self.x != np.nan ).size
+
+        # formula derived from error analysis.
+        std_dx = 1 / ( N * std_x ) * np.sqrt(
+            np.nansum( ( ( self.x - np.nanmean( self.x ) ) * self.dx ) ** 2,
+                       axis = axis ) )
+        
+        return _meas_no_checks( std_x, std_dx )
+
+    
 
     # access functions: when pulling out an index of a measurement
     # storing an ndarray, return a measurement with the corresponding
@@ -238,12 +315,14 @@ class meas( object ):
     def __getitem__( self, key ):
         return _meas_no_checks( self.x[key], self.dx[key] )
 
+    
     # value must be a meas
     def __setitem__( self, key, value ):
         self.x[key] = value.x
         self.dx[key] = value.dx
         return self
 
+    
     def __delitem__( self, key ):
         raise NotImplemented( 'Have not decided on best functionality here.' )
 
@@ -302,18 +381,22 @@ def log( _meas ):
     return _meas.apply( np.log,
                         lambda x: 1 / x )
 
-# sum and mean are overloaded with the class instance methods. the difference
-# is those methods act on the entries of a single measurement object, whereas these
-# act on an input list along the specified axis. both of these return a single
-# measurement with the same dimensions as the measurements in the input list.
-# note that the 
+
+# sum and mean are overloaded with the class instance methods. the
+# difference is those methods act on the entries of a single
+# measurement object, whereas these act on an input list along the
+# specified axis. both of these return a single measurement with the
+# same dimensions as the measurements in the input list.  note that
+# the
 def sum( measlist, axis=0 ):
     return _meas_no_checks( np.sum( [ measlist[i].x for i in np.arange(len(measlist)) ],
                                     axis=axis ),
-                            np.sqrt( np.sum( [ measlist[i].dx
+                            np.sqrt( np.sum( [ measlist[i].dx ** 2 
                                                for i in np.arange( len( measlist ) ) ],
                                              axis = axis ) ) )
 
+# take a list of measurements and report the mean about
+# specified axis.
 def mean( measlist, axis=0 ):
     return _meas_no_checks( np.mean( [ measlist[i].x for i in np.arange(len(measlist)) ],
                                      axis=axis ),
@@ -379,3 +462,9 @@ def append( x, y ):
     retdx = np.append( x.dx, y.dx )
 
     return _meas_no_checks( retx, retdx )
+
+
+
+# overload abs. x.dx is already positive.
+def abs( x ):
+    return _meas_no_checks( np.abs( x.x ), x.dx )

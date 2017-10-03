@@ -106,10 +106,12 @@ detector_data = pd.Series(
 
 
 # pretty sure total_x and total_y are in mm.
+# total_z and top / bottom offset are obtained from pixelanalysisnew.c: lines 210 - 212,
+# e.g.         Hcf249=5.764-0.1260-0.267-3.006-0.0522; //inches
 enclosure_data = pd.Series(
     {
-        'top_offset' : [ 1.0 ],
-        'bottom_offset' : [ 1.0 ],
+        'top_offset' : [ 0.1260 ],
+        'bottom_offset' : [ 0.267 ],
         'total_x' : [ 151.696 ],
         'total_y' : [ 50.0 ],
         'total_z' : [ 5.764 ]  # inches, line 211 of pixelanalysissrc.c
@@ -120,8 +122,6 @@ enclosure_data = pd.Series(
 ##############################################################################################
 #################################### FUNCTIONS FOR POPULATING THE DATAFRAMES #################
 ##############################################################################################
-
-
 
 
 # fill in the redundant pu_238 entries. the dataframe / series method set_value allows you to add lists into
@@ -148,17 +148,25 @@ def _fill_redundant_source_data( source_data ):
     
 
 
-
 # use the measurements in source_data to obtain the coordinates of each source and a
-# edge of the detector. 
+# edge of the detector.
+
+_DEBUG_COORDS = 1
+
 def _populate_all_coords( all_coords, source_data ):
 
-    
+    # TODO: verify that this is right...
     # first handle the detector separately
-    ## TODO URGENT
-    all_coords.loc['detector'] = meas.meas( np.array( [10.0,10.0,10.0]),
-                                            np.array( [0.01,0.01,0.01] ) )
+    det_coords = [ meas.meas( detector_data['x_offset'], _source_data_delta ).mean(),
+                   meas.meas( detector_data['y_offset'], _source_data_delta ).mean(),
+                   meas.meas( enclosure_data['total_z'], _source_data_delta ).mean() -
+                   meas.meas( enclosure_data['top_offset'], _source_data_delta ).mean() -
+                   meas.meas( enclosure_data['bottom_offset'], _source_data_delta ).mean() ]
+    
+    all_coords.loc['detector'] = meas.meas.from_list( det_coords ) * _MM_PER_INCH
 
+    if _DEBUG_COORDS:
+        print 'det_coords: ' + str( all_coords.loc['detector'] )
     
     # now populate all the source indices
     for source in sources_index:
@@ -175,12 +183,22 @@ def _populate_all_coords( all_coords, source_data ):
                  for col in [ 'left', 'bottom' ]  ]
 
         # for the top measurement, reference to the bottom of the enclosure.
-        z = meas.sum( [ meas.meas( enclosure_data['bottom_offset'], _source_data_delta ).mean(),
-                        meas.meas( source_data.loc[ source, 'height' ], _source_data_delta ).mean(),                                                                  meas.meas( source_data.loc[ source, 'wafer' ], _source_data_delta ).mean()
-        ] )
+        z = meas.sum( [ meas.meas( source_data.loc[ source, 'height' ],
+                                   _source_data_delta ).mean(),
+                        meas.meas( source_data.loc[ source, 'wafer' ],
+                                   _source_data_delta ).mean() ] )
 
+        
+        if _DEBUG_COORDS:
+            print 'x: ' + str( x )
+            print 'y: ' + str( y )
+            print 'z: ' + str( z )
+            
         xyz = meas.meas.from_list( [ x, y, z ] )
         all_coords.loc[source] = xyz * _MM_PER_INCH
+
+        if _DEBUG_COORDS:
+            print 'source coords: ' + str( all_coords.loc[source] )
                                     
         
 
@@ -362,6 +380,7 @@ def _rotate_3d_meas_fprime_tuple( axis, combined_meas ):
 
 
 
+
 # generate a unit vec in R^n with entry 1 at k 
 def unit_vec( k, n ):
     if k > n:
@@ -369,7 +388,8 @@ def unit_vec( k, n ):
     ret = np.zeros( n )
     ret[k] = 1
     return ret
-    
+
+
 
 # return the uncertainty for a standard 2x2 rotation matrix. since the 2x2 rotation matrix
 # is embedded in the higher order versions, this can be used to construct their uncertainties.
@@ -460,12 +480,22 @@ def _populate_costheta_grid( cosine_matrices, all_coords, source_theta, source_p
         # keep shifting by 1mm to get next coord 
         for i in range(32):
             for j in range(32):
-                                    
+
+                # this works since all the pixels are separated by 1 mm.
                 displacement = det_coords + np.array([ i, j, 0 ]) - source_coords
                 
-                # get angle rel to detector pixel
-                det_costheta_grid[i][j] = displacement.apply_nd( costheta_from_3d_f,
-                                                                       costheta_from_3d_fprime_tuple )
+                # print 'displacement: ' + str( displacement )
+                
+                
+                # # get angle rel to detector pixel
+                # print 'fprime tuple: ' + str( costheta_from_3d_fprime_tuple( displacement.x ) )
+                # print 'displacement dx: '  + str( displacement.dx ) 
+                costheta = displacement.apply_nd( costheta_from_3d_f,
+                                                  costheta_from_3d_fprime_tuple )
+
+                # print costheta
+                
+                det_costheta_grid[i][j] = costheta
                 
                 # now find penetration angle rel to source deadlayer.
                 # see function description for definition of theta and phi
@@ -489,10 +519,12 @@ def _populate_costheta_grid( cosine_matrices, all_coords, source_theta, source_p
                 # the definition of the theta/phi angles. note
                 # that this is independent of the other
                 # det_costheta value.
+
                 
                 rotated_displacement = rotate_3d_meas( 0, -phi,
                                                        rotate_3d_meas( 2, -theta, displacement ) ) 
-
+                # print 'rotated displacement: ' + str( rotated_displacement )
+                
                 source_costheta_grid[i][j] = costheta_from_3d( rotated_displacement )
                                     
                     

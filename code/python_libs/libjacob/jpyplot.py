@@ -88,7 +88,7 @@ def set_linear_scale_plot_bounds( ax, x, y, xbuf=0.20, ybuf=0.20 ):
     top = max(y) + ybuf * (y2 - y1)
 
     ax.axis( (left, right, bottom, top) )
-  
+
         
         
 # add fit to the plot 
@@ -98,7 +98,61 @@ def add_fit_to_plot( ax, x, fit_bounds, p, perr, fitfunc, color='-r' ):
     plt.setp(fit[0], linewidth=2)
 
 
+# default plot params 
+def plot ( ax, x, y, xerr=None, yerr=None, xlabel=None, ylabel=None,
+           title=None, color='r', errorevery=1, legloc = 1, logscale=0 ):
 
+    # default: don't plot errorbars.
+    plot_errorbar = 0
+    
+    if xerr is not None or yerr is not None:
+
+        plot_errorbar = 1
+
+        ax.errorbar ( x, y, xerr = xerr, yerr = yerr,
+                      errorevery = errorevery, fmt='none' )
+
+    else:
+        ax.plot( x, y, color=color )
+
+
+    # handle the title / etc
+    if( logscale ):
+        ax.set_yscale('log')
+
+    if ylabel is not None:
+        ax.set_ylabel (ylabel, fontsize=18)
+
+    if xlabel is not None:
+        ax.set_xlabel (xlabel, fontsize=18)
+
+    if title is not None:
+        ax.set_title( title, fontsize=22 )
+
+    if not plot_errorbar:
+        set_linear_scale_plot_bounds( ax, x, y )
+
+    else:
+        if xerr is not None:
+            xbounds = [ min(x - xerr), max( x + xerr) ]
+
+        else:
+            xbounds = x
+            
+        if y is not None:
+            ybounds = [ min(y - yerr), max( y + yerr) ]
+
+        else:
+            ybounds = y
+
+            
+        set_linear_scale_plot_bounds( ax, xbounds, ybounds  )
+        
+    add_legend( ax, legloc )    
+
+
+    
+            
 # save in high quality 
 def saveplot_high_quality( directory, fname ):
     plt.savefig( directory + '/' + fname + '.eps', format='eps', dpi=2000)
