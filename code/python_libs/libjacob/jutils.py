@@ -12,9 +12,12 @@ def estimate_time_left( current_iteration, total_iterations, start_time, num_upd
     if( current_iteration * 1.0 / total_iterations >= estimate_time_left.counter * 1.0 / num_updates ): 
         current_time = time.time()
         estimate_time_left.counter += 1
-        print "%d/%d complete, %f mins remaining" \
-                    % ( estimate_time_left.counter, num_updates, \
-                    (current_time - start_time) / 60.0 * (num_updates - estimate_time_left.counter ) / estimate_time_left.counter )
+        print( "%d/%d complete, %f mins remaining" \
+               % ( estimate_time_left.counter, num_updates, \
+                   (current_time - start_time) / 60.0
+                   * (num_updates - estimate_time_left.counter )
+                   / estimate_time_left.counter ) )
+
 estimate_time_left.counter = 0
 
 
@@ -69,7 +72,7 @@ def format_measurement_vector( variable_name, p, perr ):
     
     if use_uncert:
         if( len(p) != len(perr) ):
-            print( "ERROR: size of p and perr are different")
+            print( "ERROR: size of p and perr are different" )
             return ""
     
     use_paren = len(p) > 1 

@@ -93,10 +93,11 @@ def insert_fit_data_into_db( sql_conn, pixel_coords, fit_id, successful_fit=0,
                 
             
     if DEBUG_DB:
-        print query 
+        print( query ) 
     
     cursor = sql_conn.cursor()
-    
+
+        
     query_dict =    \
     {
         schema_cols[0]:pixel_coords[0],
@@ -134,7 +135,7 @@ def read_data_from_db( sql_conn, pixel_coords, fit_id ):
              
         
     if DEBUG_DB:
-        print query
+        print( query )
     
     query_dict = \
     {
@@ -148,7 +149,7 @@ def read_data_from_db( sql_conn, pixel_coords, fit_id ):
     result = cursor.fetchone()
     
     if DEBUG_DB:
-        print result    
+        print( result )  
             
     successful_fit, fit_attempt, reduc_chisq, pf, pferr, p0, fit_bounds, peak_detect = result
         
@@ -180,7 +181,7 @@ def create_db(name):
         else:
             print('ERROR: database already exists, returning')
             return 0
-    print 'INFO: success, now populating...'
+    print( 'INFO: success, now populating...' )
     
     with sqlite3.connect( name ) as sql_conn:
         populate_db(sql_conn, 32, 32, 3 )
@@ -209,9 +210,9 @@ def delete_db( filename ):
 
         if( ans == 'y' ):
             os.remove( filename ) 
-            print 'INFO: deleted db.'         
+            print( 'INFO: deleted db.' )         
             return 1
-        print 'INFO: did not delete db.'
+        print( 'INFO: did not delete db.' )
         return 0
     return 1
     
@@ -238,7 +239,7 @@ def recreate_db( filename ):
     
     create_db( filename )
     
-    print 'INFO: successfully populated the db with defaults.'
+    print( 'INFO: successfully populated the db with defaults.' )
     return 1
     
 

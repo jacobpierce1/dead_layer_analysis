@@ -24,7 +24,7 @@ import json
 
 
 # modifiable config
-FILE_SILICON_STOPPING_POWER = '../data/stopping_power_data/alpha_in_si_stopping_power.txt'
+FILE_STOPPING_POWER = '../data/stopping_power_data/alpha_in_si_stopping_power.txt'
 
 DIR_NNDC_ALPHA_SPECTRA = '../data/alpha_spectrum_data/'
 

@@ -1,8 +1,10 @@
 import array
 import numpy as np
 from scipy import special
+
 import peakdetect.peakdetect as peakdetect
-import sql_db_manager 
+
+# import libjacob.sql_db_manager 
 
 
 # extract next row from the file. file assumed to already be opened.
@@ -76,6 +78,10 @@ def get_n_peak_positions( n, data, output_peak_positions ):
     peak_positions = peakdetect.peakdetect( data, lookahead=10 )[0]
 
 
+    # print( 'peakpositions type data: ' )
+    # print( type(peak_positions) )
+    # print( type( peak_positions [0][1] ) ) 
+
     # it is possible that not all n peaks are found. in that case
     # we will still populate our_peaks with the ones that were
     # found as it may still be useful. 
@@ -84,10 +90,10 @@ def get_n_peak_positions( n, data, output_peak_positions ):
         
     # now find the 5 largest and sort by x position.
     # indices is the indices of the peaks as found in data
-    indices = np.argpartition( [z[1] for z in peak_positions ],
+    indices = np.argpartition( [ z[1] for z in peak_positions ],
                                -num_peaks_to_sort )[ -num_peaks_to_sort : ]
     
-    output_peak_positions[:] = [ peak_positions[z][0]
+    output_peak_positions[:] = [ np.asscalar( peak_positions[z][0] )
                                  for z in sorted( indices ) ]
 
     
@@ -126,13 +132,30 @@ def n_fitfuncs_abstract( fitfunc, n ):
 # fit n alpha peaks given vector p and array x 
 # p format: sigma, eta, tau1, tau2, A1, mu1, ..., A_n, mu_n
 def fitfunc_n_alpha_peaks( n, p, x ):
-    return np.sum( [ map( lambda y: alpha_fit(p[4+2*i],p[4+2*i+1],p[0],p[1],p[2],p[3], y), x )  for i in range(n) ], axis=0 )  
+
+    ret = 0
+
+    for i in range( n ):
+        ret += alpha_fit( p[4+2*i],p[4+2*i+1],p[0],p[1],p[2],p[3], x )
+
+    return ret
+
+    # return np.sum( [ map( lambda y: alpha_fit(p[4+2*i],p[4+2*i+1],p[0],p[1],p[2],p[3], y), x )  for i in range(n) ], axis=0 )  
     
     
 # fit n alpha peaks given vector p and array x 
 # p format: sigma, tau, A1, mu1, ..., A_n, mu_n
 def fitfunc_n_alpha_peaks_eta1( n, p, x ):
-    return np.sum( [ map( lambda y: alpha_fit_eta1(p[2+2*i],p[2+2*i+1],p[0],p[1], y), x )  for i in range(n) ], axis=0 )  
+
+    ret = 0
+    
+    for i in range( n ):
+        ret += alpha_fit_eta1( p[2+2*i],p[2+2*i+1],p[0],p[1], x )
+
+    return ret
+
+
+    # return np.sum( [ map( lambda y: alpha_fit_eta1(p[2+2*i],p[2+2*i+1],p[0],p[1], y), x )  for i in range(n) ], axis=0 )  
 
 
 # same as alpha_fit but with eta fixed at one. this means we are taking only one of the terms. 

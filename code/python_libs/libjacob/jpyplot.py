@@ -1,6 +1,6 @@
 ## includes 
 
-from jmath import xcut
+from .jmath import xcut
 
 import array
 import numpy as np
@@ -57,8 +57,8 @@ def add_legend(ax, loc=0):
     elif loc==-2:
         locstr = 'lower left'
     else:
-        print 'USAGE for jacob_pyplot.add_legend : loc=1 -> upper right, loc=2 -> lower right, ' + \
-                   'loc=-1 -> upper left, loc=-2 -> lower left'
+        print( 'USAGE for jacob_pyplot.add_legend : loc=1 -> upper right, loc=2 -> lower right, ' + 
+                   'loc=-1 -> upper left, loc=-2 -> lower left' )
 
         return 0 
 

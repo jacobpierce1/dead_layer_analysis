@@ -162,27 +162,25 @@ def jacob_least_squares( x, y, dy, p0, fitfunc, dx=None, reduc_chisq_max=np.inf,
 # but in this case we know that f'(x) = 0 at the max so it will give 0.
 def estimate_peakpos( f, p, p_delta, peakpos_guess, num_iterations=1000 ):
     peakpos_arr = np.empty( num_iterations, dtype=np.float64 )
-    print 'p: ' + str(p) 
+    # print( 'p: ' + str(p) ) 
     
     for i in range(num_iterations):
 
         # keep picking p until the amplitude is positive
         while 1:
             current_p = np.random.normal( p, p_delta )
+
+            # break out of the while if certain entries are
+            # not physical. TODO: abstract this.
             if current_p[4] > 0 and current_p[1] < 1:
                 break
-            
+
+        # now we construct a function from the random p
         current_inverted_f = lambda x_: 0 - f( current_p, x_ )  
         result = scipy.optimize.fmin( current_inverted_f, peakpos_guess, disp=0 )
 
-        if abs( result - peakpos_guess ) > 10:
-            print current_p
-            print result
-        
-        # result = scipy.optimize.fmin( current_inverted_f, peakpos_guess, disp=0, full_output=1 )
-        # print result
         peakpos_arr[i] = result
-    # print f( p, [ peakpos_arr[0] ] )[0]
+        
     return peakpos_arr
     
 
@@ -205,9 +203,9 @@ def width_at_frac_of_max( y, bounds, N=2, num_samples=1000, dx=[] ):
     y = np.array(y) 
     
     if( x.size != y.size ):
-        print "ERROR: x and y have different size."
-        print "x size = " + str(x.size)
-        print "y size = " + str(y.size)
+        print( "ERROR: x and y have different size." )
+        print( "x size = " + str(x.size) )
+        print( "y size = " + str(y.size) )
         sys.exit(0)
         
     # find positions of x 
@@ -230,8 +228,8 @@ def width_at_frac_of_max( y, bounds, N=2, num_samples=1000, dx=[] ):
     halfmax_positions[1][0] = rightx[ np.argwhere( righty >= halfmax )[-1] ]
     halfmax_positions[1][1] = rightx[ np.argwhere( righty <= halfmax )[0] ]
 
-    print halfmax_positions
-    print halfmax_positions[0][1]
+    print( halfmax_positions )
+    print( halfmax_positions[0][1] )
 
     average_halfmax_positions = [ np.average(halfmax_positions[i]) for i in range(2) ]
     average_halfmax_uncertainties = [ np.abs( np.ediff1d( halfmax_positions[i] )[0] ) / 2.0 for i in range(2) ]

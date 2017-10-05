@@ -1,12 +1,15 @@
 # -*- coding: utf-8 -*-
 
-# the purpose of this script is to bulid off of fit_5_peaks to run through all the data. this poses a challenge because
-# it is difficult to verify that all the fits actually worked. the strategy is to display two images of 16 plots
-# (32 total) for each of the 32 pixel rows. alarming chisq values ( > 2 ) are reported, along with instances in which
-# a fit fails to converge. all the pf's are written to a file for later processing. 
+# the purpose of this script is to bulid off of fit_5_peaks to run
+# through all the data. this poses a challenge because it is difficult
+# to verify that all the fits actually worked. the strategy is to
+# display two images of 16 plots (32 total) for each of the 32 pixel
+# rows. alarming chisq values ( > 2 ) are reported, along with
+# instances in which a fit fails to converge. all the pf's are written
+# to a file for later processing.
 
-# the first step is to identify the peaks and use this to make guesses for p0, the parameter guess for the 
-# least squares fit. 
+# the first step is to identify the peaks and use this to make guesses
+# for p0, the parameter guess for the least squares fit.
 
 # date: 9.06.17
 # author: jacob pierce
@@ -16,6 +19,7 @@
 # config parameters in an abnormal situtation (e.g. debugging). any mistake in
 # the db can be very costly in time, either through repairing db which will 
 # probably required a specialized function or through rerunnnig the program.
+
 
 SHOW_PLOT = 0
 PRINT_PEAK_POSITIONS = 0
@@ -91,30 +95,36 @@ def next_fit( p0, p0_attempt, fit_bounds, fit_bounds_attempt, npeaks ):
 
 # this function creates another guess for p0 in the case of a failed fit based on
 # observations about what is gonig wrong. the particular attempts we use depend on the peak id.
-def next_fit_attempt( p0, p0_attempt, fit_bounds, fit_id, fit_bounds_attempt, npeaks, \
-        attempt, sql_conn=None, pixel_coords=None ):
+def next_fit_attempt( p0, p0_attempt, fit_bounds, fit_id, fit_bounds_attempt, npeaks,
+                      attempt, sql_conn=None, pixel_coords=None ):
     
     # these will be modified and used later as the initial guess.
     p0_attempt[:] = p0[:]
     fit_bounds_attempt[:] = fit_bounds[:]    
+
+
         
     # array of functions that will be used to modify p0_attempt and fit_bounds_attempt
     if fit_id == 1:
         modifier_functions = [ default, increase_left_fit_bound, larger_A, next_fit ]
+
     else:
         modifier_functions = [ default, increase_left_fit_bound, 
                                     increase_left_fit_bound_more, smaller_A ]
-    
+
+        
     # this covers the case in which we have already used all the functions as recorded in the 
     # db, so we don't bother to try again. the only way to get out of this is reset the function
     # number in db or add another function (latter almost certainly what you need).
     # note that we don't update the db
-    if( attempt > len(modifier_functions ) ):
+    if( attempt >= len(modifier_functions ) ):
         return 0
-            
+
+    
     # this checks if we had not previously attempted all functions, but none of them succeeded
     # on this run. in that case put it in the DB. 
     if attempt == len(modifier_functions):
+        
         if UPDATE_DB and sql_conn is not None:
             if pixel_coords is None or fit_id is None:
                 log_message( logfile, 'WARNING (%d, %d, %d): unable to insert bad fit attempt into db, \
@@ -124,13 +134,14 @@ def next_fit_attempt( p0, p0_attempt, fit_bounds, fit_id, fit_bounds_attempt, np
                     fit_id, 0, fit_attempt=attempt )
         return 0
 
+    
     # otherwise we call the current attempt function. 
     modifier_functions[attempt]( p0, p0_attempt, fit_bounds, fit_bounds_attempt, npeaks )
     
     if PRINT_FIT_ATTEMPT:
-        print 'INFO: testing fit attempt ' + str(attempt)
-        print 'p0_attempt = ' + str(p0_attempt)
-        print 'fit_bounds_attempt = ' + str(fit_bounds_attempt)
+        print( 'INFO: testing fit attempt ' + str(attempt) )
+        print( 'p0_attempt = ' + str(p0_attempt) )
+        print( 'fit_bounds_attempt = ' + str(fit_bounds_attempt) )
         
     return 1
     
@@ -146,9 +157,11 @@ def next_fit_attempt( p0, p0_attempt, fit_bounds, fit_id, fit_bounds_attempt, np
 # and then plot. return 1 if successful fit obtained, otherwise 0. last_attempt is the 
 # last attempted + 1, i.e. it is the first fit that will be attempted. 
 
-def apply_peak_fit( ax, pixel_coords, fit_id, x, y, fit_bounds, p0, npeaks, last_attempt=0, mu_all=None, \
+def apply_peak_fit( ax, pixel_coords, fit_id, x, y, fit_bounds,
+                    p0, npeaks, last_attempt=-1, mu_all=None, 
                     muerr_all=None, reduc_chisq_all=None, sql_conn=None, peak_detect=None ):
     
+
     fitfunc = dlf.n_fitfuncs_abstract( dlf.fitfunc_n_alpha_peaks, npeaks )
     
     # these will be populated based on the current attempt number and the given p0 and fit_bounds,
@@ -156,16 +169,24 @@ def apply_peak_fit( ax, pixel_coords, fit_id, x, y, fit_bounds, p0, npeaks, last
     # without returning them.
     p0_attempt = []
     fit_bounds_attempt = []
-        
+
+    # start attempt is the one after the most recently tested attempt.
+    current_attempt = last_attempt + 1
+    
+    # this gets set if we converge 
     status = 0
     
     while( not status ):
+
+        all_attempts_failed = next_fit_attempt( p0, p0_attempt,
+                                                fit_bounds, fit_id, fit_bounds_attempt, 
+                                                npeaks, last_attempt, sql_conn=sql_conn,
+                                                pixel_coords=pixel_coords )
         
-        if not next_fit_attempt( p0, p0_attempt, fit_bounds, fit_id, fit_bounds_attempt, \
-                npeaks, last_attempt, sql_conn=sql_conn, pixel_coords=pixel_coords ):
+        if not all_attempts_failed:
             
             if PRINT_FIT_STATUS:
-                print "WARNING: peak failed to converge."
+                print( "WARNING: peak failed to converge." )
             return 0
                 
         ret = jmath.jacob_least_squares( x, y, np.sqrt(y),
@@ -173,12 +194,13 @@ def apply_peak_fit( ax, pixel_coords, fit_id, x, y, fit_bounds, p0, npeaks, last
         
         if ret is not None:
             if PRINT_FIT_STATUS:
-                print "INFO: success, breaking "
+                print( "INFO: success, breaking " )
             break
+
         else:
             if PRINT_FIT_STATUS:
-                print "WARNING: Unsuccessful fit, trying new parameters..."
-            last_attempt += 1
+                print( "WARNING: Unsuccessful fit, trying new parameters..." )
+            current_attempt += 1
 
 
     # now we have broken out of the loop after a successful fit. unpack the results.
@@ -193,11 +215,11 @@ def apply_peak_fit( ax, pixel_coords, fit_id, x, y, fit_bounds, p0, npeaks, last
 
     # where we are after breaking    
     if PRINT_PF:
-        print "pf = " + str(pf)
+        print( "pf = " + str(pf) )
     
     if PRINT_PFERR:
-        print "pferr = " + str(pferr)
-    
+        print( "pferr = " + str(pferr) )
+        
     
     jplt.add_fit_to_plot( ax, x, fit_bounds_attempt, pf, pferr, fitfunc )
 
@@ -319,7 +341,7 @@ def process_file( ax, infile, pixel_coords, sql_conn=None, logfile=None ):
 
     # debug 
     if PRINT_PEAK_POSITIONS:
-        print "INFO: found peaks " + str(our_peaks)
+        print( "INFO: found peaks " + str(our_peaks) )
     
                 
     # set the x axis according to the peak position 
@@ -500,7 +522,7 @@ def fit_all_peaks():
 
                         y = i * dimx + j
                         
-                        print str( [x,y] )    
+                        print( str( [x,y] ) )    
 
                         # this estimates the time remaining for the program to terminate
                         jutils.estimate_time_left( x * totaly + y + ( a * totalx * totaly ), 
@@ -513,7 +535,7 @@ def fit_all_peaks():
                         current_file = fileprefix + "_%d_%d.bin" % coords
                         
                         if PRINT_FILE_NAMES:
-                            print "INFO: processing file: " + current_file
+                            print( "INFO: processing file: " + current_file )
                             
                         current_file = "../../data/extracted_ttree_data/" + fileprefix + '/' + current_file
                         
@@ -530,6 +552,8 @@ def fit_all_peaks():
     # plt.setp([a.get_xticklabels() for a in axarr[0, :]], visible=False)
     # plt.setp([a.get_yticklabels() for a in axarr[:, 1]], visible=False)
     
+
+
     
     
     
@@ -547,7 +571,7 @@ def make_one_plot( coords1, coords2, filenum ):
     current_file = files[filenum] + "/" + files[filenum] + "_%d_%d.bin" % pixel_coords
     
     if PRINT_FILE_NAMES:
-        print "INFO: processing file: " + current_file
+        print( "INFO: processing file: " + current_file )
     
     current_file = "../extracted_ttree_data/" + current_file
     
@@ -576,7 +600,7 @@ def log_message( logfile, msg ):
     with open( logfile, mode ) as log:
         log.write( msg + '\n' )
     
-    print msg
+    print( msg )
 log_message.first_msg = 1
 
 
