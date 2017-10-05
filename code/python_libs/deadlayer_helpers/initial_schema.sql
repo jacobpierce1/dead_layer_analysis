@@ -9,7 +9,7 @@ create table fits_and_extracted_data (
     pferr TEXT,
     p0 TEXT,
     fit_bounds TEXT,
-    fwhm_data TEXT,
+    peak_detect TEXT,
     PRIMARY KEY( x, y, fit_id )
 );
 

@@ -29,13 +29,16 @@ def residual_from_fitfunc( p, x, y, yerr, fitfunc ):
 
 
 def xcut( x, y, newx_bounds, sorted=0 ):
+
     if sorted:
-        pass
+        raise NotImplementedError
     
-    x = np.array(x) 
-    y = np.array(y)
+    x = np.asarray(x) 
+    y = np.asarray(y)
     return np.asarray( y[ np.logical_and( (x >= newx_bounds[0]), (x <= newx_bounds[1]) ) ] )
     
+
+
 
 
 
@@ -44,13 +47,22 @@ def xcut( x, y, newx_bounds, sorted=0 ):
 # perform fit. return None if there is error.
 def jacob_least_squares( x, y, dy, p0, fitfunc, dx=None, reduc_chisq_max=np.inf, fit_bounds=None ):
     
-    residual_function = lambda p, x, y, dy: residual_from_fitfunc( p, x, y, dy, fitfunc )
+    
     
     # construct args for the fitfunc
     precut = [ x, y ]
+
+
     if dx is not None:
         precut += dx
-    precut += dy
+
+        # residual_function =
+        raise NotImplementedError
+
+    else:
+        residual_function = lambda p, x, y, dy: residual_from_fitfunc( p, x, y, dy, fitfunc )
+
+    precut.append( dy )
 
 
     # cut the args as appropriate
@@ -60,8 +72,10 @@ def jacob_least_squares( x, y, dy, p0, fitfunc, dx=None, reduc_chisq_max=np.inf,
 
     else:
         args = [ xcut( x, _z, fit_bounds ) for _z in precut ]
-        
-        
+
+    args = tuple( args )
+
+    
     # using scipy.leastsq. does not allow you to specify bounds for the fit params. 
     try:       
         pf, cov, info, mesg, success =    \
@@ -70,7 +84,7 @@ def jacob_least_squares( x, y, dy, p0, fitfunc, dx=None, reduc_chisq_max=np.inf,
         status = 0
         return None
     
-    dof = len(newx)-len(pf)
+    dof = len( args[0] )-len(pf)
     reduc_chisq = sum(info["fvec"]*info["fvec"]) / dof
 
     # detect and handle errors 

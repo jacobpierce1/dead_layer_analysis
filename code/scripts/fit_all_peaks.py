@@ -28,18 +28,20 @@ SAVE_DATA = 1
 UPDATE_DB = 1
 PRINT_FIT_ATTEMPT = 0
 
-logfile = '../current_fit_images/log.txt'
 
 
 
 # my files 
-from jacob_math import *
-from jacob_pyplot import *
-from jacob_utils import *
-from deadlayer_functions import * 
+import libjacob.jmath as jmath
+import libjacob.jpyplot as jplt
+import libjacob.jutils as jutils
+
+
+import deadlayer_helpers.functions as dlf
+
+
 from peakdetect import peakdetect 
-import sql_db_manager
-# reload(jacob_math)
+import deadlayer_helpers.sql_db_manager as db
 
 
 
@@ -50,26 +52,13 @@ import time
 import sys
 import sqlite3
 import os 
-# import json
 
 
 
 
-
-    
-# this function estimates the remaining time for a for loop in which the 
-# output is expected to take roughly the same amount of time per run.
-# thiis is the equivaletn of a static variable in c 
-# currently implemented to only be used once per script, could be changed by adding bool reset.
-def estimate_time_left( current_iteration, total_iterations, start_time, num_updates=10 ):
-    
-    if( current_iteration * 1.0 / total_iterations >= estimate_time_left.counter * 1.0 / num_updates ): 
-        current_time = time.time()
-        estimate_time_left.counter += 1
-        print "%d/%d complete, %f mins remaining" \
-                    % ( estimate_time_left.counter, num_updates, \
-                    (current_time - start_time) / 60.0 * (num_updates - estimate_time_left.counter ) / estimate_time_left.counter )
-estimate_time_left.counter = 0
+NUM_PEAKS_PER_FEATURE = [ 2, 2, 2 ] 
+NUM_PEAKS = np.sum( NUM_PEAKS_PER_FEATURE )
+NUM_FEATURES = len( NUM_PEAKS_PER_FEATURE )
 
 
 
@@ -96,7 +85,10 @@ def larger_A( p0, p0_attempt, fit_bounds, fit_bounds_attempt, npeaks ):
 
 def next_fit( p0, p0_attempt, fit_bounds, fit_bounds_attempt, npeaks ):
     pass
-    
+
+
+
+
 # this function creates another guess for p0 in the case of a failed fit based on
 # observations about what is gonig wrong. the particular attempts we use depend on the peak id.
 def next_fit_attempt( p0, p0_attempt, fit_bounds, fit_id, fit_bounds_attempt, npeaks, \
@@ -125,11 +117,10 @@ def next_fit_attempt( p0, p0_attempt, fit_bounds, fit_id, fit_bounds_attempt, np
     if attempt == len(modifier_functions):
         if UPDATE_DB and sql_conn is not None:
             if pixel_coords is None or fit_id is None:
-                log_message( 'WARNING (%d, %d, %d): unable to insert bad fit attempt into db, \
-                        pixel_coords or fit_id not specified.' % (pixel_coords[0], pixel_coords[1], fit_id ),
-                             logfile )
+                log_message( logfile, 'WARNING (%d, %d, %d): unable to insert bad fit attempt into db, \
+                        pixel_coords or fit_id not specified.' % (pixel_coords[0], pixel_coords[1], fit_id ) )
                 return 0
-            sql_db_manager.insert_fit_data_into_db( sql_conn, pixel_coords, \
+            db.insert_fit_data_into_db( sql_conn, pixel_coords, \
                     fit_id, 0, fit_attempt=attempt )
         return 0
 
@@ -156,9 +147,9 @@ def next_fit_attempt( p0, p0_attempt, fit_bounds, fit_id, fit_bounds_attempt, np
 # last attempted + 1, i.e. it is the first fit that will be attempted. 
 
 def apply_peak_fit( ax, pixel_coords, fit_id, x, y, fit_bounds, p0, npeaks, last_attempt=0, mu_all=None, \
-        muerr_all=None, reduc_chisq_all=None, sql_conn=None ):
+                    muerr_all=None, reduc_chisq_all=None, sql_conn=None, peak_detect=None ):
     
-    fitfunc = n_fitfuncs_abstract( fitfunc_n_alpha_peaks, npeaks )
+    fitfunc = dlf.n_fitfuncs_abstract( dlf.fitfunc_n_alpha_peaks, npeaks )
     
     # these will be populated based on the current attempt number and the given p0 and fit_bounds,
     # which are used as the first guesses. they are passed as parameters so they can be used after
@@ -177,7 +168,8 @@ def apply_peak_fit( ax, pixel_coords, fit_id, x, y, fit_bounds, p0, npeaks, last
                 print "WARNING: peak failed to converge."
             return 0
                 
-        ret = jacob_least_squares( x, y, np.sqrt(y), p0_attempt, fitfunc, fit_bounds=fit_bounds_attempt )
+        ret = jmath.jacob_least_squares( x, y, np.sqrt(y),
+                                         p0_attempt, fitfunc, fit_bounds=fit_bounds_attempt )
         
         if ret is not None:
             if PRINT_FIT_STATUS:
@@ -194,8 +186,10 @@ def apply_peak_fit( ax, pixel_coords, fit_id, x, y, fit_bounds, p0, npeaks, last
                               
     # write all relevant data to the db
     if UPDATE_DB and sql_conn is not None:
-        sql_db_manager.insert_fit_data_into_db( sql_conn, pixel_coords, fit_id, 1, last_attempt, reduc_chisq, pf, \
-                pferr, p0_attempt, fit_bounds_attempt ) 
+        db.insert_fit_data_into_db( sql_conn, pixel_coords, fit_id,
+                                    1, last_attempt, reduc_chisq,
+                                    pf, pferr, p0_attempt, fit_bounds_attempt,
+                                    peak_detect ) 
 
     # where we are after breaking    
     if PRINT_PF:
@@ -205,12 +199,22 @@ def apply_peak_fit( ax, pixel_coords, fit_id, x, y, fit_bounds, p0, npeaks, last
         print "pferr = " + str(pferr)
     
     
-    add_fit_to_plot( ax, x, fit_bounds_attempt, pf, pferr, fitfunc )
-    
-    mu_all.extend( [pf[ 5:3+2*npeaks:2 ] ]  )
-    muerr_all.extend( [pferr[ 5:3+2*npeaks:2 ] ] )
-    reduc_chisq_all.append( reduc_chisq )
-    
+    jplt.add_fit_to_plot( ax, x, fit_bounds_attempt, pf, pferr, fitfunc )
+
+
+    # extend vectors as necessary. done here since this is the last time
+    # we get access to such variables unless taking such an approach.
+    if mu_all is not None:
+        mu_all.extend( [pf[ 5:3+2*npeaks:2 ] ]  )
+
+    if muerr_all is not None:
+        muerr_all.extend( [pferr[ 5:3+2*npeaks:2 ] ] )
+
+    if reduc_chisq_all is not None:
+        reduc_chisq_all.append( reduc_chisq )
+
+
+        
     return 1
     
     
@@ -219,7 +223,9 @@ def apply_peak_fit( ax, pixel_coords, fit_id, x, y, fit_bounds, p0, npeaks, last
 # do all behavior specific to our application: read file, fit peaks, make the plot.
 # if sql_conn is supplied, they we assume that it is a valid open sqlite connection
 # and check db for whether this file has been processed before.
-def process_file( ax, infile, pixel_coords, sql_conn=None ):
+def process_file( ax, infile, pixel_coords, sql_conn=None, logfile=None ):
+
+    log_enabled = logfile is not None
     
     coordsstr = "(%d, %d)" % pixel_coords
 
@@ -229,22 +235,86 @@ def process_file( ax, infile, pixel_coords, sql_conn=None ):
 
     # create and populate the histogram array 
     efront_histo = [0] * len(x)
-    if not construct_histo_array( infile, efront_histo ):
-        log_message( "ERROR: unable to open file: " + infile, logfile )
+
+    
+    if not dlf.construct_histo_array( infile, efront_histo ):
+
+        if log_enabled:
+            log_message( "ERROR: unable to open file: " + infile, logfile )
+
         sys.exit(0)
     
     
-    # get the 5 suspected peaks, return 0 if less than 5 found (rare)
-    our_peaks = [0] * 5
-    if not get_5_peak_positions( pixel_coords, our_peaks, efront_histo, sql_conn ):
 
-        msg = 'WARNING (%d,%d,*): unable to find 5 peaks, skipping this fit.'
-        msg %= (pixel_coords[0], pixel_coords[1] ) )
+
+    # determine which fits to perform, 1 = fit must be attempted. by default if no 
+    # conn is supplied we process all the fits.
+
+    fit_attempts = [0, 0, 0 ] # first fit to try, which is the one we left off on.
+
+    fits_to_perform = [ 1, 1, 1 ]
+
+    #    mu_all = []  # this shall store the mu values 
+    # muerr_all = []
+    reduc_chisq_all = [] # store all reduced chisq values.
+    
+    
+    if sql_conn is not None:
+        for i in range(len(fits_to_perform)):
+            
+            # extract
+            result = db.read_data_from_db( sql_conn, pixel_coords, i )
+            successful_fit, fit_attempt, reduc_chisq, pf, pferr, p0, fit_bounds, peak_detect = result
+
+            fits_to_perform[i] = not successful_fit
+
+            fit_attempts[i] = fit_attempt
+
+            if successful_fit:
+                fitfunc = dlf.n_fitfuncs_abstract( dlf.fitfunc_n_alpha_peaks, NUM_PEAKS_PER_FEATURE[i] )
+                jplt.add_fit_to_plot( ax, x, fit_bounds, pf, pferr, fitfunc )
+                reduc_chisq_all.append( reduc_chisq )
+
+
+        if not any( fits_to_perform ):
+            return 1
+            
+ 
+    # get the 6 suspected peaks
+    our_peaks = [0] * NUM_PEAKS
+    num_peaks_found = dlf.get_n_peak_positions( NUM_PEAKS, efront_histo, our_peaks )
+
+    if num_peaks_found < 5:
+
+        msg = 'WARNING (%d,%d,*): found less than 5 peaks, skipping this fit.'
+        msg %= (pixel_coords[0], pixel_coords[1] )
         log_message( msg, logfile )
         
         if sql_conn is not None:
             for fit_id in range(3):
-                sql_db_manager.insert_fit_data_into_db( sql_conn, pixel_coords, fit_id, 0 )
+                db.insert_fit_data_into_db( sql_conn, pixel_coords, fit_id,
+                                            successful_fit = 0 )
+
+
+        return 0
+
+    
+    # do a check on peak values: energy differenc for the pairs should be constant. no check necessary on the 
+    # largest peak since it always dominates, the only potential problem is really the smallest peak in the 
+    # lowest energy pair.
+
+    check_warnings = 1
+    
+    if check_warnings:
+        if( abs(23 - (our_peaks[1] - our_peaks[0] ) ) > 20 ):
+            log_message( logfile,
+                         "WARNING (%d,%d,*): invalid peak suspected for pair 1. "
+                         % (pixel_coords[0], pixel_coords[1]) ) 
+    
+        if( abs(23 - (our_peaks[3] - our_peaks[2] ) ) > 20 ):
+            log_message( logfile,
+                         "WARNING (%d,%d,*): invalid peak suspected for pair 2. "
+                         % (pixel_coords[0], pixel_coords[1]) )
 
 
     # debug 
@@ -257,45 +327,24 @@ def process_file( ax, infile, pixel_coords, sql_conn=None ):
 
  
     # plot the histogram without fit yet 
-    plot_histo( ax, x, efront_histo, plot_bounds=plot_bounds, logscale=0,
-                    title = "", 
-                    xlabel = "", #"Energy (uncalibrated)",
-                    ylabel = "" ) #"Counts"       )
-    
-    if SHOW_PLOT:
-        plt.show()
+    jplt.plot_histo( ax, x, efront_histo, plot_bounds=plot_bounds, logscale=0,
+                     title = "", 
+                     xlabel = "", 
+                     ylabel = "" )
 
     
-        
-    mu_all = []  # this shall store the mu values 
-    muerr_all = []
-    reduc_chisq_all = [] # store all reduced chisq values.
-    
-    
-    # number of peaks for each fit, need this info before plotting anything so it is defined here.
-    num_peaks = [ 2, 2, 1 ] 
-    fit_attempts = [0, 0, 0 ]
-    
-    
-    # determine which fits to perform, 1 = fit must be attempted. by default if no 
-    # conn is supplied we process all the fits.
-    fits_to_perform = [ 1, 1, 1 ]
-    if sql_conn is not None:
-        for i in range(len(fits_to_perform)):
             
-            # extract
-            result = sql_db_manager.read_data_from_db( sql_conn, pixel_coords, i )
-            successful_fit, fit_attempt, reduc_chisq, pf, pferr, p0, fit_bounds, fwhm_data = result
+    # number of peaks for each fit, need this info before plotting
+    # anything so it is defined here. depends on if we found 5 or 6 peaks
+    if num_peaks_found == 5:
+        num_peaks = [ 2, 2, 1 ] 
 
-            fit_attempts[i] = fit_attempt
-            fits_to_perform[i] = not successful_fit 
+    elif num_peaks_found == 6:
+        num_peaks = [ 2, 2, 2 ]
 
-            if successful_fit:
-                fitfunc = n_fitfuncs_abstract( fitfunc_n_alpha_peaks, num_peaks[i] )
-                add_fit_to_plot( ax, x, fit_bounds, pf, pferr, fitfunc )
-                reduc_chisq_all.append( reduc_chisq )
-
-
+        
+    
+   
     
     # initial fit bounds, these are reduced a bit if the fit fails.
     fit_bounds = [\
@@ -305,32 +354,44 @@ def process_file( ax, infile, pixel_coords, sql_conn=None ):
                 ]
     
     # initial guesses which get modified later if the fit fails.
+    # the final term depends on whether we found 5 or 6 peaks.
     p0 = [
-            [ 6.0, 0.97, 20.2, 2.0 ] + [ 20000.0, our_peaks[0]+8.0 ] + [ 60000.0, our_peaks[1]+8.0 ],
-            [ 6.0, 0.99, 42.0, 1.6 ] + [ 50000.0, our_peaks[2]+8.0 ] + [ 100000.0, our_peaks[3]+8.0 ],
-            [ 4.0, 0.99, 30.0, 1.0 ] + [ 200000.0, our_peaks[4]+8 ]
-        ]
-   
+            [ 6.0, 0.97, 20.2, 2.0 ] + [ 20000.0, our_peaks[0] + 8.0 ] + [ 60000.0, our_peaks[1] + 8.0 ],
+            [ 6.0, 0.99, 42.0, 1.6 ] + [ 50000.0, our_peaks[2] + 8.0 ] + [ 100000.0, our_peaks[3] + 8.0 ],
+    ]
+
+    if num_peaks_found == 5:
+        p0 += [ 4.0, 0.99, 30.0, 1.0 ] + [ 200000.0, our_peaks[4]+8 ]
+
+    elif num_peaks_found == 6:
+        p0 += [ 6.0, 0.99, 42.0, 1.6 ] + [ 50000.0, our_peaks[4] + 8.0 ] + [ 200000.0, our_peaks[5] + 8.0 ],
+
+
+    peak_detect = [ our_peaks[0:2], our_peaks[2:4], our_peaks[4:] ]
+        
     # loop through the fits that were not in the db and add them if successful.
-    for i in range(len(num_peaks)):
+    for i in range( NUM_FEATURES ):
         if fits_to_perform[i]:
-            apply_peak_fit( ax, pixel_coords, i, x, efront_histo, fit_bounds[i], p0[i], \
-                    num_peaks[i], fit_attempts[i], mu_all, muerr_all, reduc_chisq_all, sql_conn=sql_conn )
+            apply_peak_fit( ax, pixel_coords, i, x, efront_histo, fit_bounds[i], p0[i],
+                            num_peaks[i], fit_attempts[i], peak_detect[i],
+                            reduc_chisq_all = reduc_chisq_all, sql_conn = sql_conn,
+                            peak_detect = peak_detect[i] ) #, mu_all,
+                            # muerr_all, reduc_chisq_all, sql_conn=sql_conn )
     
     
-    # add a description of the fit to the plot
-    # note: \mathrm{} is replacement for \text{}
-    fitstr = "$ f(E) = \\sum_{i,\pm} \\frac{A_i \eta_\pm}{2 \\tau_\pm}    \
-                        \\cdot \\exp \\left[   \
-                                \\frac{E-\\mu_i}{\\tau_\pm}   \
-                                + \\frac{\\sigma^2}{2 \\tau_\pm^2 }  \
-                        \\right] \
-                        \\cdot \\mathrm{erfc} \\left[   \
-                                \\frac{1}{\\sqrt{2}} \\left(  \
-                                        \\frac{x-\\mu}{\\sigma}    \
-                                        + \\frac{\\sigma}{\\tau_\pm}   \
-                                \\right)   \
-                        \\right] $"
+    # # add a description of the fit to the plot
+    # # note: \mathrm{} is replacement for \text{}
+    # fitstr = "$ f(E) = \\sum_{i,\pm} \\frac{A_i \eta_\pm}{2 \\tau_\pm}    \
+    #                     \\cdot \\exp \\left[   \
+    #                             \\frac{E-\\mu_i}{\\tau_\pm}   \
+    #                             + \\frac{\\sigma^2}{2 \\tau_\pm^2 }  \
+    #                     \\right] \
+    #                     \\cdot \\mathrm{erfc} \\left[   \
+    #                             \\frac{1}{\\sqrt{2}} \\left(  \
+    #                                     \\frac{x-\\mu}{\\sigma}    \
+    #                                     + \\frac{\\sigma}{\\tau_\pm}   \
+    #                             \\right)   \
+    #                     \\right] $"
     
     
     
@@ -373,7 +434,7 @@ def process_file( ax, infile, pixel_coords, sql_conn=None ):
     
     # formatting only with relevant parameters. 
     # mu_str= format_measurement_vector( "\\mu", mu_all, muerr_all )
-    reduc_chisq_str = format_measurement_vector( "\\tilde{\\chi}^2", reduc_chisq_all, 0.01 )
+    reduc_chisq_str = jutils.format_measurement_vector( "\\tilde{\\chi}^2", reduc_chisq_all, 0.01 )
     
     # fitstr += '\n' + '\n'.join( [mu_str, reduc_chisq_str] )
 #    fitstr += '\n' + reduc_chisq_str
@@ -388,69 +449,84 @@ def process_file( ax, infile, pixel_coords, sql_conn=None ):
 
 
 
+# main function, goes through all the data.
+def fit_all_peaks():
 
-# plt.gcf().clear()
-def parse_all_data():
-
-    dimx = 4
-    dimy = 4
-    
+    # dimesions of detector
     totalx = 32
     totaly = 32
-    
-#    files = [ "deadlayerdet3rt", "deadlayerdet3cent" ]
-    #databases = [ sql_db_manager.rotated_db, sql_db_manager.centered_db ]
 
-    files = [ "srcdeadlayerflat", "srcdeadlayerangle" ]
-    databases = [ sql_db_manager.flat_db, sql_db_manager.sliced_db ]
-        
+    # dimensions of output images
+    dimx = 4
+    dimy = 4
+
+    # used to name the image files
+    files = db.all_db_names
+
+    databases = db.all_dbs
+
+    # used for estimating time remaining.
     start_time = time.time()
   
     # loop through each file prefix / corresponding database.
     for a in range( len(files) ):
-        fileprefix = files[a]
+
+        # create the current db if it doesn't already exist.
+        if not os.path.exists( databases[a] ):
+            db.create_db( databases[a] )
         
-        # make dir for output images
-        current_outdir = '../current_fit_images/' + fileprefix + '/'
+        fileprefix = files[a]
+
+        # make dir for output images if it doesn't exist 
+        current_outdir = '../../images/current_fit_images/' + fileprefix + '/'
         if not os.path.exists( current_outdir ):
             os.mkdir( current_outdir )
-        
+
+
+        logfile = current_outdir + 'log.txt'
+
         with sqlite3.connect( databases[a] ) as sql_conn:
             
-            
             # these 2 loops loop over grids of dimx x dimy images. 
-            for x in range( totalx / dimx):
-                for y in range( 0,totaly / dimy ):
-                        
-                    print str([x,y])    
-                    
-                    estimate_time_left( x*(totaly/dimy) + y + a * (totalx/dimx) * (totaly/dimy), 
-                            len(files) * (totalx/dimx) * (totaly/dimy), start_time, num_updates=50 )
-
-                    plt.clf()
-                    plt.close()
-                    f, axarr = plt.subplots(dimx, dimy, figsize=(20,10))    
-            
-                    # these loops create the 4x4 grid.
-                    for i in range(dimx):
-                        for j in range(dimy):
-                            
-                            coords = ( i + x * dimx, j + y * dimy )
-                            current_file = fileprefix + "_%d_%d.bin" % coords
-            
-                            if PRINT_FILE_NAMES:
-                                print "INFO: processing file: " + current_file
-            
-                            current_file = "../extracted_ttree_data/" + fileprefix + '/' + current_file
+            for x in range( totalx ):
                 
-                            process_file( axarr[i,j], current_file, coords, sql_conn=sql_conn)
-                            
-                            if( BREAK_AFTER_1_PLOT ):
-                                plt.show()
-                                return 1
-                    
-                    saveplot_low_quality( current_outdir, fileprefix + '_grid_%d_%d' % (x,y) )
+                plt.clf()
+                plt.close()
+                f, axarr = plt.subplots( dimx, dimy, figsize=(20,10) )    
+                
+                # these loops create the 4x4 grid.
+                for i in range(dimx):
+                    for j in range(dimy):
 
+                        y = i * dimx + j
+                        
+                        print str( [x,y] )    
+
+                        # this estimates the time remaining for the program to terminate
+                        jutils.estimate_time_left( x * totaly + y + ( a * totalx * totaly ), 
+                                                   len(files) * totalx * totaly, start_time, num_updates=50 )
+                                                
+                        # current pixel coords
+                        coords = ( x, (i * dimx + j) + y )
+
+                        # file containing the data
+                        current_file = fileprefix + "_%d_%d.bin" % coords
+                        
+                        if PRINT_FILE_NAMES:
+                            print "INFO: processing file: " + current_file
+                            
+                        current_file = "../../data/extracted_ttree_data/" + fileprefix + '/' + current_file
+                        
+                        process_file( axarr[i,j], current_file, coords, sql_conn = sql_conn, logfile = logfile)
+                        
+                        if( BREAK_AFTER_1_PLOT ):
+                            plt.show()
+                            return 1
+                            
+                jplt.saveplot_low_quality( current_outdir, fileprefix + '_x=%d' % (x,) )
+
+
+                        
     # plt.setp([a.get_xticklabels() for a in axarr[0, :]], visible=False)
     # plt.setp([a.get_yticklabels() for a in axarr[:, 1]], visible=False)
     
@@ -488,6 +564,23 @@ def make_one_plot( coords1, coords2, filenum ):
        
 
 
+# print message to the console and write it to a log file.
+def log_message( logfile, msg ):
+    
+    if log_message.first_msg or not os.path.exists( logfile ):
+        log_message.first_msg = 0
+        mode = 'w'
+    else:
+        mode = 'a'
+        
+    with open( logfile, mode ) as log:
+        log.write( msg + '\n' )
+    
+    print msg
+log_message.first_msg = 1
+
+
+
 
 # set debug globals, called by make_one_plot()
 def set_globals_for_debugging():
@@ -507,6 +600,6 @@ def set_globals_for_debugging():
      
        
 # make_one_plot(16,16)
-# parse_all_data()
+fit_all_peaks()
 
 

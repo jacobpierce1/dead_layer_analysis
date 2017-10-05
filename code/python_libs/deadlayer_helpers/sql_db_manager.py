@@ -11,25 +11,29 @@ import json
 
 DEBUG_DB = 0
 
+_current_abs_path = os.path.dirname( __file__ ) + '/'
 
-centered_db = os.path.dirname( __file__ ) + '/../../../databases/centered_fits_data.db'
-# right_db  = '../../databases/rotated_fits_data.db'  # obsolete
-moved_db =  '../../databases/moved_fits_data.db' 
-
-
-flat_db = '../../databases/flat_fits_data.db'
-sliced_db = '../../databases/sliced_fits_data.db'
+all_db_names = [ 'centered', 'moved', 'flat', 'angled' ]
 
 
-all_dbs = [ centered_db, rotated_db, flat_db, sliced_db ]
+# construct the database names. these can be called
+# from any module that includes this to access the dbs.
+
+centered_db, moved_db, flat_db, angled_db = (
+    [ _current_abs_path + '../../../databases/' + _name + '_fits_data.db'
+    for _name in all_db_names ] )
+
+
+
+all_dbs = [ centered_db, moved_db, flat_db, angled_db ]
 
 
 # db_filename = '../fits_and_spectral_data.db'
-schema_filename = 'initial_schema.sql'
+schema_filename = _current_abs_path + 'initial_schema.sql'
 tablename = 'fits_and_extracted_data'
 
 schema_cols = [ 'x', 'y', 'fit_id', 'successful_fit', 'fit_attempt', 'reduc_chisq', 
-                    'pf', 'pferr', 'p0', 'fit_bounds', 'fwhm_data'  ]
+                    'pf', 'pferr', 'p0', 'fit_bounds', 'peak_detect']
 
 
 
@@ -65,9 +69,10 @@ def add_col( colname, datatype ):
 # in without bothering to check the current state of the DB. as such you have to do such a 
 # query beforehand if necessary. 
 
-def insert_fit_data_into_db( sql_conn, pixel_coords, fit_id, successful_fit, \
-        fit_attempt=-1, reduc_chisq=-1, pf=[-1], pferr=[-1], p0=[-1], fit_bounds=[-1,-1], fwhm_data=[0,[0,0],[0,0]], \
-        db_is_empty=0 ):        
+def insert_fit_data_into_db( sql_conn, pixel_coords, fit_id, successful_fit=0,
+                             fit_attempt=-1, reduc_chisq=-1, pf=None, pferr=None,
+                             p0=None, fit_bounds=None, peak_detect=None,
+                             db_is_empty=0 ):        
     
     # the c programmer within.
     query = ''
@@ -104,7 +109,7 @@ def insert_fit_data_into_db( sql_conn, pixel_coords, fit_id, successful_fit, \
         schema_cols[7]:json.dumps(pferr),
         schema_cols[8]:json.dumps(p0),
         schema_cols[9]:json.dumps(fit_bounds),
-        schema_cols[10]:json.dumps(fwhm_data) #[0,[0,0],[0,0]]
+        schema_cols[10]:json.dumps(peak_detect) #[0,[0,0],[0,0]]
     }
 
     cursor.execute( query, query_dict )
@@ -145,15 +150,15 @@ def read_data_from_db( sql_conn, pixel_coords, fit_id ):
     if DEBUG_DB:
         print result    
             
-    successful_fit, fit_attempt, reduc_chisq, pf, pferr, p0, fit_bounds, fwhm_data = result
+    successful_fit, fit_attempt, reduc_chisq, pf, pferr, p0, fit_bounds, peak_detect = result
         
     pf = json.loads(pf)
     pferr = json.loads(pferr)
     p0 = json.loads(p0)
     fit_bounds = json.loads(fit_bounds)
-    fwhm_data = json.loads(fwhm_data)
+    peak_detect = json.loads(peak_detect)
     
-    return ( successful_fit, fit_attempt, reduc_chisq, pf, pferr, p0, fit_bounds, fwhm_data )
+    return ( successful_fit, fit_attempt, reduc_chisq, pf, pferr, p0, fit_bounds, peak_detect )
     
 
 
@@ -178,7 +183,7 @@ def create_db(name):
     print 'INFO: success, now populating...'
     
     with sqlite3.connect( name ) as sql_conn:
-        populate_db(sql_conn, 32, 32, 3, )
+        populate_db(sql_conn, 32, 32, 3 )
     
 
 
@@ -190,8 +195,7 @@ def populate_db(conn, numx, numy, numfits):
     for i in range(numx):
         for j in range(numy):
             for k in range(numfits):
-                insert_fit_data_into_db( conn, (i,j), k, 0, -1, -1, [-1], [-1], [-1], \
-                        [-1], fwhm_data=[-1,[-1,-1],[-1,-1]], db_is_empty=1 ) 
+                insert_fit_data_into_db( conn, (i,j), k, db_is_empty = 1 ) 
 
 
 
