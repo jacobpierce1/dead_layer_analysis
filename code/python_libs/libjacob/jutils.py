@@ -18,7 +18,7 @@ def estimate_time_left( current_iteration, total_iterations, start_time, num_upd
                    * (num_updates - estimate_time_left.counter )
                    / estimate_time_left.counter ) )
 
-estimate_time_left.counter = 0
+estimate_time_left.counter = 1
 
 
 

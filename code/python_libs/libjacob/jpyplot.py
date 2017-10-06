@@ -21,12 +21,13 @@ def plot_histo( ax, x, histo_array, plot_bounds=None, xlabel="", ylabel="", titl
     # clever
     if plot_bounds is 'minmax':
         plot_bounds = [ f(x) for f in [min,max] ] 
-    
+
+        
     # ensure that we are working with arrays.
     x = np.array(x)
     histo_array = np.array(histo_array)
-    
-    ax.errorbar ( x, histo_array, yerr=np.sqrt(histo_array), errorevery=1)
+
+    ax.errorbar( x, histo_array, yerr=np.sqrt(histo_array), errorevery=1)
 #    ax.semilogy( range(len(histo_array)), histo_array, yerr=np.sqrt(histo_array), errorevery=1)
     # ax.errorbar ( range(len(histo_array)), histo_array, yerr=np.sqrt(histo_array), fmt='none', errorevery=10)
 
@@ -92,11 +93,13 @@ def set_linear_scale_plot_bounds( ax, x, y, xbuf=0.20, ybuf=0.20 ):
         
         
 # add fit to the plot 
-def add_fit_to_plot( ax, x, fit_bounds, p, perr, fitfunc, color='-r' ):
+def add_fit_to_plot( ax, x, fit_bounds, p, perr, fitfunc, linewidth=3, color='-r' ):
     newx = xcut( x, x, fit_bounds )
     fit = ax.plot( newx, fitfunc(p, newx), color, label="Fit")
-    plt.setp(fit[0], linewidth=2)
+    plt.setp( fit[0], linewidth = linewidth )
 
+
+    
 
 # default plot params 
 def plot ( ax, x, y, xerr=None, yerr=None, xlabel=None, ylabel=None,

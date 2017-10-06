@@ -105,6 +105,7 @@ def get_n_peak_positions( n, data, output_peak_positions ):
 
 
 
+
 # in this case you supply all args as fit params, even the det ones which should be fixed. 
 def fitfunc_alpha_free_det_params( p, x ): 
     return alpha_fit( p[0],p[1],p[2],p[3],p[4],p[5], x ) 
@@ -115,11 +116,14 @@ def fitfunc_alpha_free_det_params( p, x ):
     
 
 
-# 8 total params for p.
+
+    # 8 total params for p.
 # first 4 params: A1, mu1 ,A2, u2
 def fitfunc_2_alpha_peaks( p, x ):
     return map( lambda y: ( alpha_fit( p[0],p[1],p[4],p[5],p[6],p[7], y) +
                 alpha_fit( p[2],p[3],p[4],p[5],p[6],p[7], y) ), x ) 
+
+
 
 
 # return an inline of fitfunc_n_alpha_peaks given the number of peaks to fit.
@@ -127,6 +131,8 @@ def fitfunc_2_alpha_peaks( p, x ):
 # previously fitfunc_n_alpha_peaks_abstract
 def n_fitfuncs_abstract( fitfunc, n ):
     return lambda p, x: fitfunc( n, p, x )
+
+
 
 
 # fit n alpha peaks given vector p and array x 
@@ -141,6 +147,8 @@ def fitfunc_n_alpha_peaks( n, p, x ):
     return ret
 
     # return np.sum( [ map( lambda y: alpha_fit(p[4+2*i],p[4+2*i+1],p[0],p[1],p[2],p[3], y), x )  for i in range(n) ], axis=0 )  
+
+
     
     
 # fit n alpha peaks given vector p and array x 
@@ -158,13 +166,17 @@ def fitfunc_n_alpha_peaks_eta1( n, p, x ):
     # return np.sum( [ map( lambda y: alpha_fit_eta1(p[2+2*i],p[2+2*i+1],p[0],p[1], y), x )  for i in range(n) ], axis=0 )  
 
 
+
+    
 # same as alpha_fit but with eta fixed at one. this means we are taking only one of the terms. 
 # experimented with this after noting that the fits seem indep. of eta, which can cause trouble.
 def alpha_fit_eta1( A, mu, sigma, tau, x ):
     logtmp = (x-mu)/tau + sigma**2.0/(2*tau**2.0) + np.log( special.erfc( (x-mu)/sigma + sigma/tau) / np.sqrt(2) ) 
     return A/(2.0*tau) * np.exp( logtmp )
 
- 
+
+
+
 # reference: equation 10 in Bortels 1987  
 # this function is meant to be applied to scalar x, not list
 def alpha_fit( A, mu, sigma, eta, tau1, tau2, x ):        

@@ -73,6 +73,8 @@ def insert_fit_data_into_db( sql_conn, pixel_coords, fit_id, successful_fit=0,
                              fit_attempt=-1, reduc_chisq=-1, pf=None, pferr=None,
                              p0=None, fit_bounds=None, peak_detect=None,
                              db_is_empty=0 ):        
+
+#    print( 'inserting into db.' )
     
     # the c programmer within.
     query = ''
