@@ -45,7 +45,8 @@ def xcut( x, y, newx_bounds, sorted=0 ):
 # perform fit. return None if there is error.
 np.seterr(divide='ignore', invalid='ignore')
 
-def jacob_least_squares( x, y, dy, p0, fitfunc, dx=None, reduc_chisq_max=np.inf, fit_bounds=None ):
+def jacob_least_squares( x, y, dy, p0, fitfunc, dx=None,
+                         reduc_chisq_max=np.inf, fit_bounds=None ):
     
     
     
@@ -65,7 +66,6 @@ def jacob_least_squares( x, y, dy, p0, fitfunc, dx=None, reduc_chisq_max=np.inf,
     precut.append( dy )
 
     
-
     # cut the args as appropriate
     if fit_bounds is None:
         fit_bounds = [ min(x), max(x) ]  # used for plots 

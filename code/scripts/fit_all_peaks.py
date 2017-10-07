@@ -544,9 +544,10 @@ def fit_all_peaks():
                             print( str( [x,y] ) )    
                                 
                             # this estimates the time remaining for the program to terminate
-                            jutils.estimate_time_left( x * totaly + y + ( a * totalx * totaly ), 
-                                                       len(files) * totalx * totaly, start_time,
-                                                       num_updates=50 )
+                            jutils.estimate_time_left( x * totaly + y
+                                                       + ( a * totalx * totaly ), 
+                                                       len(files) * totalx * totaly,
+                                                       start_time, num_updates=50 )
                                 
                             # current pixel coords
                             coords = ( x, y )
