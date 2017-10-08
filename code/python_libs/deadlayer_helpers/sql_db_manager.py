@@ -13,19 +13,24 @@ DEBUG_DB = 0
 
 _current_abs_path = os.path.dirname( __file__ ) + '/'
 
-all_db_names = [ 'centered', 'moved', 'flat', 'angled' ]
+all_db_ids = [ 'centered', 'moved', 'flat', 'angled' ]
 
 
 # construct the database names. these can be called
 # from any module that includes this to access the dbs.
 
-centered_db, moved_db, flat_db, angled_db = (
-    [ _current_abs_path + '../../../databases/' + _name + '_fits_data.db'
-    for _name in all_db_names ] )
+all_dbs_list = [ _current_abs_path + '../../../databases/'
+                 + _name + '_fits_data.db'
+                 for _name in all_db_ids ]
 
 
+all_dbs_dict = dict( zip( all_db_ids,
+                     all_dbs_list ) ) 
 
-all_dbs = [ centered_db, moved_db, flat_db, angled_db ]
+
+centered_db, moved_db, flat_db, angled_db = all_dbs_list
+centered_id, moved_id, flat_id, angled_id = all_db_ids
+
 
 
 # db_filename = '../fits_and_spectral_data.db'

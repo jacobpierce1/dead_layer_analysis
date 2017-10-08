@@ -21,7 +21,7 @@
 # probably required a specialized function or through rerunnnig the program.
 
 
-SHOW_PLOT = 0
+SHOW_HISTO = 0
 PRINT_PEAK_POSITIONS = 0
 PRINT_PF = 0
 PRINT_PFERR = 0
@@ -129,12 +129,24 @@ def next_fit_attempt( p0, p0_attempt, fit_bounds, fit_id,
         
         if UPDATE_DB and sql_conn is not None:
             if pixel_coords is None or fit_id is None:
-                log_message( logfile, 'WARNING (%d, %d, %d): unable to insert bad fit attempt into db, \
-                        pixel_coords or fit_id not specified.' % (pixel_coords[0], pixel_coords[1], fit_id ) )
-                return 0
-            db.insert_fit_data_into_db( sql_conn, pixel_coords, \
+
+                msg = 'WARNING (%d, %d, %d): unable to insert bad fit attempt into db, \
+                        pixel_coords or fit_id not specified.' % (pixel_coords[0], pixel_coords[1], fit_id ) 
+
+                print( msg )
+
+                if log_enabled:
+                    log_message( logfile, msg )
+
+                    return 0
+
+
+                # end of log handling: add to the db
+                db.insert_fit_data_into_db( sql_conn, pixel_coords, \
                     fit_id, 0, fit_attempt=attempt )
-        return 0
+
+            # return 0 if last available attempt failed.
+            return 0
 
     
     # otherwise we call the current attempt function. 
@@ -271,14 +283,16 @@ def process_file( ax, infile, pixel_coords, sql_conn=None, logfile=None ):
     
     if not dlf.construct_histo_array( infile, efront_histo ):
 
+        msg = "ERROR: unable to open file: " + infile 
+
+        print( msg )
+        
         if log_enabled:
-            log_message( logfile, "ERROR: unable to open file: " + infile )
+            log_message( logfile, msg )
 
         sys.exit(0)
     
     
-
-
     # get the 6 suspected peaks
     our_peaks = [0] * NUM_PEAKS
     num_peaks_found = dlf.get_n_peak_positions( NUM_PEAKS, efront_histo, our_peaks )
@@ -287,7 +301,11 @@ def process_file( ax, infile, pixel_coords, sql_conn=None, logfile=None ):
 
         msg = 'WARNING (%d,%d,*): found less than 5 peaks, skipping this fit.'
         msg %= (pixel_coords[0], pixel_coords[1] )
-        log_message( msg, logfile )
+
+        print( msg )
+
+        if log_enabled:
+            log_message( logfile, msg )
         
         if sql_conn is not None:
             for fit_id in range(3):
@@ -298,24 +316,6 @@ def process_file( ax, infile, pixel_coords, sql_conn=None, logfile=None ):
         return 0
 
     
-    # do a check on peak values: energy differenc for the pairs should be constant. no check necessary on the 
-    # largest peak since it always dominates, the only potential problem is really the smallest peak in the 
-    # lowest energy pair.
-
-    check_warnings = 1
-    
-    if check_warnings:
-        if( abs(23 - (our_peaks[1] - our_peaks[0] ) ) > 20 ):
-            log_message( logfile,
-                         "WARNING (%d,%d,*): invalid peak suspected for pair 1. "
-                         % (pixel_coords[0], pixel_coords[1]) ) 
-    
-        if( abs(23 - (our_peaks[3] - our_peaks[2] ) ) > 20 ):
-            log_message( logfile,
-                         "WARNING (%d,%d,*): invalid peak suspected for pair 2. "
-                         % (pixel_coords[0], pixel_coords[1]) )
-
-
     # debug 
     if PRINT_PEAK_POSITIONS:
         print( "INFO: found peaks " + str(our_peaks) )
@@ -332,10 +332,52 @@ def process_file( ax, infile, pixel_coords, sql_conn=None, logfile=None ):
                      ylabel = "" )
 
 
-    if SHOW_PLOT:
+    if SHOW_HISTO:
         plt.show()
 
 
+
+    # do a check on peak values: energy differenc for the pairs should
+    # be constant. no check necessary on the largest peak since it
+    # always dominates, the only potential problem is really the
+    # smallest peak in the lowest energy pair. this occurs after
+    # plotting so that we can return with the plot alread made.
+    # basically, we are saying that if we cannot determine where the
+    # peak positions are to 0th order, we are not going to bother
+    # fitting them since it will definitely not work if we misidentify
+    # a peak position.
+
+    check_warnings = 1
+    
+    if check_warnings:
+        if( abs(23 - (our_peaks[1] - our_peaks[0] ) ) > 45 ):
+
+            msg = ( "WARNING (%d,%d,*): invalid peak suspected for pair 1. Skipping. "
+                         % (pixel_coords[0], pixel_coords[1]) )
+
+            print( msg ) 
+
+            if log_enabled:
+                log_message( logfile, msg )
+
+            return 0
+                         
+    
+        if( abs(23 - (our_peaks[3] - our_peaks[2] ) ) > 45 ):
+
+            msg = ( "WARNING (%d,%d,*): invalid peak suspected for pair 2. Skipping"
+                         % (pixel_coords[0], pixel_coords[1]) ) 
+
+            print( msg ) 
+                         
+            if log_enabled:         
+                log_message( logfile, msg )
+
+            return 0
+
+
+
+        
         # determine which fits to perform, 1 = fit must be attempted. by default if no 
     # conn is supplied we process all the fits.
 
@@ -384,10 +426,11 @@ def process_file( ax, infile, pixel_coords, sql_conn=None, logfile=None ):
    
     
     # initial fit bounds, these are reduced a bit if the fit fails.
+    # the last one is a hack that only works in this particular situation.
     fit_bounds = [\
                     [ our_peaks[0]-50, our_peaks[1]+13 ],  \
                     [ our_peaks[2]-30, our_peaks[3]+13 ],  \
-                    [ our_peaks[4]-80, our_peaks[4]+16 ] \
+                    [ our_peaks[4]-80, our_peaks[-1]+16 ] \
                 ]
     
     # initial guesses which get modified later if the fit fails.
@@ -398,10 +441,10 @@ def process_file( ax, infile, pixel_coords, sql_conn=None, logfile=None ):
     ]
 
     if num_peaks_found == 5:
-        p0 += [ 4.0, 0.99, 30.0, 1.0 ] + [ 200000.0, our_peaks[4]+8 ]
+        p0 += [ [ 4.0, 0.99, 30.0, 1.0 ] + [ 200000.0, our_peaks[4]+8 ] ]
 
     elif num_peaks_found == 6:
-        p0 += [ 6.0, 0.99, 42.0, 1.6 ] + [ 50000.0, our_peaks[4] + 8.0 ] + [ 200000.0, our_peaks[5] + 8.0 ],
+        p0 += [ [ 6.0, 0.99, 42.0, 1.6 ] + [ 50000.0, our_peaks[4] + 8.0 ] + [ 200000.0, our_peaks[5] + 8.0 ] ] 
 
 
     peak_detect = [ our_peaks[0:2], our_peaks[2:4], our_peaks[4:] ]
@@ -501,9 +544,9 @@ def fit_all_peaks():
     dimy = 4
 
     # used to name the image files
-    files = db.all_db_names
+    files = db.all_db_ids
 
-    databases = db.all_dbs
+    databases = db.all_dbs_list
 
     # used for estimating time remaining.
     start_time = time.time()
@@ -514,11 +557,13 @@ def fit_all_peaks():
         # create the current db if it doesn't already exist.
         if not os.path.exists( databases[a] ):
             db.create_db( databases[a] )
-        
+
+        # this is the name associated with the current db, e.g. 'centered'.
         fileprefix = files[a]
 
         # make dir for output images if it doesn't exist 
         current_outdir = '../../images/current_fit_images/' + fileprefix + '/'
+
         if not os.path.exists( current_outdir ):
             os.mkdir( current_outdir )
 
@@ -530,12 +575,13 @@ def fit_all_peaks():
             # these 2 loops loop over grids of dimx x dimy images. 
             for x in range( totalx ):
                 
-                plt.clf()
-                plt.close()
-                f, axarr = plt.subplots( dimx, dimy, figsize=(20,10) )    
-                
                 # these loops create the 4x4 grids. 2 per strip row.
                 for k in range( totaly // (dimx * dimy ) ):
+
+                    plt.clf()
+                    plt.close()
+                    f, axarr = plt.subplots( dimx, dimy, figsize=(20,10) )    
+                    
                     for i in range(dimx):
                         for j in range(dimy):
 
@@ -547,7 +593,7 @@ def fit_all_peaks():
                             jutils.estimate_time_left( x * totaly + y
                                                        + ( a * totalx * totaly ), 
                                                        len(files) * totalx * totaly,
-                                                       start_time, num_updates=50 )
+                                                       start_time, num_updates=100 )
                                 
                             # current pixel coords
                             coords = ( x, y )
@@ -581,30 +627,32 @@ def fit_all_peaks():
     
 # this function is to be used for debugging the fits. once you have found a fit that 
 # does not converge, add a new fit and 
-def make_one_plot( coords1, coords2, filenum ):
-
+def make_one_plot( db_id, x, y ):
+    
+    if db_id not in db.all_db_ids:
+        print( 'ERROR: db_id given is not in the list of db ids. ' )
+        return 0
+    
     set_globals_for_debugging()
-
-    pixel_coords = ( coords1, coords2 )
-        
-    files = [ "deadlayerdet3rt", "deadlayerdet3cent" ]
-    databases = [ sql_db_manager.rotated_db, sql_db_manager.centered_db ]
-
-    current_file = files[filenum] + "/" + files[filenum] + "_%d_%d.bin" % pixel_coords
+    
+    current_file = db_id +  "_%d_%d.bin" % (x,y)
     
     if PRINT_FILE_NAMES:
         print( "INFO: processing file: " + current_file )
     
-    current_file = "../extracted_ttree_data/" + current_file
-    
+    current_file = ( "../../data/extracted_ttree_data/"
+                     + db_id + '/'  + current_file )
+        
     plt.clf()
     ax = plt.axes()
     
-    with sqlite3.connect( databases[filenum] ) as sql_conn:
-        process_file( ax, current_file, pixel_coords, sql_conn )    
+    with sqlite3.connect( db.all_dbs_dict[ db_id ]  ) as sql_conn:
+        
+        process_file( ax, current_file, (x,y), sql_conn = sql_conn, logfile = None )
 
     plt.show()
-    
+
+    return 1
     
     
        
@@ -622,7 +670,6 @@ def log_message( logfile, msg ):
     with open( logfile, mode ) as log:
         log.write( msg + '\n' )
     
-    print( msg )
 log_message.first_msg = 1
 
 
@@ -642,10 +689,12 @@ def set_globals_for_debugging():
     
     global PRINT_FIT_STATUS
     PRINT_FIT_STATUS = 1
-    
+
+    global SHOW_HISTO
+    SHOW_HISTO = 1
      
        
-# make_one_plot(16,16)
+# make_one_plot( db.moved_id, 2, 26 )
 fit_all_peaks()
 
 
