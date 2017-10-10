@@ -42,11 +42,14 @@ import libjacob.jutils as jutils
 
 
 # from peakdetect import peakdetect 
-import deadlayer_helpers.sql_db_manager as db
+import deadlayer_helpers.sql_db_manager as dbmgr
 import deadlayer_helpers.data_handler as data
 
 
 import jspectroscopy as spec
+
+
+# from lmfit import Model, Parameters 
 
 
 
@@ -69,6 +72,9 @@ NUM_FEATURES = len( NUM_PEAKS_PER_FEATURE )
 
 
 
+def make_model_and_apply_fit( npeaks, params_guess, x, y, dy ):
+    pass
+
 
 # these are the functions that attempt to modify p0_attempt and fit_bounds_attempt.
 def default( p0, p0_attempt, fit_bounds, fit_bounds_attempt, npeaks ):
@@ -81,13 +87,14 @@ def increase_left_fit_bound_more( p0, p0_attempt, fit_bounds, fit_bounds_attempt
     fit_bounds_attempt[0] += 20
     
 def smaller_A( p0, p0_attempt, fit_bounds, fit_bounds_attempt, npeaks ):
-    for i in range( 4, 4+npeaks*2, 2 ):
-        p0_attempt[i] = 0.4 * p0[i]
+    print( npeaks ) 
+    for i in range( npeaks ):
+        p0_attempt['A' + str(i)] = 0.4 * p0[ 'A' + str(i) ]
 
 def larger_A( p0, p0_attempt, fit_bounds, fit_bounds_attempt, npeaks ):
     # fit_bounds_attempt[1] += 5
-    for i in range( 4, 4+npeaks*2, 2 ):
-        p0_attempt[i] = 3 * p0[i]
+    for i in range( npeaks ):
+        p0_attempt[ 'A' + str(i) ] = 3 * p0[ 'A' + str(i) ]
 
 def next_fit( p0, p0_attempt, fit_bounds, fit_bounds_attempt, npeaks ):
     pass
@@ -99,11 +106,11 @@ def next_fit( p0, p0_attempt, fit_bounds, fit_bounds_attempt, npeaks ):
 # observations about what is gonig wrong. the particular attempts we use depend on the peak id.
 def next_fit_attempt( p0, p0_attempt, fit_bounds, fit_id,
                       fit_bounds_attempt, npeaks,
-                      attempt, sql_conn=None, pixel_coords=None ):
+                      attempt, db = None, pixel_coords=None ):
 
     
     # these will be modified and used later as the initial guess.
-    p0_attempt[:] = p0[:]
+    p0_attempt = p0.copy()
     fit_bounds_attempt[:] = fit_bounds[:]    
 
 
@@ -129,12 +136,14 @@ def next_fit_attempt( p0, p0_attempt, fit_bounds, fit_id,
     # on this run. in that case put it in the DB. 
     if attempt == len(modifier_functions):
         
-        if UPDATE_DB and sql_conn is not None:
+        if UPDATE_DB and db is not None:
+
             if pixel_coords is None or fit_id is None:
 
-                msg = 'WARNING (%d, %d, %d): unable to insert bad fit attempt into db, \
-                        pixel_coords or fit_id not specified.' % (pixel_coords[0], pixel_coords[1], fit_id ) 
-
+                msg = ( 'WARNING (%d, %d, %d): unable to insert bad fit attempt into db '
+                        + 'pixel_coords or fit_id not specified.'
+                        % (pixel_coords[0], pixel_coords[1], fit_id ) )
+                
                 print( msg )
 
                 if log_enabled:
@@ -142,17 +151,16 @@ def next_fit_attempt( p0, p0_attempt, fit_bounds, fit_id,
 
                     return 0
 
-
                 # end of log handling: add to the db
-                db.insert_fit_data_into_db( sql_conn, pixel_coords, \
-                    fit_id, 0, fit_attempt=attempt )
+                db.insert_fit_data( pixel_coords[0], pixel_coords[1], 
+                                    fit_id, 0, fit_attempt=attempt )
 
             # return 0 if last available attempt failed.
             return 0
 
     
     # otherwise we call the current attempt function. 
-    modifier_functions[attempt]( p0, p0_attempt, fit_bounds, fit_bounds_attempt, npeaks )
+    modifier_functions[ attempt ] ( p0, p0_attempt, fit_bounds, fit_bounds_attempt, npeaks )
     
     if PRINT_FIT_ATTEMPT:
         print( 'INFO: testing fit attempt ' + str(attempt) )
@@ -173,18 +181,21 @@ def next_fit_attempt( p0, p0_attempt, fit_bounds, fit_id,
 # and then plot. return 1 if successful fit obtained, otherwise 0. last_attempt is the 
 # last attempted + 1, i.e. it is the first fit that will be attempted. 
 
-def apply_peak_fit( ax, pixel_coords, fit_id, x, y, fit_bounds,
-                    p0, npeaks, last_attempt=-1, mu_all=None, 
-                    muerr_all=None, reduc_chisq_all=None, sql_conn=None, peak_detect=None ):
+def apply_peak_fit( ax, fit_id, x, y, fit_bounds,
+                    p0, npeaks, last_attempt=-1, pixel_coords=None, mu_all=None, 
+                    muerr_all=None, reduc_chisq_all=None, db=None, peak_detect=None ):
     
-
-    fitfunc = spec.n_fitfuncs_abstract( spec.fitfunc_n_alpha_peaks, npeaks )
+    print( last_attempt ) 
+    
+    fitfunc = spec.sum_n_fitfuncs( spec.fitfunc_n_alpha_peaks, npeaks )
 
     
-    # these will be populated based on the current attempt number and the given p0 and fit_bounds,
-    # which are used as the first guesses. they are passed as parameters so they can be used after
+    # these will be populated based on the current attempt number and
+    # the given p0 and fit_bounds, which are used as the first
+    # guesses. they are passed as parameters so they can be used after
     # without returning them.
-    p0_attempt = []
+
+    p0_attempt = {}
     fit_bounds_attempt = []
 
     
@@ -196,7 +207,7 @@ def apply_peak_fit( ax, pixel_coords, fit_id, x, y, fit_bounds,
 
         all_attempts_failed = next_fit_attempt( p0, p0_attempt,
                                                 fit_bounds, fit_id, fit_bounds_attempt, 
-                                                npeaks, current_attempt, sql_conn=sql_conn,
+                                                npeaks, current_attempt, db = db,
                                                 pixel_coords=pixel_coords )
         
         if not all_attempts_failed:
@@ -206,6 +217,7 @@ def apply_peak_fit( ax, pixel_coords, fit_id, x, y, fit_bounds,
 
             return 0
 
+        print( p0_attempt ) 
         
         ret = jmath.jacob_least_squares( x, y, np.sqrt(y),
                                          p0_attempt, fitfunc, fit_bounds=fit_bounds_attempt,
@@ -228,12 +240,12 @@ def apply_peak_fit( ax, pixel_coords, fit_id, x, y, fit_bounds,
     reduc_chisq, dof, pf, pferr = ret         
                               
     # write all relevant data to the db
-    if UPDATE_DB and sql_conn is not None:
-        db.insert_fit_data_into_db( sql_conn, pixel_coords, fit_id,
-                                    1, last_attempt, reduc_chisq,
-                                    pf, pferr, p0_attempt, fit_bounds_attempt,
-                                    peak_detect ) 
-
+    if UPDATE_DB and db is not None:
+        db.insert_fit_data( x, y, fit_id,
+                            1, last_attempt, reduc_chisq,
+                            pf, pferr, p0_attempt, fit_bounds_attempt,
+                            peak_detect ) 
+        
     # where we are after breaking    
     if PRINT_PF:
         print( "pf = " + str(pf) )
@@ -266,21 +278,23 @@ def apply_peak_fit( ax, pixel_coords, fit_id, x, y, fit_bounds,
 
 
 
-# do all behavior specific to our application: read file, fit peaks, make the plot.
-# if sql_conn is supplied, they we assume that it is a valid open sqlite connection
-# and check db for whether this file has been processed before.
-def process_file( ax, infile, pixel_coords, sql_conn=None, logfile=None ):
+# do all behavior specific to our application: read file, fit peaks,
+# make the plot.  if db is supplied, they we assume that it is a valid
+# open sqlite connection and check db for whether this file has been
+# processed before.
+
+def process_file( ax, infile, x, y, db = None, logfile=None ):
 
     log_enabled = logfile is not None
     
-    coordsstr = "(%d, %d)" % pixel_coords
+    coordsstr = "(%d, %d)" % ( x, y )
 
     # x axis, needed no matter what.
-    x = np.arange( 5000 )
+    xaxis = np.arange( 5000 )
 
 
     # create and populate the histogram array 
-    efront_histo = np.zeros( x.size )
+    efront_histo = np.zeros( xaxis.size )
 
     
     if not data.construct_histo_array( infile, efront_histo ):
@@ -297,21 +311,21 @@ def process_file( ax, infile, pixel_coords, sql_conn=None, logfile=None ):
     
     # get the 6 suspected peaks
     our_peaks = [0] * NUM_PEAKS
-    num_peaks_found = jmath.get_n_peak_positions( NUM_PEAKS, efront_histo, our_peaks )
+    our_peaks, num_peaks_found = jmath.get_n_peak_positions( NUM_PEAKS, efront_histo )
 
     if num_peaks_found < 5:
 
         msg = 'WARNING (%d,%d,*): found less than 5 peaks, skipping this fit.'
-        msg %= (pixel_coords[0], pixel_coords[1] )
+        msg %= ( x, y )
 
         print( msg )
 
         if log_enabled:
             log_message( logfile, msg )
         
-        if sql_conn is not None:
+        if db is not None:
             for fit_id in range(3):
-                db.insert_fit_data_into_db( sql_conn, pixel_coords, fit_id,
+                db.insert_fit_data( x, y, fit_id,
                                             successful_fit = 0 )
 
 
@@ -328,7 +342,7 @@ def process_file( ax, infile, pixel_coords, sql_conn=None, logfile=None ):
 
  
     # plot the histogram without fit yet 
-    jplt.plot_histo( ax, x, efront_histo, plot_bounds=plot_bounds, logscale=0,
+    jplt.plot_histo( ax, xaxis, efront_histo, plot_bounds=plot_bounds, logscale=0,
                      title = "", 
                      xlabel = "", 
                      ylabel = "" )
@@ -355,7 +369,7 @@ def process_file( ax, infile, pixel_coords, sql_conn=None, logfile=None ):
         if( abs(23 - (our_peaks[1] - our_peaks[0] ) ) > 45 ):
 
             msg = ( "WARNING (%d,%d,*): invalid peak suspected for pair 1. Skipping. "
-                         % (pixel_coords[0], pixel_coords[1]) )
+                         % ( x, y ) )
 
             print( msg ) 
 
@@ -368,7 +382,7 @@ def process_file( ax, infile, pixel_coords, sql_conn=None, logfile=None ):
         if( abs(23 - (our_peaks[3] - our_peaks[2] ) ) > 45 ):
 
             msg = ( "WARNING (%d,%d,*): invalid peak suspected for pair 2. Skipping"
-                         % (pixel_coords[0], pixel_coords[1]) ) 
+                         % ( x, y ) ) 
 
             print( msg ) 
                          
@@ -392,11 +406,12 @@ def process_file( ax, infile, pixel_coords, sql_conn=None, logfile=None ):
     reduc_chisq_all = [] # store all reduced chisq values.
     
     
-    if sql_conn is not None:
+    if db is not None:
+
         for i in range(len(fits_to_perform)):
             
             # extract
-            result = db.read_data_from_db( sql_conn, pixel_coords, i )
+            result = db.read_fit_data( x, y, i )
             successful_fit, fit_attempt, reduc_chisq, pf, pferr, p0, fit_bounds, peak_detect = result
             
             fits_to_perform[i] = not successful_fit
@@ -404,8 +419,8 @@ def process_file( ax, infile, pixel_coords, sql_conn=None, logfile=None ):
             fit_attempts[i] = fit_attempt
             
             if successful_fit:
-                fitfunc = spec.n_fitfuncs_abstract( dlf.fitfunc_n_alpha_peaks, NUM_PEAKS_PER_FEATURE[i] )
-                jplt.add_fit_to_plot( ax, x, fit_bounds, pf, pferr, fitfunc )
+                fitfunc = spec.sum_n_fitfuncs( spec.fitfunc_n_alpha_peaks, NUM_PEAKS_PER_FEATURE[i] )
+                jplt.add_fit_to_plot( ax, xaxis, fit_bounds, pf, pferr, fitfunc )
                 reduc_chisq_all.append( reduc_chisq )
                 
                 
@@ -425,41 +440,66 @@ def process_file( ax, infile, pixel_coords, sql_conn=None, logfile=None ):
 
         
     
-   
-    
-    # initial fit bounds, these are reduced a bit if the fit fails.
-    # the last one is a hack that only works in this particular situation.
+    # construct guesses for the fitbounds and parameters.
+        
     fit_bounds = [\
-                    [ our_peaks[0]-50, our_peaks[1]+13 ],  \
-                    [ our_peaks[2]-30, our_peaks[3]+13 ],  \
-                    [ our_peaks[4]-80, our_peaks[-1]+16 ] \
+                    [ our_peaks[0]-50, our_peaks[1]+13 ], 
+                    [ our_peaks[2]-30, our_peaks[3]+13 ], 
+                    [ our_peaks[4]-80, our_peaks[-1]+16 ]  # hack over here 
                 ]
     
-    # initial guesses which get modified later if the fit fails.
-    # the final term depends on whether we found 5 or 6 peaks.
-    p0 = [
-            [ 6.0, 0.97, 20.2, 2.0 ] + [ 20000.0, our_peaks[0] + 8.0 ] + [ 60000.0, our_peaks[1] + 8.0 ],
-            [ 6.0, 0.99, 42.0, 1.6 ] + [ 50000.0, our_peaks[2] + 8.0 ] + [ 100000.0, our_peaks[3] + 8.0 ],
-    ]
+    sigma_guess = 5.0
+    eta_guess = 0.97
+    tau1_guess =  35.0
+    tau2_guess = 1.5
 
-    if num_peaks_found == 5:
-        p0 += [ [ 4.0, 0.99, 30.0, 1.0 ] + [ 200000.0, our_peaks[4]+8 ] ]
+    # construct guesses for the A parameter.
+    A_array_guess = [ [ 20000.0, 60000.0 ], [ 50000.0, 100000. ] ]
+    mu_array_guess = [ [ 8 + our_peaks[i], 8 + our_peaks[i+1] ] for i in [0, 1]  ]
+    
+    if num_peaks_found == 6:
+        A_array_guess.append( [ 50000.0, 200000.0 ] )
+        mu_array_guess.append( [ our_peaks[4] + 8, our_peaks[5] + 8 ] )
+    else: 
+        A_array_guess.append( [ 200000.0 ] ) 
+        mu_array_guess.append( [ our_peaks[4] + 8 ] )
+        
+    
+    p0 = [0] * 3
 
-    elif num_peaks_found == 6:
-        p0 += [ [ 6.0, 0.99, 42.0, 1.6 ] + [ 50000.0, our_peaks[4] + 8.0 ] + [ 200000.0, our_peaks[5] + 8.0 ] ] 
+    for i in range( NUM_FEATURES ):
+        
+        p0[i] = spec.construct_n_alpha_peaks_params( sigma_guess, eta_guess, tau1_guess,
+                                                     tau2_guess, A_array_guess[i],
+                                                     mu_array_guess[i] )
+        
+    # p0 = [
+    #         construct_n_alpha_peaks_params[ 6.0, 0.97, 20.2, 2.0 ] + [ 20000.0, our_peaks[0] + 8.0 ] + [ 60000.0, our_peaks[1] + 8.0 ],
+    #         [ 6.0, 0.99, 42.0, 1.6 ] + [ 50000.0, our_peaks[2] + 8.0 ] + [ 100000.0, our_peaks[3] + 8.0 ],
+    # ]
+
+    # if num_peaks_found == 5:
+    #     p0 += [ [ 4.0, 0.99, 30.0, 1.0 ] + [ 200000.0, our_peaks[4]+8 ] ]
+
+    # elif num_peaks_found == 6:
+    #     p0 += [ [ 6.0, 0.99, 42.0, 1.6 ] + [ 50000.0, our_peaks[4] + 8.0 ] + [ 200000.0, our_peaks[5] + 8.0 ] ] 
 
 
     peak_detect = [ our_peaks[0:2], our_peaks[2:4], our_peaks[4:] ]
-        
+    
     # loop through the fits that were not in the db and add them if successful.
     for i in range( NUM_FEATURES ):
         if fits_to_perform[i]:
-                   
-            apply_peak_fit( ax, pixel_coords, i, x, efront_histo, fit_bounds[i], p0[i],
-                            num_peaks[i], fit_attempts[i], peak_detect[i],
-                            reduc_chisq_all = reduc_chisq_all, sql_conn = sql_conn,
-                            peak_detect = peak_detect[i] ) #, mu_all,
-                            # muerr_all, reduc_chisq_all, sql_conn=sql_conn )
+
+
+            # apply_peak_fit( ax, x, y, fit_bounds,
+            #         p0, npeaks, last_attempt=-1, pixel_coords=None, mu_all=None, 
+            #         muerr_all=None, reduc_chisq_all=None, db=None, peak_detect=None ):
+            
+            apply_peak_fit( ax, i, xaxis, efront_histo, fit_bounds[i], p0[i],
+                            num_peaks[i], fit_attempts[i],
+                            reduc_chisq_all = reduc_chisq_all, db = db,
+                            peak_detect = peak_detect[i], pixel_coords = (x,y) ) 
     
     
     # # add a description of the fit to the plot
@@ -629,29 +669,30 @@ def fit_all_peaks():
     
 # this function is to be used for debugging the fits. once you have found a fit that 
 # does not converge, add a new fit and 
-def make_one_plot( db_id, x, y ):
+def make_one_plot( db, x, y ):
     
-    if db_id not in db.all_db_ids:
+    if db not in dbmgr.all_dbs :
         print( 'ERROR: db_id given is not in the list of db ids. ' )
         return 0
     
     set_globals_for_debugging()
     
-    current_file = db_id +  "_%d_%d.bin" % (x,y)
+    current_file = db.name +  "_%d_%d.bin" % (x,y)
     
     if PRINT_FILE_NAMES:
         print( "INFO: processing file: " + current_file )
     
     current_file = ( "../../data/extracted_ttree_data/"
-                     + db_id + '/'  + current_file )
+                     + db.name + '/'  + current_file )
         
-    plt.clf()
     ax = plt.axes()
     
-    with sqlite3.connect( db.all_dbs_dict[ db_id ]  ) as sql_conn:
+    db.connect()
         
-        process_file( ax, current_file, (x,y), sql_conn = sql_conn, logfile = None )
+    process_file( ax, current_file, x, y, db = None, logfile = None )
 
+    db.disconnect()
+    
     plt.show()
 
     return 1
@@ -677,6 +718,7 @@ log_message.first_msg = 1
 
 
 
+
 # set debug globals, called by make_one_plot()
 def set_globals_for_debugging():
 
@@ -693,10 +735,10 @@ def set_globals_for_debugging():
     PRINT_FIT_STATUS = 1
 
     global SHOW_HISTO
-    SHOW_HISTO = 1
+    SHOW_HISTO = 0
      
        
-make_one_plot( db.moved_id, 16, 2 )
+make_one_plot( dbmgr.moved, 16, 2 )
 # fit_all_peaks()
 
 

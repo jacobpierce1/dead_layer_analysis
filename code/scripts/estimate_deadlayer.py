@@ -410,7 +410,6 @@ def get_peakvals( db, x, y, plot_sim_results = -1 ):
         # recorded in the DB
         
         if np.isnan( single_fit_params.x[ peaknum ][ 0 ] ):
-            print ( 'reached' ) 
             peakpos_arr.append( np.nan )
             peakpos_delta_arr.append( np.nan )
             continue

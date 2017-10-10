@@ -13,8 +13,8 @@ from scipy.optimize import OptimizeWarning
 warnings.simplefilter("error", OptimizeWarning)
 
 
-
-    
+# curve fitting library
+from lmfit import Model, Parameters    
 
 
 
@@ -95,58 +95,106 @@ def get_n_peak_positions( n, data ):
 
 
 
+
 # perform fit. return None if there is error.
 np.seterr(divide='ignore', invalid='ignore')
 
-def jacob_least_squares( x, y, dy, p0, fitfunc, dx=None,
-                         reduc_chisq_max=np.inf, fit_bounds=None ):
+def jacob_least_squares( x, y, dy, params_guess, fitfunc, dx = None,
+                         reduc_chisq_max = np.inf, fit_bounds = None,
+                         params_guess_bounds = None):
     
-    # construct args for the fitfunc
-    precut = [ x, y ]
-
-    if dx is not None:
-        precut += dx
-
-        # residual_function =
-        raise NotImplementedError
-
-    else:
-        residual_function = lambda p, x, y, dy: residual_from_fitfunc( p, x, y, dy, fitfunc )
-
-    precut.append( dy )
-
-    # cut the args as appropriate
-    if fit_bounds is None:
-        fit_bounds = [ min(x), max(x) ]  # used for plots 
-        args = precut
-
-    else:
-        args = [ xcut( x, _z, fit_bounds ) for _z in precut ]
-
-    args = tuple( args )
-
-    # using scipy.leastsq. does not allow you to specify bounds for the fit params. 
-    try:       
-        pf, cov, info, mesg, success =    \
-            scipy.optimize.leastsq( residual_function, p0, args=args, full_output=1 )  
-    except ValueError:
-        status = 0
-        return None
     
-    dof = len( args[0] )-len(pf)
-    reduc_chisq = sum(info["fvec"]*info["fvec"]) / dof
+    model = Model( fitfunc, indepdendent_vars = [ 'x' ] ,
+                   param_names = params_guess.keys() )
 
-    # detect and handle errors 
-    error = success > 4 or len(pf)==0 or cov is None or reduc_chisq > reduc_chisq_max
-    if error:
-        status = 0 
-        return None
-
-    if (reduc_chisq_max is not None) and reduc_chisq > reduc_chisq_max:
-        return None
+    print( (model.independent_vars, model.param_names ) )
     
-    pferr = np.sqrt( np.diag(cov) * reduc_chisq )
-    return ( reduc_chisq, dof, pf.tolist(), pferr.tolist() )
+    # now set up and apply the lmfit
+    params = Parameters()
+    for key in params_guess:
+        params.add( key, value = params_guess[ key ] )
+
+    if params_guess_bounds is not None:
+        for key in params_guess_bounds:
+            left, right = params_guess_bounds[key]
+
+            if left > right :
+                raise ValueError( 'The specified bounds for param %s are '
+                                  + 'not ordered.' % ( key, ) )
+            
+            if left is not None:
+                params[key].set( min=left )
+
+            if right is not None:
+                params[key].set( max=right ) 
+
+    # model.independent_vars = [ 'x' ]
+    # model.param_names = params.keys() 
+
+    print( (model.independent_vars, model.param_names ) ) 
+
+    
+    result = model.fit( y, params, x = x, dy = dy  ) 
+
+    
+
+    
+    # model = 
+
+    # # construct args for the fitfunc
+    # precut = [ x, y ]
+
+    # if dx is not None:
+    #     precut += dx
+
+    #     # residual_function =
+    #     raise NotImplementedError
+
+    # else:
+    #     pass
+    #     # residual_function = (
+    #     #     lambda params, x, y, dy:
+    #     #     residual_from_fitfunc( params, x, y, dy, fitfunc )
+    #     # )
+
+    # precut.append( dy )
+
+    # # cut the args as appropriate
+    # if fit_bounds is None:
+    #     fit_bounds = [ min(x), max(x) ]  # used for plots 
+    #     args = precut
+
+    # else:
+    #     args = [ xcut( x, _z, fit_bounds ) for _z in precut ]
+
+    # args = tuple( args )
+
+
+
+
+    
+    # # using scipy.leastsq. does not allow you to specify bounds for the fit params. 
+    # try:       
+    #     pf, cov, info, mesg, success =    \
+    #         scipy.optimize.leastsq( residual_function, p0, args=args, full_output=1 )  
+    # except ValueError:
+    #     status = 0
+    #     return None
+    
+    # dof = len( args[0] )-len(pf)
+    # reduc_chisq = sum(info["fvec"]*info["fvec"]) / dof
+
+    # # detect and handle errors 
+    # error = success > 4 or len(pf)==0 or cov is None or reduc_chisq > reduc_chisq_max
+    # if error:
+    #     status = 0 
+    #     return None
+
+    # if (reduc_chisq_max is not None) and reduc_chisq > reduc_chisq_max:
+    #     return None
+    
+    # pferr = np.sqrt( np.diag(cov) * reduc_chisq )
+    # return ( reduc_chisq, dof, pf.tolist(), pferr.tolist() )
 
       
 #

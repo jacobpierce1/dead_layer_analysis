@@ -10,7 +10,7 @@
 
 import numpy as np
 import scipy.special as special
-
+from lmfit import Model 
 
 
 # global 'vars' that can be used for rapidly
@@ -102,26 +102,65 @@ def fitfunc_alpha_free_det_params( p, x ):
 # return an inline of fitfunc_n_alpha_peaks given the number of peaks to fit.
 # the first 4 params are the detector params, and the last 2*n are (A1, u1, ... )
 # previously fitfunc_n_alpha_peaks_abstract
-def n_fitfuncs_abstract( fitfunc, n ):
+def sum_n_fitfuncs( fitfunc, n ):
     return lambda p, x: fitfunc( n, p, x )
 
 
 
 
-# fit n alpha peaks given vector p and array x 
-# p format: sigma, eta, tau1, tau2, A1, mu1, ..., A_n, mu_n
-def fitfunc_n_alpha_peaks( n, p, x ):
 
+# # fit n alpha peaks given vector p and array x 
+# # p format: sigma, eta, tau1, tau2, A1, mu1, ..., A_n, mu_n
+# def fitfunc_n_alpha_peaks( n, p, x ):
+
+#     ret = 0
+
+#     for i in range( n ):
+#         ret += alpha_fit( p[4+2*i],p[4+2*i+1],p[0],p[1],p[2],p[3], x )
+
+#     return ret
+
+
+
+
+# return an lmfit model constructed from n alpha
+# fit functions. keep sigma, eta, tau1, tau2 the same
+# in all of them.
+
+
+
+def fitfunc_n_alpha_peaks( n, params, x ):
+    
     ret = 0
-
     for i in range( n ):
-        ret += alpha_fit( p[4+2*i],p[4+2*i+1],p[0],p[1],p[2],p[3], x )
+        ret += alpha_fit( params[ 'A' + str(i) ], params[ 'mu' + str(i) ],
+                          params[ 'sigma' ], params[ 'eta' ], 
+                          params['tau1'], params['tau2'], x )
 
     return ret
 
 
 
+
+
+# construct dict for input to fitfunc_n_alpha_peaks.
+
+def construct_n_alpha_peaks_params(
+        sigma, eta, tau1, tau2, A_array, mu_array ):
+
+    n = len( mu_array ) 
     
+    ret =  { 'sigma' : sigma, 'eta' : eta,
+             'tau1' : tau1, 'tau2' : tau2 }
+
+    for i in range( n ):
+        ret[ 'mu' + str(i) ] = mu_array[i]
+        ret[ 'A' + str(i) ] = A_array[i]
+
+    return ret
+
+
+
     
 # # fit n alpha peaks given vector p and array x 
 # # p format: sigma, tau, A1, mu1, ..., A_n, mu_n
@@ -152,9 +191,7 @@ def fitfunc_n_alpha_peaks( n, p, x ):
 # reference: equation 10 in Bortels 1987  
 # this function is meant to be applied to scalar x, not list
 def alpha_fit( A, mu, sigma, eta, tau1, tau2, x ):        
-    #if eta < 0 or eta > 1:
-    #    return -1000
-        
+            
     # prevent overflow by computing logs and then exponentiating, at the expense of some
     # floating pt error. logtmpz is the log of the 2 analagous terms in the integrand.
     tauz = [tau1, tau2]

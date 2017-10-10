@@ -164,7 +164,9 @@ class db( object ):
 
 
 
-    def read_fit_data( self, pixel_coords, fit_id ):
+    def read_fit_data( self, x, y, fit_id ):
+
+        print( (x,y,fit_id) )
 
         if self.conn is None:
             raise ValueError( 'Cannot read db, sqlite3 connection is not open. Call db.connect().' )
@@ -177,9 +179,9 @@ class db( object ):
         
             
         query_dict = {
-            schema_cols[0]:pixel_coords[0],
-            schema_cols[1]:pixel_coords[1],
-            schema_cols[2]:fit_id
+            schema_cols[0] : x,
+            schema_cols[1] : y,
+            schema_cols[2] : fit_id
         }
         
         cursor.execute( query, query_dict )
