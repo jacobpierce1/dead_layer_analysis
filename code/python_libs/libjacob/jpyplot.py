@@ -112,8 +112,9 @@ def plot ( ax, x, y, xerr=None, yerr=None, xlabel=None, ylabel=None,
 
         plot_errorbar = 1
 
+        # omit fmt parameter for python 3, use fmt = 'none' for python 2.
         ax.errorbar ( x, y, xerr = xerr, yerr = yerr,
-                      errorevery = errorevery, fmt='none' )
+                      errorevery = errorevery )  #, fmt = 'none' )
 
     else:
         ax.plot( x, y, color=color )
@@ -151,7 +152,7 @@ def plot ( ax, x, y, xerr=None, yerr=None, xlabel=None, ylabel=None,
             
         set_linear_scale_plot_bounds( ax, xbounds, ybounds  )
         
-    add_legend( ax, legloc )    
+    # add_legend( ax, legloc )    
 
 
     

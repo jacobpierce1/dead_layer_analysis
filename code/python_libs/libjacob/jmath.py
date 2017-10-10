@@ -59,8 +59,10 @@ def xcut( x, y, newx_bounds, xsorted=0 ):
 # detection since it is the easiest way to deteremine a good location
 # for the plot boundaries.
 
-def get_n_peak_positions( n, data, output_peak_positions ):
+def get_n_peak_positions( n, data ):
 
+    output_peak_positions = [0] * n
+    
     # peakdetect returns 2 tuples: positions and counts of peaks
     peak_positions = peakdetect.peakdetect( data, lookahead=10 )[0]
 
@@ -72,20 +74,20 @@ def get_n_peak_positions( n, data, output_peak_positions ):
     # it is possible that not all n peaks are found. in that case
     # we will still populate our_peaks with the ones that were
     # found as it may still be useful. 
-    num_peaks_to_sort = min( n, len( peak_positions ) )
+    num_peaks_found = min( n, len( peak_positions ) )
 
         
     # now find the 5 largest and sort by x position.
     # indices is the indices of the peaks as found in data
     indices = np.argpartition( [ z[1] for z in peak_positions ],
-                               -num_peaks_to_sort )[ -num_peaks_to_sort : ]
+                               -num_peaks_found )[ -num_peaks_found : ]
     
     output_peak_positions[:] = [ np.asscalar( peak_positions[z][0] )
                                  for z in sorted( indices ) ]
 
     
     # return number of peaks detected.
-    return num_peaks_to_sort
+    return ( output_peak_positions, num_peaks_found )
 
 
 
@@ -99,11 +101,8 @@ np.seterr(divide='ignore', invalid='ignore')
 def jacob_least_squares( x, y, dy, p0, fitfunc, dx=None,
                          reduc_chisq_max=np.inf, fit_bounds=None ):
     
-    
-    
     # construct args for the fitfunc
     precut = [ x, y ]
-
 
     if dx is not None:
         precut += dx
@@ -116,7 +115,6 @@ def jacob_least_squares( x, y, dy, p0, fitfunc, dx=None,
 
     precut.append( dy )
 
-    
     # cut the args as appropriate
     if fit_bounds is None:
         fit_bounds = [ min(x), max(x) ]  # used for plots 
@@ -127,7 +125,6 @@ def jacob_least_squares( x, y, dy, p0, fitfunc, dx=None,
 
     args = tuple( args )
 
-    
     # using scipy.leastsq. does not allow you to specify bounds for the fit params. 
     try:       
         pf, cov, info, mesg, success =    \
@@ -201,6 +198,9 @@ def jacob_least_squares( x, y, dy, p0, fitfunc, dx=None,
 
 
 
+    
+
+    
 # input: a function that takes array of parameters and a scalar variable x, same as input of
 # optimize.least_sq; pf and pferr, obtained from jacob_least_squares; peakpos_guess, estimate of
 # the peak positions; number of iterations to perform.

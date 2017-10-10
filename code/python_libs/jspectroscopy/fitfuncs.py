@@ -3,10 +3,29 @@
 # and dicts for interpretation / data analysis later on.
 
 
+# TODO:
+# * option to automatically construct a sum of fitfuncs
+# * * suboption to hold some params constant when doing this
 
-except 
+
+import numpy as np
+import scipy.special as special
 
 
+
+# global 'vars' that can be used for rapidly
+# applying fitfuncs.
+
+# alpha_fitfunc = fitfunc( 
+# beta_fitfunc =
+
+# gamma_fitfunc is synonymous with gaussian.
+# gamma_fitfunc = 
+
+
+
+    
+    
 # class for all the fitfuncs. for maximal efficiency
 # and compabibility with scipy functions, they all
 # take array parameters as input. a function can also
@@ -25,6 +44,11 @@ class fitfunc( object ):
         if not callable( fitfunc ):
             raise ValueError( 'fitfunc must be a function' )
 
+
+        # verify that f is a function that accepts 2 params.
+        if f.__code__.co_argcount != 2:
+            raise ValueError( 'fitfunc must take 2 parameters: ' +
+                              '( params_array, input_array )' )
         
         
         self._fitfunc = fitfunc
@@ -57,10 +81,12 @@ class fitfunc( object ):
     
 
     def apply( self, pf, input_array ):
-        return self._fitfunc
+        return self._fitfunc( pf, input_array ) 
 
 
 
+
+    
     
 # in this case you supply all args as fit params, even the det ones which should be fixed. 
 def fitfunc_alpha_free_det_params( p, x ): 

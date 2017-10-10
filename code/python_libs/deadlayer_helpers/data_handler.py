@@ -24,10 +24,10 @@ _current_abs_path = os.path.dirname( __file__ ) + '/'
 # 'flat', or 'angled'. these are defined in
 # deadlayer_helpers.sql_db_manager.
 
-def get_pixel_histo( id, x, y, histo_in ):
-
+def get_pixel_histo( db, x, y, histo_in ):
+    
     datafile = ( _current_abs_path + '../../../data/extracted_ttree_data/' +
-id + '/' + id + '_' + str( x ) + '_' + str( y ) + '.bin' )
+                 db.name + '/' + db.name + '_' + str( x ) + '_' + str( y ) + '.bin' )
 
     construct_histo_array( datafile, histo_in )
 
@@ -42,32 +42,12 @@ def read_doubles_from_bin( f, buf ):
     buf[:] = array.array('d', bytes) 
     return 1
 
-    
-
-# # construct histogram count arrays from the file
-# def construct_histo_arrays( f, efront_histo, eback_histo ):
-
-    
-#     buf = array.array( 'd', [0.0, 0.0] )  # data gets read into here.
-
-#     while( read_doubles_from_bin( f, buf ) ):
-#         efront = buf[0]
-#         eback = buf[1]
-        
-#         # used this to verify that read was successful.
-#         # print efront
-#         # print eback
-#         # print int(efront)
-#         # print int(eback)
-    
-#         efront_histo[ int( efront ) ] += 1
-#         eback_histo[ int( eback ) ]  += 1
-
 
 
 
 # open binary infile and populate the array efront_histo as a histogram 
 def construct_histo_array( infile, efront_histo ):
+
     try:
         with open( infile, "rb" ) as f:
             buf = array.array( 'd', [0.0, 0.0] )  # data gets read into here.
@@ -78,11 +58,4 @@ def construct_histo_array( infile, efront_histo ):
         return 0
 
     return 1
-
-
-## write the pf parameters, chisq of the fit, etc. to a file
-## also extract information from the fitfunc where relevant.
-#write_info_to_file( fitfunc, pf, chisq ):
-#    return
-#    
 

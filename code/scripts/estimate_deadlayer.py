@@ -14,9 +14,12 @@ import libjacob.jmath as jmath
 
 import deadlayer_helpers.stopping_power_interpolation as stop
 import deadlayer_helpers.geometry as geom
-import deadlayer_helpers.sql_db_manager as db
+import deadlayer_helpers.sql_db_manager as dbman
 import deadlayer_helpers.analysis as anal
 import deadlayer_helpers.data_handler as data
+
+import jspectroscopy as spec
+
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -275,6 +278,7 @@ def example_estimate_for_one_source():
 # smaller std values correspond to the same detector properties
 # and admit valid comparison. turns out that stripy is the one with a much lower
 # standard deviation (about 0.7)
+
 def print_strip_stds( mu_grid ):
 
     stripx = mu_grid[ :, 15 ]
@@ -362,39 +366,186 @@ def estimate_deadlayer_from_moved_source():
 
 
 
+# # get 
+# def get_strip_peakvals( db_name, x ):
+
+#     return 
+        
+        
+
+    
 
 
-#
+# plot_sim_results: optional arg to plot the histogram of the
+# simulation results. if not -1, then will plot that number peak
+# out of the 6 peaks. so plot_sim_results = 1 will plot peak
+# number 1 (0-indexed)
+
+def get_peakvals( db, x, y, plot_sim_results = -1 ):    
+
+    alpha_fitfunc = spec.n_fitfuncs_abstract( spec.fitfunc_n_alpha_peaks, 1 )
+    peakpos_arr = []
+    peakpos_delta_arr = []
+    num_iterations = 300
+
+    histo = np.zeros( 5000 )
+    data.get_pixel_histo( db, x, y, histo )
+
+    
+    # find the 5 peak positions to nearest integer
+
+    peakpos_guesses_arr = [0] * 6
+    
+    peakpos_guesses_arr, npeaks_found = jmath.get_n_peak_positions( 6, histo )
+
+    if npeaks_found != 6:
+        print( 'ERROR: unable to find 6 peaks. ' ) 
+        return 0
+    
+    single_fit_params = db.get_single_peak_fit_parameters( x, y )
+
+    for peaknum in range(6):
+                
+        # this occurs if there was not a convergent fit
+        # recorded in the DB
+        
+        if np.isnan( single_fit_params.x[ peaknum ][ 0 ] ):
+            print ( 'reached' ) 
+            peakpos_arr.append( np.nan )
+            peakpos_delta_arr.append( np.nan )
+            continue
+
+        # print( single_fit_params.x[ peaknum ] )
+
+        print( single_fit_params[ peaknum ] )
+        
+        peakpos_sim_results = jmath.estimate_peakpos( alpha_fitfunc,
+                                                      single_fit_params.x[ peaknum ],
+                                                      single_fit_params.dx[ peaknum ],
+                                                      peakpos_guesses_arr[ peaknum ],
+                                                      num_iterations = num_iterations )
+
+        peakpos_arr.append( np.mean( peakpos_sim_results ) )
+        peakpos_delta_arr.append( np.std( peakpos_sim_results ) / np.sqrt( num_iterations ) )
+
+        # if PRINT_MAX_PEAKPOS_SIM_RESULTS:
+        #     print( 'max( peakpos_sim_results ): ' + str( max( peakpos_sim_results ) ) )
+        #     print( 'min( peakpos_sim_results ): ' + str( min( peakpos_sim_results ) ) )
+
+        # print the peakpos detected with no random sampling.
+        # if PRINT_BASE_PEAKPOS:
+        #     inverted_f = lambda x_: 0 - alpha_fitfunc( all_fit_params['pf_delta_arr'][peaknum], x_ )  
+        #     result = scipy.optimize.fmin( inverted_f, peakpos_guesses_arr[peaknum], disp=0 )
+        #     print( 'base peakpos: ' + str( result ) )
+
+        # if PRINT_PEAKPOS_ARR:
+        #     print( 'peakpos mean: ' + str( peakpos_arr[peaknum] ) )
+        #     print( 'peakpos std of mean: ' + str( peakpos_delta_arr[peaknum] ) )
+
+        # histogram the result of the simulation
+        if plot_sim_results != -1 and peaknum == plot_sim_results:
+            ax = plt.axes()
+            ax.hist( peakpos_sim_results, bins=num_iterations // 15 )
+            plt.show()
+            # return 1
+
+            
+    # peakpos_arr is an array containing the estimates positions of the 5 peaks. peakpos_delta_arr
+    # is the uncertainty on each estimate. note that the uncertainty is due entirely to uncertainty
+    # in fit parameters. peakvals_arr is the value of the function evaluated at each point.
+    # peakvals_arr is used to estimate the number of counts expected for each peak.
+
+    peakpos_arr = np.asarray( peakpos_arr )
+    peakpos_delta_arr = np.asarray( peakpos_delta_arr )
+    peakvals_arr = np.asarray( [ alpha_fitfunc( single_fit_params.x[ peaknum ],
+                                                [ peakpos_arr[peaknum] ] )[0]
+                                 for peaknum in range(5) ] )
+
+    return ( meas.meas( peakpos_arr, peakpos_delta_arr ), peakvals_arr )
+
+
+
+
+
+
+
+# do the analysis for a particular strip to see
+# the relationship between difference of secants and
+# difference in mu values.
 
 def preview_secant_differences():
 
-    # dbs = [ db.centered_db, db.moved_db ]
+    # the point of this function is that we analyze a particular strip,
+    # in this case x == 16 
+    x = 16
+
+    moved_peakvals = [0] * 32
+    centered_peakvals = [0] * 32 
+
+
+    # populate the previous two arrays. doing this to reduce duplicate code.
+    peakvals_arr = [ moved_peakvals, centered_peakvals ]
+    dbs = [ dbman.moved, dbman.centered ]
+    for db in dbs:
+        
+        db.connect()
+        for y in range( len( moved_peakvals ) ):
+            moved_peakvals[y] = get_peakvals( db, x, y, plot_sim_results = 2 )  
+        db.disconnect()
+
+
+    print( moved_peakvals )
+    print( centered_peakvals )
+    
+
+        
+    f, axarr = plt.subplots( 2 )
     
     cosine_matrices = geom.get_cosine_matrices( debug=0 )
 
+
+    # construct the sec differences from geometry
     secant_differences = meas.meas.from_list( 1 / cosine_matrices[ 'pu_238_moved' ][ 0, 16, : ]
-                                              - 1 / cosine_matrices[ 'pu_238_centered' ][ 0, 16, : ] )
+                                            - 1 / cosine_matrices[ 'pu_238_centered' ][ 0, 16, : ] )
 
-    print_strip_stds( db.get_mu_grid_where_valid( db.moved_db, 2 ) ) 
+    # now construct mu differences for peaks 2 and 3 at
+    # a particular strip, in this case 16.
     
-    mu_differences = ( db.get_mu_grid_where_valid( db.moved_db, 2 )[ 16, : ] 
-                       - db.get_mu_grid_where_valid( db.centered_db, 2 )[ 16, : ] )
+    peaknums = [ 2, 3 ]
+    mu_differences = [0] * 2
+        
+    for i in range( 2 ):
 
-    print( secant_differences )
-    print( mu_differences )
+        moved_mu = dbman.get_mu_grid_where_valid( db.moved_db, peaknums[i] )[ 16, : ] 
+        centered_mu = dbman.get_mu_grid_where_valid( db.centered_db, peaknums[i] )[ 16, : ] 
 
-    ax = plt.axes()
+        print( 'moved_mu: ' + str( moved_mu ) )
+        print( 'centered_mu : ' + str(centered_mu ) ) 
+        
+        mu_differences[i] = moved_mu - centered_mu 
 
+        print( 'mu_differences[i]: ' + str( mu_differences[i] ) )
+
+
+        jplt.plot( axarr[i], secant_differences.x,
+                   mu_differences[i].x,
+                   xerr = secant_differences.dx,
+                   yerr = mu_differences[i].dx )
+        
+        
+    
     # jplt.plot( ax, secant_differences.x, mu_differences.x,
     #            xerr = secant_differences.dx,
     #            yerr = mu_differences.dx,
     #            xlabel = r'$ \Delta( 1 / \cos( \theta_i ) ) $',
     #            ylabel = r'$ \Delta( \mu_i )$' )
 
-    ax.errorbar( secant_differences.x, mu_differences.x, yerr = mu_differences.dx )
-    
+        
     plt.show() 
 
+
+    
+#    print_strip_stds( db.get_mu_grid_where_valid( db.moved_db, 2 ) ) 
     
 # example_estimate_for_one_source()
 # estimate_deadlayer_from_moved_source()

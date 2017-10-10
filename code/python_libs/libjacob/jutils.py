@@ -1,8 +1,15 @@
 import time
 from math import log10, floor
+import numpy as np 
 
 
-    
+# check if x is a python int or a numpy int.
+def isint( x ):
+    return isinstance( x, (int, np.integer ) )
+
+
+
+
 # this function estimates the remaining time for a for loop in which the 
 # output is expected to take roughly the same amount of time per run.
 # thiis is the equivaletn of a static variable in c 

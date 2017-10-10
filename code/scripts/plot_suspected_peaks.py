@@ -69,7 +69,8 @@ def plot_suspected_peaks():
 
     
     # read in all values and uncertainties for the 5 peaks
-    all_fit_params = dla.get_all_single_peak_fit_parameters( df, coords )
+    all_fit_params = db.get_all_single_peak_fit_parameters( df, coords )
+    
     if PRINT_FIT_PARAMS:
         print 'all_fit_params: '
         print( np.array( all_fit_params['pf_arr']) )
@@ -147,6 +148,7 @@ def plot_suspected_peaks():
     # is the uncertainty on each estimate. note that the uncertainty is due entirely to uncertainty
     # in fit parameters. peakvals_arr is the value of the function evaluated at each point.
     # peakvals_arr is used to estimate the number of counts expected for each peak.
+
     peakpos_arr = np.asarray( peakpos_arr )
     peakpos_delta_arr = np.asarray( peakpos_delta_arr )
     peakvals_arr = np.asarray( [ alpha_fitfunc( all_fit_params['pf_arr'][peaknum],

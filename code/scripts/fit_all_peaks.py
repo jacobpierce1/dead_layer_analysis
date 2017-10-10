@@ -41,11 +41,13 @@ import libjacob.jpyplot as jplt
 import libjacob.jutils as jutils
 
 
-
-
-
-from peakdetect import peakdetect 
+# from peakdetect import peakdetect 
 import deadlayer_helpers.sql_db_manager as db
+import deadlayer_helpers.data_handler as data
+
+
+import jspectroscopy as spec
+
 
 
 
@@ -176,7 +178,7 @@ def apply_peak_fit( ax, pixel_coords, fit_id, x, y, fit_bounds,
                     muerr_all=None, reduc_chisq_all=None, sql_conn=None, peak_detect=None ):
     
 
-    fitfunc = dlf.n_fitfuncs_abstract( dlf.fitfunc_n_alpha_peaks, npeaks )
+    fitfunc = spec.n_fitfuncs_abstract( spec.fitfunc_n_alpha_peaks, npeaks )
 
     
     # these will be populated based on the current attempt number and the given p0 and fit_bounds,
@@ -207,7 +209,7 @@ def apply_peak_fit( ax, pixel_coords, fit_id, x, y, fit_bounds,
         
         ret = jmath.jacob_least_squares( x, y, np.sqrt(y),
                                          p0_attempt, fitfunc, fit_bounds=fit_bounds_attempt,
-                                         reduc_chisq_max = 6 )
+                                         reduc_chisq_max = 4.5 )
         
         if ret is not None:
 
@@ -281,7 +283,7 @@ def process_file( ax, infile, pixel_coords, sql_conn=None, logfile=None ):
     efront_histo = np.zeros( x.size )
 
     
-    if not dlf.construct_histo_array( infile, efront_histo ):
+    if not data.construct_histo_array( infile, efront_histo ):
 
         msg = "ERROR: unable to open file: " + infile 
 
@@ -295,7 +297,7 @@ def process_file( ax, infile, pixel_coords, sql_conn=None, logfile=None ):
     
     # get the 6 suspected peaks
     our_peaks = [0] * NUM_PEAKS
-    num_peaks_found = dlf.get_n_peak_positions( NUM_PEAKS, efront_histo, our_peaks )
+    num_peaks_found = jmath.get_n_peak_positions( NUM_PEAKS, efront_histo, our_peaks )
 
     if num_peaks_found < 5:
 
@@ -402,7 +404,7 @@ def process_file( ax, infile, pixel_coords, sql_conn=None, logfile=None ):
             fit_attempts[i] = fit_attempt
             
             if successful_fit:
-                fitfunc = dlf.n_fitfuncs_abstract( dlf.fitfunc_n_alpha_peaks, NUM_PEAKS_PER_FEATURE[i] )
+                fitfunc = spec.n_fitfuncs_abstract( dlf.fitfunc_n_alpha_peaks, NUM_PEAKS_PER_FEATURE[i] )
                 jplt.add_fit_to_plot( ax, x, fit_bounds, pf, pferr, fitfunc )
                 reduc_chisq_all.append( reduc_chisq )
                 
@@ -694,7 +696,7 @@ def set_globals_for_debugging():
     SHOW_HISTO = 1
      
        
-# make_one_plot( db.moved_id, 2, 26 )
-fit_all_peaks()
+make_one_plot( db.moved_id, 16, 2 )
+# fit_all_peaks()
 
 
