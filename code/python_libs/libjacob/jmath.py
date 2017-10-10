@@ -4,7 +4,7 @@ import numpy as np
 import scipy.optimize
 import scipy.special
 from math import log10, floor
-# import pandas as pd 
+import peakdetect.peakdetect as peakdetect
 
 
 import sys
@@ -28,13 +28,64 @@ def residual_from_fitfunc( p, x, y, yerr, fitfunc ):
     return ((fitfunc(p, x)-y)/yerr)
 
 
-def xcut( x, y, newx_bounds, sorted=0 ):
 
-    if sorted:
-        raise NotImplementedError
-    
+
+
+def xcut( x, y, newx_bounds, xsorted=0 ):
+
+    # if x is sorted, then find newx_bounds[0] from the left
+    # and newx_bounds[1] from the right
+
+    if xsorted:
+        
+        left = np.searchsorted( x, newx_bounds[0] )
+        right = np.searchsorted( x, newx_bounds[1], side = 'right' )
+        return y[ left : right ]
+
+    # otherwise find applicable indices by brute force.
+    # should be avoided.
+
     return np.asarray( y[ (x >= newx_bounds[0]) & (x <= newx_bounds[1]) ] )
     
+
+
+
+
+
+# detect the positions of the 5 highest peaks. peak_positions is an
+# array of tuples (peakpos, value)
+# https://stackoverflow.com/questions/6910641/how-to-get-indices-of-n-maximum-values-in-a-numpy-array
+# even if we found all the fits, for simplicity we still do the peak
+# detection since it is the easiest way to deteremine a good location
+# for the plot boundaries.
+
+def get_n_peak_positions( n, data, output_peak_positions ):
+
+    # peakdetect returns 2 tuples: positions and counts of peaks
+    peak_positions = peakdetect.peakdetect( data, lookahead=10 )[0]
+
+
+    # print( 'peakpositions type data: ' )
+    # print( type(peak_positions) )
+    # print( type( peak_positions [0][1] ) ) 
+
+    # it is possible that not all n peaks are found. in that case
+    # we will still populate our_peaks with the ones that were
+    # found as it may still be useful. 
+    num_peaks_to_sort = min( n, len( peak_positions ) )
+
+        
+    # now find the 5 largest and sort by x position.
+    # indices is the indices of the peaks as found in data
+    indices = np.argpartition( [ z[1] for z in peak_positions ],
+                               -num_peaks_to_sort )[ -num_peaks_to_sort : ]
+    
+    output_peak_positions[:] = [ np.asscalar( peak_positions[z][0] )
+                                 for z in sorted( indices ) ]
+
+    
+    # return number of peaks detected.
+    return num_peaks_to_sort
 
 
 

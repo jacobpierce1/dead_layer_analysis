@@ -16,6 +16,7 @@ import deadlayer_helpers.stopping_power_interpolation as stop
 import deadlayer_helpers.geometry as geom
 import deadlayer_helpers.sql_db_manager as db
 import deadlayer_helpers.analysis as anal
+import deadlayer_helpers.data_handler as data
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -281,13 +282,13 @@ def print_strip_stds( mu_grid ):
     # stripx = meas.meas.from_list( mu_grid[ :, 15 ] )
     # stripy = meas.meas.from_list( mu_grid[ 15, : ] )
 
-    print 'stripx: ' + str( stripx )
-    print 'stripy: ' + str( stripy )
+    print( 'stripx: ' + str( stripx ) )
+    print( 'stripy: ' + str( stripy ) )
     
-    print 'stripx mean: ' + str( stripx.nanmean() )
-    print 'stripx std: ' + str( stripx.nanstd() )
-    print 'stripy mean: ' + str( stripy.nanmean() )
-    print 'stripy std: ' + str( stripy.nanstd() )
+    print( 'stripx mean: ' + str( stripx.nanmean() ) )
+    print( 'stripx std: ' + str( stripx.nanstd() ) )
+    print( 'stripy mean: ' + str( stripy.nanmean() ) )
+    print( 'stripy std: ' + str( stripy.nanstd() ) )
     
 
     
@@ -316,10 +317,13 @@ def estimate_deadlayer_from_moved_source():
 
     # make life easier
     peak_positions = [ peak_positions_centered, peak_positions_moved ]
-    dbs = [ db.
-    
-    for peakpos in range( 6 ):
-        
+    dbs = [ db.centered, db.moved ]
+
+
+    # do a separate calibration for each pixel
+    for x in range(32):
+        for y in range(32):
+            current_pixel = 
     
     
     right_db_name = db.rotated_db  # the name 
