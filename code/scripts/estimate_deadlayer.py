@@ -293,6 +293,7 @@ def print_strip_stds( mu_grid ):
 
     
 
+    
 # DESCRIPTION: with this function we make a few significant
 # improvements over example_estimate_for_one_source(). for one, we are
 # no longer sensitive to small variations in the detector / source
@@ -317,16 +318,30 @@ def estimate_deadlayer_from_moved_source():
 
     # make life easier
     peak_positions = [ peak_positions_centered, peak_positions_moved ]
-    dbs = [ db.centered, db.moved ]
 
+    dbs = [ db.centered_db, db.moved_db ]
+    # db_ids = [db.centered_id, db.moved_id ]
 
     # do a separate calibration for each pixel
-    for x in range(32):
-        for y in range(32):
-            current_pixel = 
+
     
     
-    right_db_name = db.rotated_db  # the name 
+    for i in range( len( db_ids ) ):
+        for x in range(32):
+            for y in range(32):
+                pass
+            
+                # print( (x,y) )
+
+                # histo = np.empty( 5000 )
+                
+                # data.get_pixel_histo( db_ids[i], x, y, histo )
+                                 
+
+    return 0
+                
+                
+    # right_db_name = db.rotated_db  # the name 
     
     
     # 2. read in geometry data for the centered and right peaks.
@@ -349,8 +364,40 @@ def estimate_deadlayer_from_moved_source():
 
 
 
+#
+
+def preview_secant_differences():
+
+    # dbs = [ db.centered_db, db.moved_db ]
+    
+    cosine_matrices = geom.get_cosine_matrices( debug=0 )
+
+    secant_differences = meas.meas.from_list( 1 / cosine_matrices[ 'pu_238_moved' ][ 0, 16, : ]
+                                              - 1 / cosine_matrices[ 'pu_238_centered' ][ 0, 16, : ] )
+
+    print_strip_stds( db.get_mu_grid_where_valid( db.moved_db, 2 ) ) 
+    
+    mu_differences = ( db.get_mu_grid_where_valid( db.moved_db, 2 )[ 16, : ] 
+                       - db.get_mu_grid_where_valid( db.centered_db, 2 )[ 16, : ] )
+
+    print( secant_differences )
+    print( mu_differences )
+
+    ax = plt.axes()
+
+    # jplt.plot( ax, secant_differences.x, mu_differences.x,
+    #            xerr = secant_differences.dx,
+    #            yerr = mu_differences.dx,
+    #            xlabel = r'$ \Delta( 1 / \cos( \theta_i ) ) $',
+    #            ylabel = r'$ \Delta( \mu_i )$' )
+
+    ax.errorbar( secant_differences.x, mu_differences.x, yerr = mu_differences.dx )
+    
+    plt.show() 
+
     
 # example_estimate_for_one_source()
-estimate_deadlayer_from_moved_source()
+# estimate_deadlayer_from_moved_source()
 
+preview_secant_differences()
 

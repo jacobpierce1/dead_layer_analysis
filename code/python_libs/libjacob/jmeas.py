@@ -124,7 +124,7 @@ class meas( object ):
                 
         
         
-    def __div__( self, y ):
+    def __truediv__( self, y ):
 
         if hasattr( y, 'x' ):
             val = self.x / y.x
@@ -135,11 +135,13 @@ class meas( object ):
             return _meas_no_checks( self.x / y,
                                     self.dx / y )
         
+    # __floordiv__ is not defined since it doesn't make sense for this
+    # class.
         
 
     # only arithmetic operation that needs to be defined differently if
     # the measurement is on the right side.
-    def __rdiv__( self, y ):
+    def __rtruediv__( self, y ):
 
         if np.isscalar( y ):
             return y * ( self ** -1 )

@@ -5,7 +5,7 @@
 
 
 # my includes 
-import sql_db_manager
+import deadlayer_helpers.sql_db_manager as db
 import libjacob.jmeas as meas
 
 
@@ -14,8 +14,6 @@ from mpl_toolkits.mplot3d import axes3d
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import sqlite3
-import json
 
 
 _CM_PER_INCH = 2.54
@@ -151,7 +149,7 @@ def _fill_redundant_source_data( source_data ):
 # use the measurements in source_data to obtain the coordinates of each source and a
 # edge of the detector.
 
-_DEBUG_COORDS = 1
+_DEBUG_COORDS = 0
 
 def _populate_all_coords( all_coords, source_data ):
 
@@ -166,7 +164,7 @@ def _populate_all_coords( all_coords, source_data ):
     all_coords.loc['detector'] = meas.meas.from_list( det_coords ) * _MM_PER_INCH
 
     if _DEBUG_COORDS:
-        print 'det_coords: ' + str( all_coords.loc['detector'] )
+        print( 'det_coords: ' + str( all_coords.loc['detector'] ) )
     
     # now populate all the source indices
     for source in sources_index:
@@ -190,15 +188,15 @@ def _populate_all_coords( all_coords, source_data ):
 
         
         if _DEBUG_COORDS:
-            print 'x: ' + str( x )
-            print 'y: ' + str( y )
-            print 'z: ' + str( z )
+            print( 'x: ' + str( x ) )
+            print( 'y: ' + str( y ) )
+            print( 'z: ' + str( z ) )
             
         xyz = meas.meas.from_list( [ x, y, z ] )
         all_coords.loc[source] = xyz * _MM_PER_INCH
 
         if _DEBUG_COORDS:
-            print 'source coords: ' + str( all_coords.loc[source] )
+            print( 'source coords: ' + str( all_coords.loc[source] ) )
                                     
         
 
@@ -315,7 +313,8 @@ def _rotate_3d_meas_fprime_tuple( axis, combined_meas ):
     # coords.
     ret = np.empty((4,3))
 
-    rot_indices = np.array( range( 0, axis ) + range( axis+1, 3 ) )
+    rot_indices = np.array( list( range( 0, axis ) )
+                            + list( range( axis+1, 3 ) ) )
     
     fprime_tuple_2d = _rotate_2d_fprime_tuple( theta, x[ rot_indices ] )
 
@@ -461,20 +460,24 @@ def _populate_costheta_grid( cosine_matrices, all_coords, source_theta, source_p
        
     det_coords = all_coords.loc['detector']
     
-    # loop through all sources
-    for sourcenum in range(len(sources)):
+    sourcenum = -1
 
-        print str(sourcenum) + ' / ' + str(len(sources)) + '...'
+    for source in sources:
+
+        sourcenum += 1
+        
+        print( str(sourcenum) + ' / ' + str(len(sources)) + '...' )
 
         # extract coords and angels 
-        source_coords = all_coords.loc[ sources[sourcenum] ]
-        theta = source_theta[ sources[sourcenum] ]
-        phi = source_theta[ sources[sourcenum] ]
+        source_coords = all_coords.loc[ source ]
+
+        theta = source_theta[ source ]
+        phi = source_theta[ source ]
         
 
         # rename matrices in order to enhance readability 
-        det_costheta_grid = cosine_matrices[sourcenum, 0 ]
-        source_costheta_grid = cosine_matrices[sourcenum, 1 ]
+        det_costheta_grid = cosine_matrices[ source ][ 0 ]
+        source_costheta_grid = cosine_matrices[ source ][ 1 ]
         
         
         # keep shifting by 1mm to get next coord 
@@ -511,16 +514,15 @@ def _populate_costheta_grid( cosine_matrices, all_coords, source_theta, source_p
                     
                     
                                    
-                # if not, then we rotate the displacement vector
-                # by 0-theta about the z axis, then 0-phi about
-                # the x axis, then take costheta. this is because
-                # rotating by the negative angles is equivalent to
-                # rotating the source by positive angles, which is
-                # the definition of the theta/phi angles. note
-                # that this is independent of the other
-                # det_costheta value.
+                # if not, then we rotate the displacement vector by
+                # 0-theta about the z axis, then 0-phi about the x
+                # axis, then take costheta. this is because rotating
+                # by the negative angles is equivalent to rotating the
+                # source by positive angles, which is the definition
+                # of the theta/phi angles. note that this is
+                # independent of the other det_costheta value.
 
-                
+                # this is really only relevant for the rotated source.
                 rotated_displacement = rotate_3d_meas( 0, -phi,
                                                        rotate_3d_meas( 2, -theta, displacement ) ) 
                 # print 'rotated displacement: ' + str( rotated_displacement )
@@ -557,13 +559,16 @@ def _populate_costheta_grid( cosine_matrices, all_coords, source_theta, source_p
 def get_cosine_matrices( debug=0 ):
 
 
-    if debug:
-        return np.ones( ( len(sources), 2, 32, 32 ) ) / 2.0
+    # if debug:
+    #     return np.ones{ ( len(sources), 2, 32, 32 ) ) / 2.0
     
-    print 'INFO: constructing costheta grid...'
-    cosine_matrices_labels = [ sources, ['detector', 'source'] ]
-    cosine_matrices = np.empty( ( len(sources), 2, 32, 32 ), dtype='object' )
+    print( 'INFO: constructing costheta grid...' )
 
+    cosine_matrices_labels = [ sources, ['detector', 'source'] ]
+    cosine_matrices = dict( zip( sources,
+                                 np.empty( ( len(sources), 2, 32, 32 ), dtype='object' ) ) )
+
+    
     # measurements 
     source_data = _get_source_data() 
     source_data = source_data.set_index( sources_index )

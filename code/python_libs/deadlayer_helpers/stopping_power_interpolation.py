@@ -24,7 +24,7 @@ class stopping_power_interpolation( object ):
     def __init__( self, x, y, xbounds=None ):
 
         if len(x) != len(y):
-            print 'ERROR: lengths of input arrays must be the same.'
+            print( 'ERROR: lengths of input arrays must be the same.' )
             self = None
             return self
 

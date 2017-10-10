@@ -41,7 +41,7 @@ import libjacob.jpyplot as jplt
 import libjacob.jutils as jutils
 
 
-import deadlayer_helpers.functions as dlf
+
 
 
 from peakdetect import peakdetect 

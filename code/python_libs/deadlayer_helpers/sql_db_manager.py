@@ -7,9 +7,29 @@
 import os
 import sqlite3
 import json
+import pandas as pd
+import numpy as np
+import libjacob.jmeas as meas
 
 
+# config 
 DEBUG_DB = 0
+
+
+
+
+
+# constants, do not touch
+NUM_FITS_PER_PIXEL = 3
+NUM_PEAKS_PER_FIT = [ 2, 2, 1 ]
+NUM_SOURCES = 3
+
+
+
+################################
+# begin module #################
+################################
+
 
 _current_abs_path = os.path.dirname( __file__ ) + '/'
 
@@ -265,3 +285,51 @@ def recreate_both_dbs():
     
 ## add new col: 0
 # https://stackoverflow.com/questions/4253804/insert-new-column-into-table-in-sqlite
+
+
+
+
+# input filename of database, return DataFrame containing the DB  
+def read_db_into_df( db_name ):
+    with sqlite3.connect( db_name ) as conn:
+        return pd.read_sql_query( 'SELECT * from ' + tablename, conn )
+    return None
+
+
+
+
+
+# fitnum is the fit that this peak belongs to and index_in_pf is 
+# the index of the peak within pf. a dedicated function is necessary because of 
+# the convoluted way in which the data is stored. 
+def get_fitnum_and_mu_index_in_pf( peaknum ):
+    return ( peaknum // 2, 5 + 2* (peaknum % 2) )
+
+
+
+    
+# if populating an entire array, we can get a bit more efficiency by not calling
+# get_mu_values
+def get_mu_grid_where_valid( db_name, peaknum ):
+
+    df = read_db_into_df( db_name )
+    
+    fitnum, peaknum_in_pf = get_fitnum_and_mu_index_in_pf( peaknum )
+
+    successful_fit_values = df.successful_fit.values[ fitnum : : NUM_FITS_PER_PIXEL ]
+
+    pfs = df.pf.values [ fitnum : : NUM_FITS_PER_PIXEL ]
+
+    pf_deltas = df.pferr.values[ fitnum : : NUM_FITS_PER_PIXEL ]
+    
+    # return meas constructed from the mu and mu_delta values
+    # return np.asarray( [ json.loads(pfs[i])[ peaknum_in_pf ] if successful_fit_values[i]
+    #                 else np.nan for i in range(pfs.size) ] ).reshape(32,32)
+
+    vals = np.asarray( [ json.loads(pfs[i])[ peaknum_in_pf ] if successful_fit_values[i]
+                         else np.nan for i in range(pfs.size) ] ).reshape(32,32)
+
+    deltas = np.asarray( [ json.loads( pf_deltas[i][ peaknum_in_pf ] ) if successful_fit_values[i]
+                           else np.nan for i in range(pf_deltas.size) ] ).reshape(32,32) 
+
+    return meas.meas( vals, deltas )
