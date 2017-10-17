@@ -10,7 +10,8 @@
 
 import numpy as np
 import scipy.special as special
-from lmfit import Model 
+from lmfit import Model
+# from functools import partial 
 
 
 # global 'vars' that can be used for rapidly
@@ -88,13 +89,14 @@ class fitfunc( object ):
 
     
     
-# in this case you supply all args as fit params, even the det ones which should be fixed. 
-def fitfunc_alpha_free_det_params( p, x ): 
-    return alpha_fit( p[0],p[1],p[2],p[3],p[4],p[5], x ) 
+# # in this case you supply all args as fit params, even the det ones which should be fixed. 
+# def fitfunc_alpha_free_det_params( p, x ): 
 
-#    return np.array( map( lambda z: alpha_fit( *p, z ), x ) )
-    #return np.array( map( lambda z: alpha_fit( p[0],p[1],p[2],p[3],p[4],p[5],z ), x ) )
-    # return alpha_fit( p[0],p[1],p[2],p[3],p[4],p[5] , x )  # expand array as function args 
+#     return alpha_fit( p[0],p[1],p[2],p[3],p[4],p[5], x ) 
+
+# #    return np.array( map( lambda z: alpha_fit( *p, z ), x ) )
+#     #return np.array( map( lambda z: alpha_fit( p[0],p[1],p[2],p[3],p[4],p[5],z ), x ) )
+#     # return alpha_fit( p[0],p[1],p[2],p[3],p[4],p[5] , x )  # expand array as function args 
     
 
 
@@ -103,8 +105,8 @@ def fitfunc_alpha_free_det_params( p, x ):
 # the first 4 params are the detector params, and the last 2*n are (A1, u1, ... )
 # previously fitfunc_n_alpha_peaks_abstract
 def sum_n_fitfuncs( fitfunc, n ):
-    return lambda p, x: fitfunc( n, p, x )
-
+    return lambda x, **params: fitfunc( n, x, **params )
+    # return partial( fitfunc, n )
 
 
 
@@ -129,7 +131,7 @@ def sum_n_fitfuncs( fitfunc, n ):
 
 
 
-def fitfunc_n_alpha_peaks( n, params, x ):
+def fitfunc_n_alpha_peaks( n, x, **params ):
     
     ret = 0
     for i in range( n ):
@@ -148,16 +150,29 @@ def fitfunc_n_alpha_peaks( n, params, x ):
 def construct_n_alpha_peaks_params(
         sigma, eta, tau1, tau2, A_array, mu_array ):
 
-    n = len( mu_array ) 
+    n = len( mu_array )
+
+    param_fit_bounds = { 'sigma' : [ 0, None ],
+                         'tau1' : [ 0, None ],
+                         'tau2' : [ 0, None ],
+                         'eta' : [ 0, 1 ] }
     
-    ret =  { 'sigma' : sigma, 'eta' : eta,
-             'tau1' : tau1, 'tau2' : tau2 }
+    params =  { 'sigma' : sigma, 'eta' : eta,
+                'tau1' : tau1, 'tau2' : tau2 }
 
     for i in range( n ):
-        ret[ 'mu' + str(i) ] = mu_array[i]
-        ret[ 'A' + str(i) ] = A_array[i]
 
-    return ret
+        # keys for the 2 dicts 
+        mu = 'mu' + str(i)
+        A = 'A' + str(i) 
+        
+        params[ mu ] = mu_array[i]
+        params[ A ] = A_array[i]
+
+        param_fit_bounds[ mu ] = [ 0, None ]
+        param_fit_bounds[ A ] = [ 0, None ] 
+
+    return ( params, param_fit_bounds ) 
 
 
 

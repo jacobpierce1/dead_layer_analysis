@@ -11,6 +11,8 @@ import pandas as pd
 import numpy as np
 import libjacob.jmeas as meas
 from libjacob.jutils import isint
+import _pickle
+
 
 
 # config 
@@ -36,32 +38,14 @@ _current_abs_path = os.path.dirname( __file__ ) + '/'
 
 
 
-# all_db_ids = [ 'centered', 'moved', 'flat', 'angled' ]
-
-
-# # construct the database names. these can be called
-# # from any module that includes this to access the dbs.
-
-# all_dbs_list = [ _current_abs_path + '../../../databases/'
-#                  + _name + '_fits_data.db'
-#                  for _name in all_db_ids ]
-
-
-# all_dbs_dict = dict( zip( all_db_ids,
-#                      all_dbs_list ) ) 
-
-
-# centered_db, moved_db, flat_db, angled_db = all_dbs_list
-# centered_id, moved_id, flat_id, angled_id = all_db_ids
-
-
-
-
 schema_filename = _current_abs_path + 'initial_schema.sql'
-tablename = 'fits_and_extracted_data'
+tablename = 'fits'
 
-schema_cols = [ 'x', 'y', 'fit_id', 'successful_fit', 'fit_attempt', 'reduc_chisq', 
-                    'pf', 'pferr', 'p0', 'fit_bounds', 'peak_detect']
+
+schema_cols = [ 'x', 'y', 'fit_id', 'successful_fit',
+                'npeaks', 'last_attempt', 
+                'params_guess', 'fit_bounds',
+                'peak_guesses', 'model']
 
 
 
@@ -80,13 +64,35 @@ class db( object ):
         self.conn = None
         
 
-    def connect( self ):
+        
+    # check if this db has been created. 
+    def exists( self ):
+        return os.path.exists( self.path ) 
+        
+
+    
+    def connect( self, empty = 0 ):
 
         if self.conn is not None:
+            print( 'ERROR: db is already open.' )
             return 0
+
+        # throw an error for an attempt to connect to a nonexistent
+        # database, unless we insist that it is supposed to be empty.
         
+        if not empty:
+            if not self.exists():
+                print( 'ERROR: db has not been created.' )
+                return 0 
+            
         self.conn = sqlite3.connect( self.path ) 
+
+        # this is set to allow you to read into an sqlite3.Row,
+        # which is a dict-like object. 
+        self.conn.row_factory = sqlite3.Row
+
         return 1
+        
 
     
     def disconnect( self ):
@@ -99,6 +105,7 @@ class db( object ):
         return 1
 
     
+    
     # call this before doing any reading or writing.
     def assert_open( self ):
         if self.conn is None:
@@ -106,97 +113,108 @@ class db( object ):
 
         
 
-    # this function shall only write the fit parametetrs and things that
-    # can be obtained only from the histograms, especially the fits. the
-    # fwhms etc. can be extracted later much more rapidly by
+    # this function shall only write the fit parametetrs and things
+    # that can be obtained only from the histograms, especially the
+    # fits. the fwhms etc. can be extracted later much more rapidly by
     # reconstructing the fit function.  p0 and fit_bounds also saved
     # because they could be used to reconstruct the fit.  the default
     # behavior is to overwrite data, this is to keep the function as
     # efficient as possible. there several instances i can think of in
-    # which you would want to put data in without bothering to check the
-    # current state of the DB. as such you have to do such a query
+    # which you would want to put data in without bothering to check
+    # the current state of the DB. as such you have to do such a query
     # beforehand if necessary.
     
-    def insert_fit_data( self, x, y, fit_id, successful_fit=0,
-                                 fit_attempt=-1, reduc_chisq=-1, pf=None, pferr=None,
-                                 p0=None, fit_bounds=None, peak_detect=None,
-                                 db_is_empty=0 ):        
-
+    def insert_fit_data( self, x, y, fit_id, successful_fit = 0,
+                         npeaks = -1, last_attempt = -1, 
+                         params_guess = None, fit_bounds=None,
+                         peak_guesses = None,
+                         model = None, db_is_empty = 0 ):        
+        
         if self.conn is None:
             raise ValueError( 'Cannot insert data, sqlite3 connection is not open. Call db.connect().' )
 
         
         # if db is empty, then we are doing an insert.
         if db_is_empty:
-            query = 'insert into ' + tablename + ' ('   \
-                    + ', '.join(schema_cols)    \
-                    + ') values ('         \
-                    + ':' + ', :'.join(schema_cols)   \
-                    + ');'
+            query = ( 'insert into ' + tablename + ' ('   
+                      + ', '.join(schema_cols)    
+                      + ') values ('         
+                      + ':' + ', :'.join(schema_cols) 
+                      + ');'
+            )
             
         # otherwise we are doing an update.
         else:
-            query = 'update ' + tablename   \
-                    + ' set ' + ', '.join( [ col + '=:' + col for col in schema_cols[3:] ] )   \
-                    + ' where ' + ' and '.join( [ col + '=:' + col for col in schema_cols[:3] ] )   
-            
-                            
-        cursor = sql_conn.cursor()
+            query = ( 'update ' + tablename   
+                      + ' set ' + ', '.join( [ col + '=:' + col
+                                               for col in schema_cols[3:] ] )   
+                      + ' where ' + ' and '.join( [ col + '=:' + col
+                                                    for col in schema_cols[:3] ] ) )  
                 
-        query_dict =    \
-                        {
-                            schema_cols[0]:pixel_coords[0],
-                            schema_cols[1]:pixel_coords[1],
-                            schema_cols[2]:fit_id,
-                            schema_cols[3]:successful_fit, # by default say that the fit was unsuccessful
-                            schema_cols[4]:fit_attempt,
-                            schema_cols[5]:reduc_chisq,
-                            schema_cols[6]:json.dumps(pf),
-                            schema_cols[7]:json.dumps(pferr),
-                            schema_cols[8]:json.dumps(p0),
-                            schema_cols[9]:json.dumps(fit_bounds),
-                            schema_cols[10]:json.dumps(peak_detect) #[0,[0,0],[0,0]]
-                        }
+        query_dict =  {
+            'x' : x,
+            'y' : y,
+            'fit_id' : fit_id,
+            'successful_fit' : successful_fit, 
+            'npeaks' : npeaks,
+            'last_attempt' : last_attempt,
+            'params_guess' : _to_bin( params_guess ),
+            'fit_bounds' : _to_bin( fit_bounds ),
+            'peak_guesses' : _to_bin( peak_guesses ),
+            'model' : _to_bin( model )
+        }
         
         self.conn.cursor().execute( query, query_dict )
         self.conn.commit()
 
 
+        
 
 
     def read_fit_data( self, x, y, fit_id ):
 
-        print( (x,y,fit_id) )
+        # print( (x,y,fit_id) )
 
         if self.conn is None:
             raise ValueError( 'Cannot read db, sqlite3 connection is not open. Call db.connect().' )
-        
-        cursor = self.conn.cursor()
-        
-        query = 'select ' + ', '.join( schema_cols[3:] )   \
-                + ' from ' + tablename    \
-                + ' where ' + ' and '.join( [ col + '=:' + col for col in schema_cols[:3] ] )   
-        
+                
+        query = ( 'select ' + ', '.join( schema_cols[3:] )   
+                  + ' from ' + tablename    
+                  + ' where ' + ' and '.join( [ col + '=:' + col for col in schema_cols[:3] ] )   
+        )
             
         query_dict = {
-            schema_cols[0] : x,
-            schema_cols[1] : y,
-            schema_cols[2] : fit_id
+            'x' : x,
+            'y' : y,
+            'fit_id' : fit_id
         }
-        
+
+        cursor = self.conn.cursor()
+
         cursor.execute( query, query_dict )
         
-        result = cursor.fetchone()
+        result = dict( cursor.fetchone() )
+
+        print( type( result ) ) 
+
+        # unpickle the pickled objects 
+        for key in [ 'params_guess', 'fit_bounds', 'peak_guesses', 'model' ]:
+            result[ key ] = _from_bin( result[ key ] )
+
+        print( 'result: ' + str( result ) )
+
+        return result
+
+            
+        # successful_fit, fit_attempt, reduc_chisq, pf, pferr, p0, fit_bounds, peak_detect = result
         
-        successful_fit, fit_attempt, reduc_chisq, pf, pferr, p0, fit_bounds, peak_detect = result
+        # pf = .loads(pf)
+        # pferr = json.loads(pferr)
+        # p0 = json.loads(p0)
+        # fit_bounds = json.loads(fit_bounds)
+        # peak_detect = json.loads(peak_detect)
         
-        pf = json.loads(pf)
-        pferr = json.loads(pferr)
-        p0 = json.loads(p0)
-        fit_bounds = json.loads(fit_bounds)
-        peak_detect = json.loads(peak_detect)
-        
-        return ( successful_fit, fit_attempt, reduc_chisq, pf, pferr, p0, fit_bounds, peak_detect )
+        # return ( successful_fit, fit_attempt, reduc_chisq, pf, pferr, p0, fit_bounds, peak_detect )
     
 
 
@@ -209,21 +227,25 @@ class db( object ):
         db_is_new = not os.path.exists( self.path )
 
         if db_is_new:
-            print('INFO: creating DB and schema for ' + self.path + '...')
+            print( 'INFO: creating DB and schema for ' + self.path + '...' )
             
         else:
-            print('ERROR: database already exists, returning')
+            print( 'ERROR: database already exists, returning' )
             return 0
         
-        with sqlite3.connect( self.path ) as conn:
+        # with sqlite3.connect( self.path ) as conn:
 
-            with open( schema_filename, 'rt' ) as f:
-                schema = f.read()
-                conn.executescript( schema )    
+        self.connect( empty = 1 )
+        
+        with open( schema_filename, 'rt' ) as f:
+            schema = f.read()
+            self.conn.executescript( schema )    
 
-            print( 'INFO: success, now populating...' )
-                
-            populate_db( self.conn, 32, 32, 3 )
+        print( 'INFO: success, now populating...' )
+            
+        self.populate( 32, 32, 3 )
+
+        self.disconnect()
             
 
 
@@ -232,11 +254,10 @@ class db( object ):
     # everything. this is meant to only be called when the table is empty 
     def populate( self, numx, numy, numfits ):
 
-        with sqlite3.connect( self.path ) as conn:
-            for i in range(numx):
-                for j in range(numy):
-                    for k in range(numfits):
-                        insert_fit_data_into_db( conn, (i,j), k, db_is_empty = 1 ) 
+            for y in range(numx):
+                for x in range(numy):
+                    for i in range(numfits):
+                        self.insert_fit_data( x, y, i, db_is_empty = 1 ) 
                         
 
 
@@ -396,6 +417,17 @@ class db( object ):
     
 
 
+# return binary dump that can be
+# inserted in the DB as a BLOB
+def _to_bin( data ): 
+    return sqlite3.Binary( _pickle.dumps( data, protocol = 2 ) )
+
+
+# read binary as written in the _to_bin format
+def _from_bin( bin ):
+    return _pickle.loads( bin )
+    
+    
 
 ###########################################
 ## DECLARE GLOBALS FOR USE ELSEWHERE ######

@@ -93,17 +93,19 @@ def set_linear_scale_plot_bounds( ax, x, y, xbuf=0.20, ybuf=0.20 ):
         
         
 # add fit to the plot 
-def add_fit_to_plot( ax, x, fit_bounds, p, perr, fitfunc, linewidth=3, color='-r' ):
-    newx = xcut( x, x, fit_bounds )
-    fit = ax.plot( newx, fitfunc(p, newx), color, label="Fit")
+def add_fit_to_plot( ax, x, fit_bounds, fitfunc, linewidth=3, color='-r' ):
+    xfit = xcut( x, x, fit_bounds )
+    fit = ax.plot( xfit, fitfunc( xfit ), color, label="Fit")
     plt.setp( fit[0], linewidth = linewidth )
 
 
     
 
 # default plot params 
-def plot ( ax, x, y, xerr=None, yerr=None, xlabel=None, ylabel=None,
-           title=None, color='r', errorevery=1, legloc = 1, logscale=0 ):
+def plot ( ax, x, y, xerr=None, yerr=None,
+           xlabel=None, ylabel=None,
+           title=None, color='r', errorevery=1,
+           legloc = 1, logscale=0 ):
 
     # default: don't plot errorbars.
     plot_errorbar = 0

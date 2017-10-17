@@ -34,10 +34,6 @@ FILE_NNDC_PU_238 = DIR_NNDC_ALPHA_SPECTRA + 'pu_238.txt'
 FILE_NNDC_ALL_SPECTRA = [ FILE_NNDC_CF_249, FILE_NNDC_PU_240, FILE_NNDC_PU_238 ]
 
 
-# constants, do not touch
-NUM_FITS_PER_PIXEL = 3
-NUM_PEAKS_PER_FIT = [ 2, 2, 1 ]
-NUM_SOURCES = 3
 
 
     
@@ -106,12 +102,8 @@ def estimate_dead_layer_thickness( ):
     
 
 
-# extract everything in a given db into a pandas dataframe for future processing.
-def read_all( dbname ):
-    with sqlite3.connect( dbname ) as sql_conn:
-        return pd.read_sql_query( 'SELECT * from ' + sql_db_manager.tablename, sql_conn )
 
-
+    
 def analysis():
     
     # attempt to load our sql databases into a DataFrame    
@@ -145,13 +137,6 @@ def analysis():
 
 
 
-
-
-# fitnum is the fit that this peak belongs to and index_in_pf is 
-# the index of the peak within pf. a dedicated function is necessary because of 
-# the convoluted way in which the data is stored. 
-def get_fitnum_and_mu_index_in_pf( peaknum ):
-    return ( peaknum // 2, 5 + 2* (peaknum % 2) )
 
 
 
@@ -286,57 +271,6 @@ def get_values( df, coords, col_name ):
 
     return np.asarray(values)
 
-
-
-# this function returns a list of 5 entries. each entry gives the fit parameters for a
-# SINGLE alpha peak. note that this is not the same as the peak parameters obtained since
-# we actually only do 3 fits. this is meant to be used for processing data from the single
-# peak parameters, such as FWHM coords or peak positions.
-def get_all_single_peak_fit_parameters( df, coords ):
-
-    # to be returned
-    pf_arr = []
-    pf_delta_arr = []
-        
-    for peaknum in np.arange(5):
-
-        # these will accumulate the fit params and be appended to pf_arr and pf_delta_arr
-        pf_current = []
-        pf_delta_current = []
-
-        fitnum, mu_index_in_pf = get_fitnum_and_mu_index_in_pf( peaknum )
-        row =  3*(coords[0]*32 + coords[1]) + fitnum 
-        successful_fit = df.successful_fit.values[ row ]
-
-        if successful_fit:
-
-            # read from db
-            pf_from_db = json.loads( df['pf'].loc[row] )
-            pf_delta_from_db = json.loads( df['pferr'].loc[row] ) 
-            
-            # add in the 2 tau values, sigma, and eta value
-            pf_current.extend( pf_from_db[ 0:4 ] )
-            pf_delta_current.extend( pf_delta_from_db[ 0:4 ] )
-            
-            # add in the A and mu values
-            A = pf_from_db[ mu_index_in_pf - 1 ]
-            mu = pf_from_db[ mu_index_in_pf ]
-            A_delta = pf_delta_from_db[ mu_index_in_pf - 1 ]
-            mu_delta = pf_delta_from_db[ mu_index_in_pf ]
-
-            # extend current arrays 
-            pf_current.extend( [A, mu] )
-            pf_delta_current.extend( [A_delta, mu_delta ] )
-            
-            # add to pf_arr
-            pf_arr.append( pf_current )
-            pf_delta_arr.append( pf_delta_current )
-            
-        else:
-            pf_arr.append( [np.nan]*6 )
-            pf_delta_arr.append( [np.nan]*6 ) 
-            
-    return pd.Series( [ pf_arr, pf_delta_arr ], index=[ 'pf_arr', 'pf_delta_arr' ] )
 
 
 

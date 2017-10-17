@@ -34,7 +34,8 @@ def residual_from_fitfunc( p, x, y, yerr, fitfunc ):
 def xcut( x, y, newx_bounds, xsorted=0 ):
 
     # if x is sorted, then find newx_bounds[0] from the left
-    # and newx_bounds[1] from the right
+    # and newx_bounds[1] from the right. should speed up the cut,
+    # but has not been tested.
 
     if xsorted:
         
@@ -97,46 +98,99 @@ def get_n_peak_positions( n, data ):
 
 
 # perform fit. return None if there is error.
+# successful_fit_predicate is a function that takes
+# the output parameters and uncertainties as input
+# and does a check on them to determine whether the fit
+# is good.
+
 np.seterr(divide='ignore', invalid='ignore')
 
 def jacob_least_squares( x, y, dy, params_guess, fitfunc, dx = None,
                          reduc_chisq_max = np.inf, fit_bounds = None,
-                         params_guess_bounds = None):
-    
-    
-    model = Model( fitfunc, indepdendent_vars = [ 'x' ] ,
-                   param_names = params_guess.keys() )
+                         params_bounds = None, successful_fit_predicate = None,
+                         print_results = 0 ):
 
-    print( (model.independent_vars, model.param_names ) )
+    # print( 'fitfunc: ' + str( fitfunc ) ) 
+
+    model = Model( fitfunc, independent_vars = ['x'],
+                   params_names = params_guess.keys() )
+
+    # print( 'param names: ' +  str( model.param_names ) )
+    # print( 'independent vars: ' + str( model.independent_vars ) )
+
+    # params = model.make_params()
     
     # now set up and apply the lmfit
     params = Parameters()
     for key in params_guess:
         params.add( key, value = params_guess[ key ] )
 
-    if params_guess_bounds is not None:
-        for key in params_guess_bounds:
-            left, right = params_guess_bounds[key]
+    # add bounds to all the parameters.
+    if params_bounds is not None:
 
-            if left > right :
-                raise ValueError( 'The specified bounds for param %s are '
-                                  + 'not ordered.' % ( key, ) )
+        for key in params_bounds:
+
+            # print( key ) 
+
+            left, right = params_bounds[ key ]
+
+            # # catch annoying errors before they occur.
+            # if left > right :
+            #     raise ValueError( 'The specified bounds for param %s are '
+            #                       + 'not ordered.' % ( key, ) )
             
             if left is not None:
                 params[key].set( min=left )
 
             if right is not None:
                 params[key].set( max=right ) 
+    
 
+    # construct the appropriate fit bounds.
+    if fit_bounds is not None:
+        xfit, yfit, dyfit = [ xcut( x, data, fit_bounds )
+                              for data in [ x, y, dy ] ] 
+
+    else:
+        xfit, yfit, dyfit = [ np.asarray( data )
+                              for data in [ x, y, dy ] ] 
+                        
+    # print( 'params: ' + str( params ) )
+                
     # model.independent_vars = [ 'x' ]
     # model.param_names = params.keys() 
 
-    print( (model.independent_vars, model.param_names ) ) 
+    # print ( 'x : ' + str( x ) ) 
+    
+    model_result = model.fit( yfit, params, x = xfit,
+                              weights = 1.0 / dyfit, nan_policy='omit'  ) 
 
     
-    result = model.fit( y, params, x = x, dy = dy  ) 
+    if print_results:
+        print( model_result.fit_report() )  # debug
+
+
+    # determine if we had a succussful fit. ier
+    # is the return code of scipy.optimize.leastsq.
+    # if this is 1, then lmfit thinks we succeeded. 
+    successful_fit = ( model_result.success and ( model_result.ier < 4 )
+                       and ( model_result.redchi < reduc_chisq_max ) )
+
+    if not successful_fit:
+        return None 
 
     
+    # optional additional check with a custom function 
+    if successful_fit_predicate is not None:
+
+        if not successful_fit_predicate( model_result.params ):
+            return None
+
+        
+    # if we made it past those if's then we return a valid model.
+    return model_result
+        
+
 
     
     # model = 

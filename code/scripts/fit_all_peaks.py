@@ -87,7 +87,7 @@ def increase_left_fit_bound_more( p0, p0_attempt, fit_bounds, fit_bounds_attempt
     fit_bounds_attempt[0] += 20
     
 def smaller_A( p0, p0_attempt, fit_bounds, fit_bounds_attempt, npeaks ):
-    print( npeaks ) 
+    # print( npeaks ) 
     for i in range( npeaks ):
         p0_attempt['A' + str(i)] = 0.4 * p0[ 'A' + str(i) ]
 
@@ -110,7 +110,9 @@ def next_fit_attempt( p0, p0_attempt, fit_bounds, fit_id,
 
     
     # these will be modified and used later as the initial guess.
-    p0_attempt = p0.copy()
+    for key, val in p0.items():
+        p0_attempt[ key ] = val     
+
     fit_bounds_attempt[:] = fit_bounds[:]    
 
 
@@ -174,18 +176,20 @@ def next_fit_attempt( p0, p0_attempt, fit_bounds, fit_id,
 
 
 
-# if db connection supplied, then we assume that the entry is supposed to be put in, 
-# it makes more sense for the check on whether the data is in the db to be performed 
-# before calling this function. when called: 
-# apply peak fit, make sure it worked, try again if not, put it in db if successful,
-# and then plot. return 1 if successful fit obtained, otherwise 0. last_attempt is the 
-# last attempted + 1, i.e. it is the first fit that will be attempted. 
+# if db connection supplied, then we assume that the entry is supposed
+# to be put in, it makes more sense for the check on whether the data
+# is in the db to be performed before calling this function. when
+# called: apply peak fit, make sure it worked, try again if not, put
+# it in db if successful, and then plot. return 1 if successful fit
+# obtained, otherwise 0. last_attempt is the last attempted + 1,
+# i.e. it is the first fit that will be attempted.
 
 def apply_peak_fit( ax, fit_id, x, y, fit_bounds,
-                    p0, npeaks, last_attempt=-1, pixel_coords=None, mu_all=None, 
+                    p0, npeaks, last_attempt=-1, pixel_coords=None,
+                    params_bounds = None, mu_all=None, 
                     muerr_all=None, reduc_chisq_all=None, db=None, peak_detect=None ):
     
-    print( last_attempt ) 
+    # print( last_attempt ) 
     
     fitfunc = spec.sum_n_fitfuncs( spec.fitfunc_n_alpha_peaks, npeaks )
 
@@ -209,6 +213,7 @@ def apply_peak_fit( ax, fit_id, x, y, fit_bounds,
                                                 fit_bounds, fit_id, fit_bounds_attempt, 
                                                 npeaks, current_attempt, db = db,
                                                 pixel_coords=pixel_coords )
+
         
         if not all_attempts_failed:
             
@@ -216,14 +221,16 @@ def apply_peak_fit( ax, fit_id, x, y, fit_bounds,
                 print( "WARNING: peak failed to converge." )
 
             return 0
-
-        print( p0_attempt ) 
         
-        ret = jmath.jacob_least_squares( x, y, np.sqrt(y),
-                                         p0_attempt, fitfunc, fit_bounds=fit_bounds_attempt,
-                                         reduc_chisq_max = 4.5 )
+        model = jmath.jacob_least_squares( x, y, np.sqrt(y),
+                                           p0_attempt, fitfunc,
+                                           fit_bounds = fit_bounds_attempt,
+                                           reduc_chisq_max = 3.5,
+                                           params_bounds = params_bounds,
+                                           successful_fit_predicate = successful_alpha_fit_predicate,
+                                           print_results = 1 )
         
-        if ret is not None:
+        if model is not None:
 
             if PRINT_FIT_STATUS:
                 print( "INFO: success, breaking " )
@@ -232,38 +239,49 @@ def apply_peak_fit( ax, fit_id, x, y, fit_bounds,
         
         else:
             if PRINT_FIT_STATUS:
-                print( "WARNING: Unsuccessful fit, trying new parameters..." )
+                print( "WARNING: Unsuccessful fit, trying new parameters...\n\n" )
             current_attempt += 1
 
 
     # now we have broken out of the loop after a successful fit. unpack the results.
-    reduc_chisq, dof, pf, pferr = ret         
-                              
-    # write all relevant data to the db
-    if UPDATE_DB and db is not None:
-        db.insert_fit_data( x, y, fit_id,
-                            1, last_attempt, reduc_chisq,
-                            pf, pferr, p0_attempt, fit_bounds_attempt,
-                            peak_detect ) 
-        
-    # where we are after breaking    
-    if PRINT_PF:
-        print( "pf = " + str(pf) )
+    reduc_chisq = model.redchi
+
+    # model.plot_fit( ax = ax, datafmt = '-r', numpoints = 100 * model.ndata )
+
+    # dof = model.nfree
+    # pf = model.params
+    # pferr = model.         
+
+
     
-    if PRINT_PFERR:
-        print( "pferr = " + str(pferr) )
-
+    
+    # # write all relevant data to the db
+    # if UPDATE_DB and db is not None:
+    #     db.insert_fit_data( x, y, fit_id,
+    #                         1, last_attempt, reduc_chisq,
+    #                         pf, pferr, p0_attempt, fit_bounds_attempt,
+    #                         peak_detect ) 
         
-    jplt.add_fit_to_plot( ax, x, fit_bounds_attempt, pf, pferr, fitfunc )
+
+    # # where we are after breaking    
+    # if PRINT_PF:
+    #     print( "pf = " + str(pf) )
+    
+    # if PRINT_PFERR:
+    #     print( "pferr = " + str(pferr) )
 
 
-    # extend vectors as necessary. done here since this is the last time
-    # we get access to such variables unless taking such an approach.
-    if mu_all is not None:
-        mu_all.extend( [pf[ 5:3+2*npeaks:2 ] ]  )
+    final_fitfunc = lambda x : model.eval( x=x ) 
+    jplt.add_fit_to_plot( ax, x, fit_bounds_attempt, final_fitfunc )
 
-    if muerr_all is not None:
-        muerr_all.extend( [pferr[ 5:3+2*npeaks:2 ] ] )
+
+    # # extend vectors as necessary. done here since this is the last time
+    # # we get access to such variables unless taking such an approach.
+    # if mu_all is not None:
+    #     mu_all.extend( [pf[ 5:3+2*npeaks:2 ] ]  )
+
+    # if muerr_all is not None:
+    #     muerr_all.extend( [pferr[ 5:3+2*npeaks:2 ] ] )
 
     if reduc_chisq_all is not None:
         reduc_chisq_all.append( reduc_chisq )
@@ -273,6 +291,30 @@ def apply_peak_fit( ax, fit_id, x, y, fit_bounds,
     return 1
     
     
+
+
+
+# only allow a successful fit if we have sub-2 channel precision
+# on the mu values.
+
+def successful_alpha_fit_predicate( params ):
+
+    i = 0
+    keys = params.keys()
+
+    while( 1 ) :
+
+        mu = 'mu' + str(i)
+        
+        if mu in keys: 
+            if params[ mu ].stderr > 4:
+                return 0
+            i += 1 
+            
+        else:
+            break
+            
+    return 1 
 
 
 
@@ -326,7 +368,7 @@ def process_file( ax, infile, x, y, db = None, logfile=None ):
         if db is not None:
             for fit_id in range(3):
                 db.insert_fit_data( x, y, fit_id,
-                                            successful_fit = 0 )
+                                    successful_fit = 0 )
 
 
         return 0
@@ -391,13 +433,22 @@ def process_file( ax, infile, x, y, db = None, logfile=None ):
 
             return 0
 
+        # make sure that we didn't detect the small alpha peak after the main
+        # highest energ peak. to do this, make sure that peak 5 has a higher
+        # number of counts that peak 4
 
-
+        if num_peaks_found == 6:
+            if efront_histo[ our_peaks[5] ]  < efront_histo[ our_peaks[4] ]:
+                our_peaks = our_peaks[0:5]
+                num_peaks_found = 5
+                
+            
         
-        # determine which fits to perform, 1 = fit must be attempted. by default if no 
+        
+    # determine which fits to perform, 1 = fit must be attempted. by default if no 
     # conn is supplied we process all the fits.
 
-    fit_attempts = [0, 0, 0 ] # first fit to try, which is the one we left off on.
+    fit_attempts = [ -1, -1, -1 ] # first fit to try, which is the one we left off on.
 
     fits_to_perform = [ 1, 1, 1 ]
 
@@ -412,7 +463,7 @@ def process_file( ax, infile, x, y, db = None, logfile=None ):
             
             # extract
             result = db.read_fit_data( x, y, i )
-            successful_fit, fit_attempt, reduc_chisq, pf, pferr, p0, fit_bounds, peak_detect = result
+            successful_fit = result[ 'successful_fit' ]
             
             fits_to_perform[i] = not successful_fit
             
@@ -455,51 +506,45 @@ def process_file( ax, infile, x, y, db = None, logfile=None ):
 
     # construct guesses for the A parameter.
     A_array_guess = [ [ 20000.0, 60000.0 ], [ 50000.0, 100000. ] ]
-    mu_array_guess = [ [ 8 + our_peaks[i], 8 + our_peaks[i+1] ] for i in [0, 1]  ]
+    mu_array_guess = [ [ 8 + our_peaks[ 2*i ], 8 + our_peaks[ 2*i + 1 ] ] for i in [0, 1]  ]
     
     if num_peaks_found == 6:
-        A_array_guess.append( [ 50000.0, 200000.0 ] )
+        A_array_guess.append( [ 10000.0, 200000.0 ] )
         mu_array_guess.append( [ our_peaks[4] + 8, our_peaks[5] + 8 ] )
     else: 
         A_array_guess.append( [ 200000.0 ] ) 
         mu_array_guess.append( [ our_peaks[4] + 8 ] )
         
-    
-    p0 = [0] * 3
+
+    # these store the initial parameter guesses and 
+    # bounds on each parameter ( slightly inefficient ).
+
+    p0 = [0] * NUM_FEATURES
+    params_bounds = [0] * NUM_FEATURES 
 
     for i in range( NUM_FEATURES ):
-        
-        p0[i] = spec.construct_n_alpha_peaks_params( sigma_guess, eta_guess, tau1_guess,
-                                                     tau2_guess, A_array_guess[i],
-                                                     mu_array_guess[i] )
-        
-    # p0 = [
-    #         construct_n_alpha_peaks_params[ 6.0, 0.97, 20.2, 2.0 ] + [ 20000.0, our_peaks[0] + 8.0 ] + [ 60000.0, our_peaks[1] + 8.0 ],
-    #         [ 6.0, 0.99, 42.0, 1.6 ] + [ 50000.0, our_peaks[2] + 8.0 ] + [ 100000.0, our_peaks[3] + 8.0 ],
-    # ]
 
-    # if num_peaks_found == 5:
-    #     p0 += [ [ 4.0, 0.99, 30.0, 1.0 ] + [ 200000.0, our_peaks[4]+8 ] ]
-
-    # elif num_peaks_found == 6:
-    #     p0 += [ [ 6.0, 0.99, 42.0, 1.6 ] + [ 50000.0, our_peaks[4] + 8.0 ] + [ 200000.0, our_peaks[5] + 8.0 ] ] 
+        p0[i], params_bounds[i] = spec.construct_n_alpha_peaks_params(
+            sigma_guess, eta_guess, tau1_guess,
+            tau2_guess, A_array_guess[i],
+            mu_array_guess[i] )
 
 
+    # list of detected peaks, to be added to DB (not yet implemented) 
     peak_detect = [ our_peaks[0:2], our_peaks[2:4], our_peaks[4:] ]
+
     
     # loop through the fits that were not in the db and add them if successful.
     for i in range( NUM_FEATURES ):
         if fits_to_perform[i]:
 
-
-            # apply_peak_fit( ax, x, y, fit_bounds,
-            #         p0, npeaks, last_attempt=-1, pixel_coords=None, mu_all=None, 
-            #         muerr_all=None, reduc_chisq_all=None, db=None, peak_detect=None ):
+            print( '\nINFO: fitting feature ' + str(i) + '...' ) 
             
             apply_peak_fit( ax, i, xaxis, efront_histo, fit_bounds[i], p0[i],
                             num_peaks[i], fit_attempts[i],
                             reduc_chisq_all = reduc_chisq_all, db = db,
-                            peak_detect = peak_detect[i], pixel_coords = (x,y) ) 
+                            peak_detect = peak_detect[i], pixel_coords = (x,y),
+                            params_bounds = params_bounds[i] ) 
     
     
     # # add a description of the fit to the plot
@@ -519,22 +564,7 @@ def process_file( ax, infile, x, y, db = None, logfile=None ):
     
     
     
-    
-    ### FORMATTING FOR THE CASE OF AN ETA=1 fit .
-    #A_measurements = format_measurement_vector( "A", pf[range(2,pf.size,2)].tolist(), pferr[range(2,pf.size,2)].tolist() )
-    #
-    #mu_measurements = format_measurement_vector( "\\mu", pf[range(3,pf.size,2)].tolist(), pferr[range(3,pf.size,2)].tolist() )
-    #
-    #tau_str = " $ \\tau = %s \\pm %s $" % tuple( sigfig( pf[0], pferr[0] ) )
-    #
-    #sigma_str = "$ \\sigma = %s \\pm %s $" % tuple( sigfig( pf[1], pferr[1] ) )
-    #
-    #chisq_str = "$ \\tilde{\\chi}^2 = %s \; (\mathrm{dof} = %d ) $" % ( sigfig(reduc_chisq, 0.01)[0], dof )
-    #
-    #fitstr += '\n' + '\n'.join( [ A_measurements, mu_measurements, tau_str, sigma_str, chisq_str ] )
-    
-    
-    
+        
     
     ### FORMATTING FOR A FREE ETA FIT
     ## p format: sigma, eta, tau1, tau2, A1, mu1, ..., A_n, mu_n
@@ -669,13 +699,13 @@ def fit_all_peaks():
     
 # this function is to be used for debugging the fits. once you have found a fit that 
 # does not converge, add a new fit and 
-def make_one_plot( db, x, y ):
+def make_one_plot( db, x, y, test_db = 0 ):
     
     if db not in dbmgr.all_dbs :
         print( 'ERROR: db_id given is not in the list of db ids. ' )
         return 0
     
-    set_globals_for_debugging()
+    set_globals_for_debugging( test_db )
     
     current_file = db.name +  "_%d_%d.bin" % (x,y)
     
@@ -687,12 +717,21 @@ def make_one_plot( db, x, y ):
         
     ax = plt.axes()
     
-    db.connect()
-        
-    process_file( ax, current_file, x, y, db = None, logfile = None )
 
-    db.disconnect()
-    
+    if test_db:
+
+        # construct db if not already existing 
+        if not db.exists():
+            db.create()
+
+        db.connect()
+        process_file( ax, current_file, x, y, db = db )
+        db.disconnect()
+
+    else:
+        process_file( ax, current_file, x, y ) 
+
+        
     plt.show()
 
     return 1
@@ -720,10 +759,11 @@ log_message.first_msg = 1
 
 
 # set debug globals, called by make_one_plot()
-def set_globals_for_debugging():
+def set_globals_for_debugging( test_db = 0 ):
 
-    global UPDATE_DB
-    UPDATE_DB = 0
+    if not test_db:
+        global UPDATE_DB
+        UPDATE_DB = 0
     
     global PRINT_PEAK_POSITIONS
     PRINT_PEAK_POSITIONS = 1
@@ -738,7 +778,7 @@ def set_globals_for_debugging():
     SHOW_HISTO = 0
      
        
-make_one_plot( dbmgr.moved, 16, 2 )
+make_one_plot( dbmgr.centered, 16, 16, test_db = 1 )
 # fit_all_peaks()
 
 

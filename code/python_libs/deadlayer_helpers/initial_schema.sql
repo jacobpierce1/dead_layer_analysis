@@ -1,15 +1,14 @@
-create table fits_and_extracted_data (
+create table fits (
     x    INTEGER NOT NULL,
     y    INTEGER NOT NULL,
     fit_id INTEGER NOT NULL,
     successful_fit INTEGER NOT NULL,
-    fit_attempt INTEGER NOT NULL,
-    reduc_chisq REAL,
-    pf   TEXT,
-    pferr TEXT,
-    p0 TEXT,
-    fit_bounds TEXT,
-    peak_detect TEXT,
+    npeaks INTEGER NOT NULL,
+    last_attempt INTEGER NOT NULL,
+    params_guess BLOB,
+    fit_bounds BLOB,
+    peak_guesses BLOB,
+    model BLOB,
     PRIMARY KEY( x, y, fit_id )
 );
 
