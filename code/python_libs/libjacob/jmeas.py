@@ -65,6 +65,12 @@ class meas( object ):
 
 
     
+    @classmethod
+    def empty( cls, tup ):
+        return cls( np.empty( tup ), np.empty( tup ) )
+    
+
+    
     # construct a new measurement from a list of other measurements.
     @classmethod
     def from_list( cls, measlist ):
@@ -328,6 +334,12 @@ class meas( object ):
     def __delitem__( self, key ):
         raise NotImplemented( 'Have not decided on best functionality here.' )
 
+    def shape( self ):
+        return self.x.shape
+
+    def size( self ):
+        return self.x.size
+
     
 
 #########################################
@@ -470,3 +482,6 @@ def append( x, y ):
 # overload abs. x.dx is already positive.
 def abs( x ):
     return _meas_no_checks( np.abs( x.x ), x.dx )
+
+
+nan = meas( np.nan, np.nan ) 

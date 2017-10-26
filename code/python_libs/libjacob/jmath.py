@@ -31,7 +31,7 @@ def residual_from_fitfunc( p, x, y, yerr, fitfunc ):
 
 
 
-def xcut( x, y, newx_bounds, xsorted=0 ):
+def xcut( x, y, newx_bounds, xsorted = 0 ):
 
     # if x is sorted, then find newx_bounds[0] from the left
     # and newx_bounds[1] from the right. should speed up the cut,
@@ -48,6 +48,7 @@ def xcut( x, y, newx_bounds, xsorted=0 ):
 
     return np.asarray( y[ (x >= newx_bounds[0]) & (x <= newx_bounds[1]) ] )
     
+
 
 
 
@@ -96,6 +97,15 @@ def get_n_peak_positions( n, data ):
 
 
 
+# a lambda that i end up writing frequently
+# return the function of a model to be applied
+# to vector input.
+def model_func( model ):
+    return lambda x : model.eval( x = x )
+
+
+
+
 
 # perform fit. return None if there is error.
 # successful_fit_predicate is a function that takes
@@ -105,7 +115,7 @@ def get_n_peak_positions( n, data ):
 
 np.seterr(divide='ignore', invalid='ignore')
 
-def jacob_least_squares( x, y, dy, params_guess, fitfunc, dx = None,
+def jleast_squares( x, y, dy, params_guess, fitfunc, dx = None,
                          reduc_chisq_max = np.inf, fit_bounds = None,
                          params_bounds = None, successful_fit_predicate = None,
                          print_results = 0 ):
@@ -160,7 +170,8 @@ def jacob_least_squares( x, y, dy, params_guess, fitfunc, dx = None,
     # model.independent_vars = [ 'x' ]
     # model.param_names = params.keys() 
 
-    # print ( 'x : ' + str( x ) ) 
+    # print ( 'x : ' + str( x ) )
+
     
     model_result = model.fit( yfit, params, x = xfit,
                               weights = 1.0 / dyfit, nan_policy='omit'  ) 

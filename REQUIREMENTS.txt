@@ -1,0 +1,8 @@
+* ROOT
+* NumPy
+* SciPy
+* Lmfit
+* _pickle
+* sqlite3 
+* libjacob
+* dill

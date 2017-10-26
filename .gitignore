@@ -7,3 +7,4 @@ images/*
 junk/*
 stuff_from_mary/*
 *.DS_Store
+*databases*

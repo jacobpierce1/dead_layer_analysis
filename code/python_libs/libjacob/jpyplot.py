@@ -48,6 +48,8 @@ def plot_histo( ax, x, histo_array, plot_bounds=None, xlabel="", ylabel="", titl
 
 
 
+        
+
 def add_legend(ax, loc=0):
     if loc==1:
         locstr = 'upper right'
@@ -72,6 +74,8 @@ def add_legend(ax, loc=0):
     return 1
 
 
+
+
     
 # set the scale so that the fractional space between the edges of the plot
 # are away from the farthest data points such that xbuf, ybuf are the fractional
@@ -90,6 +94,8 @@ def set_linear_scale_plot_bounds( ax, x, y, xbuf=0.20, ybuf=0.20 ):
 
     ax.axis( (left, right, bottom, top) )
 
+
+    
         
         
 # add fit to the plot 
@@ -99,6 +105,7 @@ def add_fit_to_plot( ax, x, fit_bounds, fitfunc, linewidth=3, color='-r' ):
     plt.setp( fit[0], linewidth = linewidth )
 
 
+    
     
 
 # default plot params 
@@ -116,7 +123,7 @@ def plot ( ax, x, y, xerr=None, yerr=None,
 
         # omit fmt parameter for python 3, use fmt = 'none' for python 2.
         ax.errorbar ( x, y, xerr = xerr, yerr = yerr,
-                      errorevery = errorevery )  #, fmt = 'none' )
+                      errorevery = errorevery, fmt = 'o' )
 
     else:
         ax.plot( x, y, color=color )
@@ -143,18 +150,19 @@ def plot ( ax, x, y, xerr=None, yerr=None,
             xbounds = [ min(x - xerr), max( x + xerr) ]
 
         else:
-            xbounds = x
+            xbounds = [ min(x), max(x) ]
             
-        if y is not None:
+        if yerr is not None:
             ybounds = [ min(y - yerr), max( y + yerr) ]
 
         else:
-            ybounds = y
+            ybounds = [ min(y), max(y) ] 
 
             
-        set_linear_scale_plot_bounds( ax, xbounds, ybounds  )
+       # set_linear_scale_plot_bounds( ax, xbounds, ybounds  )
         
     # add_legend( ax, legloc )    
+
 
 
     

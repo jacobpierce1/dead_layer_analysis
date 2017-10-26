@@ -11,10 +11,11 @@ import libjacob.jpyplot as jplt
 import libjacob.jmeas as meas
 import libjacob.jutils as jutils
 import libjacob.jmath as jmath
+import libjacob.jstats as jstats
 
 import deadlayer_helpers.stopping_power_interpolation as stop
 import deadlayer_helpers.geometry as geom
-import deadlayer_helpers.sql_db_manager as dbman
+import deadlayer_helpers.sql_db_manager as dbmgr
 import deadlayer_helpers.analysis as anal
 import deadlayer_helpers.data_handler as data
 
@@ -25,6 +26,11 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 import scipy.optimize
+
+
+peak_energies = [ [ 5123.68, 5168.17 ], [ 5456.3, 5499.03 ], [ 5759.5, 5813.10,  ] ]
+flattened_peak_calibration_energies = jutils.flatten_list(
+    [ peak_energies[j] for j in [0,2] ] )
 
 
 # modifiable config
@@ -204,6 +210,8 @@ def _main():
 
     
 
+
+    
 # in principle we should be able to see the expected effect for any source
 # because of small angular variation throughout pixels.
 # this function makes an estimate using this fact. for each strip we
@@ -216,60 +224,41 @@ def _main():
 # sensitive to the position of the sources and detector, which are
 # simply not known that well.  proceeding to another test.
 
-_DEBUG = 0
+# _DEBUG = 0
 
-def example_estimate_for_one_source():
+# def example_estimate_for_one_source():
 
-    strip = 14
+#     strip = 16
 
-    # this takes a while to populate. use debug=1 option when developing.
-    # [i,j,k,l] = [ sourcenum, det or source (0 or 1 ), xcoord, ycoord ] 
-    cosine_matrices = geom.get_cosine_matrices( debug=0 )
+#     # this takes a while to populate. use debug=1 option when developing.
+#     # [i,j,k,l] = [ sourcenum, det or source (0 or 1 ), xcoord, ycoord ] 
+#     cosine_matrices = geom.get_cosine_matrices( debug=0 )
 
-    # read in grid of the mu values as meas class
-    mu_grid_center = anal.get_mu_grid_where_valid( 2, anal.read_all( db.rotated_db ) )
+#     # read in grid of the mu values as meas class
+#     mu_grid_center = dbmgr.rotated.get_mu_grid_where_valid( 3 )
 
-    if _DEBUG:
-        print_strip_stds( mu_grid_center )
+#     if _DEBUG:
+#         print_strip_stds( mu_grid_center )
     
-    # # guess 100 nm depth for all dead layers, both detector and source.
-    # # calculation is 100 nm * ( 1 m / 10^9 nm ) * 1000 mm / nm 
+#     # get 1 / mu and 1 / cosine for the current strip 
+#     cosine_recip_row = meas.abs( 1 / meas.meas.from_list( cosine_matrices[ 3,0,strip,: ] ) )
+#     mu_row = mu_grid_center[strip,:]
 
-    # det_deadlayer_depth_guess = 100.0 / 1e9 * 1000 
-    
-    # # # guess for the fraction of energy that is collected in the detector deadlayer
-    # # deadlayer_efficiency_guess = 0.5
+#     # make a plot and display it.
+#     ax = plt.axes()
 
-    # # actual energies of the 5 peaks we are looking at:
-    # alpha_energies = jutils.flatten_list( anal.peak_energies )
+#     jplt.plot( ax, cosine_recip_row.x, mu_row.x,
+#                # xerr = cosine_recip_row.dx,
+#                yerr = mu_row.dx,
+#                title = r'Sample Plot: Angular Variation of $\mu$ for One Strip',
+#                xlabel = r'$ 1 / \cos \theta $' ,
+#                ylabel = r'$\mu$ (Alpha Energy Cutoff)' )
 
-    # # construct the stopping power interpolation functions
-    # _populate_stop_power_interp_funcs( _stop_power_interp_funcs,
-    #                                    _deadlayer_ids )
-
-    # # guess for all params: A, B, det deadlayer guess,
-    # p0 = [ 2.0, 50.0, det_deadlayer_depth_guess ]
-
-    
-    # get 1 / mu and 1 / cosine for the current strip 
-    cosine_recip_row = meas.abs( 1 / meas.meas.from_list( cosine_matrices[ 3,0,strip,: ] ) )
-    mu_row = mu_grid_center[strip,:]
-
-    # make a plot and display it.
-    ax = plt.axes()
-
-    jplt.plot( ax, cosine_recip_row.x, mu_row.x,
-               # xerr = cosine_recip_row.dx,
-               yerr = mu_row.dx,
-               title = r'Sample Plot: Angular Variation of $\mu$ for One Strip',
-               xlabel = r'$ 1 / \cos \theta $' ,
-               ylabel = r'$\mu$ (Alpha Energy Cutoff)' )
-
-    plt.show()
+#     plt.show()
     
        
-    ret = jmath.jacob_least_squares( current_row_cosines.x, mu_values, mu_values_delta,
-                                     p0, calibrated_energy )
+#     ret = jmath.jacob_least_squares( current_row_cosines.x, mu_values, mu_values_delta,
+#                                      p0, calibrated_energy )
 
 
     
@@ -282,7 +271,8 @@ def example_estimate_for_one_source():
 def print_strip_stds( mu_grid ):
 
     stripx = mu_grid[ :, 15 ]
-    stripy = mu_grid[ 15, : ]
+    stripy = mu_grid[ 15, : ]  # this one is constant roughly.
+    
     # stripx = meas.meas.from_list( mu_grid[ :, 15 ] )
     # stripy = meas.meas.from_list( mu_grid[ 15, : ] )
 
@@ -297,6 +287,10 @@ def print_strip_stds( mu_grid ):
 
     
 
+
+
+
+    
     
 # DESCRIPTION: with this function we make a few significant
 # improvements over example_estimate_for_one_source(). for one, we are
@@ -309,69 +303,122 @@ def print_strip_stds( mu_grid ):
 #
 # RESULTS:
 
-def estimate_deadlayer_from_moved_source():
+def estimate_deadlayer_from_mu_differences():
 
+    x = 14
+
+    # centered_mu = dbmgr.centered.get_mu_grids_where_valid()
+    # moved_mu =  dbmgr.moved.get_mu_grids_where_valid()
+
+    centered_mu = dbmgr.centered.get_mu_for_x_strip( x )
+    moved_mu = dbmgr.moved.get_mu_for_x_strip( x )
     
-    # 1. estimate the peak position of each pixel. they are stored in
-    # lists of 6 indices, one for each peak. each entry is a meas object
-    # of 32 x 32 matrix for each peak position. put a nan entry in
-    # places where there was not a convergent fit.
-
-    peak_positions_centered = np.empty( 6 )
-    peak_positions_moved = np.empty( 6 )
-
-    # make life easier
-    peak_positions = [ peak_positions_centered, peak_positions_moved ]
-
-    dbs = [ db.centered_db, db.moved_db ]
-    # db_ids = [db.centered_id, db.moved_id ]
-
-    # do a separate calibration for each pixel
-
+    f, axarr = plt.subplots( 2 )
     
-    
-    for i in range( len( db_ids ) ):
-        for x in range(32):
-            for y in range(32):
-                pass
-            
-                # print( (x,y) )
 
-                # histo = np.empty( 5000 )
+    # construct the sec differences from geometry
+
+    cosine_matrices = geom.get_cosine_matrices( debug=0 )
+
+    secant_differences = meas.meas.from_list(
+        1 / cosine_matrices[ 'pu_238_moved' ][ 0, x, : ]
+        - 1 / cosine_matrices[ 'pu_238_centered' ][ 0, x, : ] )
+
+
+    # these two variables store the calibrated energies of the center peaks.
+    moved_calibrated_energies = meas.meas.empty( (2,32 ) )
+    centered_calibrated_energies = meas.meas.empty( (2,32) )
+
+
+    # do least squares fit on each pixel
+    mu_vals_array = [ centered_mu, moved_mu ]
+    calibrated_energy_array = [ centered_calibrated_energies,
+                                moved_calibrated_energies ] 
+    
+    for i in range( 2 ):
+        for j in range( 32 ):
+
+            if mu_vals_array[i][1][0][j].x == np.nan: 
+                for l in range(2):
+                    calibrated_energy_array[i][l][j] = meas.nan
+                continue
+
+            # construct arrays of mu values for features 0 and 2, ie the calibration
+            # sources. 
+            mu_vals = [ mu_vals_array[i][k][l][j].x
+                        for k in [0,2]
+                        for l in [0,1] ] 
+
+            mu_deltas = [ mu_vals_array[i][k][l][j].dx
+                          for k in [0,2]
+                          for l in [0,1] ] 
+                                               
+            if np.count_nonzero( ~np.isnan( mu_vals ) ) < 3:
+                for l in range(2):
+                    calibrated_energy_array[i][l][j] = meas.nan
+                    
+                continue
                 
-                # data.get_pixel_histo( db_ids[i], x, y, histo )
-                                 
+            linear_fit = jstats.linear_calibration( flattened_peak_calibration_energies,
+                                                    mu_vals, mu_deltas, print_results = 0,
+                                                    invert = 1 )
 
+            if linear_fit is not None:
+                m, b, f = linear_fit
+                for l in range(2):
+                    calibrated_energy_array[i][l][j] = meas.meas(
+                        m.x * mu_vals_array[i][1][l][j].x + b.x,
+                        m.x * mu_vals_array[i][1][l][j].dx )
+
+            else:
+                for l in range(2):
+                    calibrated_energy_array[i][l][j] = meas.nan
+                    
+                        # f( mu_vals_array[i][1][l][j] ) 
+
+            
+                    
+    for j in range( 2 ):
+                        
+                        # print( i, j ) 
+
+            # moved_mu_tmp = moved_mu[ i, j ]# [ x, : ]
+            # centered_mu_tmp = centered_mu[ i, j ] #[ x, : ]
+            
+            # print( 'moved_mu: ' + str( moved_mu_tmp ) )
+            # print( 'centered_mu : ' + str(centered_mu_tmp ) ) 
+            
+        # mu_differences = moved_mu_tmp - centered_mu_tmp 
+            
+#            print( 'mu_differences: ' + str( mu_differences ) )
+        # print( centered_calibrated_energies )
+
+        # print( '\n' )
+        # print (  moved_calibrated_energies )
+
+        energy_differences = centered_calibrated_energies - moved_calibrated_energies 
+        print( 'energy_differences: ' + str( energy_differences ) )
+            
+        jplt.plot( axarr[j], secant_differences.x,
+                   energy_differences[j].x,
+                   xerr = secant_differences.dx,
+                   yerr = energy_differences[j].dx )
+        
+        axarr[j].text( 0.1, 0.9, '(%d, %d)' % (i, j ),
+                         transform = axarr[j].transAxes,
+                         fontsize=12,
+                         verticalalignment='top' )
+        
+
+    plt.show()
+    
     return 0
                 
                 
-    # right_db_name = db.rotated_db  # the name 
-    
-    
-    # 2. read in geometry data for the centered and right peaks.
 
 
 
 
-    # 3. get stopping power interpolation functoin for silicon
-
-
-
-    
-    # 4. plot delta mu against  - S(E0) delta (1 / cos theta) 
-
-
-
-    # 5. if successful: fit to a line
-
-
-
-# # get 
-# def get_strip_peakvals( db_name, x ):
-
-#     return 
-        
-        
 
     
 
@@ -383,7 +430,7 @@ def estimate_deadlayer_from_moved_source():
 
 def get_peakvals( db, x, y, plot_sim_results = -1 ):    
 
-    alpha_fitfunc = spec.n_fitfuncs_abstract( spec.fitfunc_n_alpha_peaks, 1 )
+    alpha_fitfunc = spec.sum_n_fitfuncs( spec.fitfunc_n_alpha_peaks, 1 )
     peakpos_arr = []
     peakpos_delta_arr = []
     num_iterations = 300
@@ -468,6 +515,8 @@ def get_peakvals( db, x, y, plot_sim_results = -1 ):
 
 
 
+
+
 # do the analysis for a particular strip to see
 # the relationship between difference of secants and
 # difference in mu values.
@@ -544,10 +593,10 @@ def preview_secant_differences():
 
 
     
-#    print_strip_stds( db.get_mu_grid_where_valid( db.moved_db, 2 ) ) 
+# print_strip_stds( dbmgr.moved.get_mu_grids_where_valid()[ 1][0] ) 
     
 # example_estimate_for_one_source()
-# estimate_deadlayer_from_moved_source()
+estimate_deadlayer_from_mu_differences()
 
-preview_secant_differences()
+# preview_secant_differences()
 

@@ -11,6 +11,8 @@
 import numpy as np
 import scipy.special as special
 from lmfit import Model
+from libjacob import meas 
+
 # from functools import partial 
 
 
@@ -27,62 +29,61 @@ from lmfit import Model
 
     
     
-# class for all the fitfuncs. for maximal efficiency
-# and compabibility with scipy functions, they all
-# take array parameters as input. a function can also
-# be provided to convert the array to a dict
-# and if this is specified, another func to convert
-# such a dict to an array for future use. fitfunc
-# must as its first argument 
+# # class for all the fitfuncs. for maximal efficiency
+# # and compabibility with scipy functions, they all
+# # take array parameters as input. a function can also
+# # be provided to convert the array to a dict
+# # and if this is specified, another func to convert
+# # such a dict to an array for future use. fitfunc
+# # must as its first argument 
 
-class fitfunc( object ):
+# class fitfunc( object ):
 
-    def __init__( self, fitfunc,
-                  params_array_to_dict_func = None,
-                  params_dict_to_array_func = None ):
-
-
-        if not callable( fitfunc ):
-            raise ValueError( 'fitfunc must be a function' )
+#     def __init__( self, fitfunc,
+#                   params_array_to_dict_func = None,
+#                   params_dict_to_array_func = None ):
 
 
-        # verify that f is a function that accepts 2 params.
-        if f.__code__.co_argcount != 2:
-            raise ValueError( 'fitfunc must take 2 parameters: ' +
-                              '( params_array, input_array )' )
+#         if not callable( fitfunc ):
+#             raise ValueError( 'fitfunc must be a function' )
+
+
+#         # verify that f is a function that accepts 2 params.
+#         if f.__code__.co_argcount != 2:
+#             raise ValueError( 'fitfunc must take 2 parameters: ' +
+#                               '( params_array, input_array )' )
         
         
-        self._fitfunc = fitfunc
+#         self._fitfunc = fitfunc
 
 
-        # define the parameter conversion functions:
-        if params_array_to_dict_func is not None:
+#         # define the parameter conversion functions:
+#         if params_array_to_dict_func is not None:
 
-            if not callable( params_array_to_dict_func ):
-                raise ValueError( 'params_array_to_dict_func must be a function' )
+#             if not callable( params_array_to_dict_func ):
+#                 raise ValueError( 'params_array_to_dict_func must be a function' )
         
-            self._array_to_dict_func = params_array_to_dict_func
+#             self._array_to_dict_func = params_array_to_dict_func
 
             
-        if params_dict_to_array_func is not None:
+#         if params_dict_to_array_func is not None:
 
-            if not callable( params_dict_to_array_func ):
-                raise ValueError( 'params_dict_to_array_func must be a function' )
+#             if not callable( params_dict_to_array_func ):
+#                 raise ValueError( 'params_dict_to_array_func must be a function' )
 
-            self._dict_to_array_func = params_dict_to_array_func
-
-
-    # convert params dict to an array for input to 
-    def dict_to_array( self, params_array ):
-        return self._dict_to_array_func( params_array )
+#             self._dict_to_array_func = params_dict_to_array_func
 
 
-    def array_to_dict( self, params_array ):
-        return self._array_to_dict_func( params_array )
+#     def dict_to_array( self, params_array ):
+#         return self._dict_to_array_func( params_array )
+
+
+#     def array_to_dict( self, params_array ):
+#         return self._array_to_dict_func( params_array )
     
 
-    def apply( self, pf, input_array ):
-        return self._fitfunc( pf, input_array ) 
+#     def apply( self, pf, input_array ):
+#         return self._fitfunc( pf, input_array ) 
 
 
 
@@ -125,11 +126,10 @@ def sum_n_fitfuncs( fitfunc, n ):
 
 
 
+
 # return an lmfit model constructed from n alpha
 # fit functions. keep sigma, eta, tau1, tau2 the same
 # in all of them.
-
-
 
 def fitfunc_n_alpha_peaks( n, x, **params ):
     
@@ -176,6 +176,37 @@ def construct_n_alpha_peaks_params(
 
 
 
+
+
+# port the parameters of the model to a meas.meas
+def get_alpha_params_dict( model ): 
+
+    params = model.params
+
+    npeaks = ( len( params ) - 4 ) // 2  
+
+    ret = { 'sigma' : 0, 'tau1' : 0, 'tau2' : 0, 'eta' : 0 } 
+
+    for key in ret:
+        ret[ key ] = meas( params[key].value, params[key].stderr )
+
+    for key_base in [ 'mu', 'A' ]:
+
+        vals = np.empty( npeaks )
+        deltas = np.empty( npeaks ) 
+            
+        for i in range( npeaks ):
+
+            param = params[ key_base + str(i) ] 
+            vals[i] = param.value
+            deltas[i] = param.stderr
+
+        ret[ key_base ] = meas( vals, deltas ) 
+            
+
+        #    print( ret ) 
+    return ret
+
     
 # # fit n alpha peaks given vector p and array x 
 # # p format: sigma, tau, A1, mu1, ..., A_n, mu_n
@@ -199,7 +230,6 @@ def construct_n_alpha_peaks_params(
 # def alpha_fit_eta1( A, mu, sigma, tau, x ):
 #     logtmp = (x-mu)/tau + sigma**2.0/(2*tau**2.0) + np.log( special.erfc( (x-mu)/sigma + sigma/tau) / np.sqrt(2) ) 
 #     return A/(2.0*tau) * np.exp( logtmp )
-
 
 
 

@@ -60,7 +60,8 @@ import matplotlib.pyplot as plt
 import time 
 import sys
 import sqlite3
-import os 
+import os
+from enum import Enum 
 
 
 
@@ -101,12 +102,17 @@ def next_fit( p0, p0_attempt, fit_bounds, fit_bounds_attempt, npeaks ):
 
 
 
+class fit_attempt_status( Enum ):
+    SUCCESS = 1
+    FAILURE = 2
+    NO_UPDATE = 3
+
+
 
 # this function creates another guess for p0 in the case of a failed fit based on
 # observations about what is gonig wrong. the particular attempts we use depend on the peak id.
 def next_fit_attempt( p0, p0_attempt, fit_bounds, fit_id,
-                      fit_bounds_attempt, npeaks,
-                      attempt, db = None, pixel_coords=None ):
+                      fit_bounds_attempt, npeaks, attempt ):
 
     
     # these will be modified and used later as the initial guess.
@@ -131,37 +137,17 @@ def next_fit_attempt( p0, p0_attempt, fit_bounds, fit_id,
     # number in db or add another function (latter almost certainly what you need).
     # note that we don't update the db
     if( attempt >= len(modifier_functions ) ):
-        return 0
+        return fit_attempt_status.NO_UPDATE
 
     
     # this checks if we had not previously attempted all functions, but none of them succeeded
     # on this run. in that case put it in the DB. 
     if attempt == len(modifier_functions):
-        
-        if UPDATE_DB and db is not None:
-
-            if pixel_coords is None or fit_id is None:
-
-                msg = ( 'WARNING (%d, %d, %d): unable to insert bad fit attempt into db '
-                        + 'pixel_coords or fit_id not specified.'
-                        % (pixel_coords[0], pixel_coords[1], fit_id ) )
-                
-                print( msg )
-
-                if log_enabled:
-                    log_message( logfile, msg )
-
-                    return 0
-
-                # end of log handling: add to the db
-                db.insert_fit_data( pixel_coords[0], pixel_coords[1], 
-                                    fit_id, 0, fit_attempt=attempt )
-
-            # return 0 if last available attempt failed.
-            return 0
+        return fit_attempt_status.FAIL
 
     
-    # otherwise we call the current attempt function. 
+    # otherwise we call the current attempt function
+    # to generate a new fit parameters attempt.
     modifier_functions[ attempt ] ( p0, p0_attempt, fit_bounds, fit_bounds_attempt, npeaks )
     
     if PRINT_FIT_ATTEMPT:
@@ -184,12 +170,13 @@ def next_fit_attempt( p0, p0_attempt, fit_bounds, fit_id,
 # obtained, otherwise 0. last_attempt is the last attempted + 1,
 # i.e. it is the first fit that will be attempted.
 
-def apply_peak_fit( ax, fit_id, x, y, fit_bounds,
-                    p0, npeaks, last_attempt=-1, pixel_coords=None,
-                    params_bounds = None, mu_all=None, 
-                    muerr_all=None, reduc_chisq_all=None, db=None, peak_detect=None ):
+def apply_peak_fit( ax, x, y, fit_id,
+                    xvals, yvals,
+                    fit_bounds,
+                    p0, npeaks, last_attempt=-1, 
+                    params_bounds = None, reduc_chisq_all=None,
+                    db=None, peak_detect=None ):
     
-    # print( last_attempt ) 
     
     fitfunc = spec.sum_n_fitfuncs( spec.fitfunc_n_alpha_peaks, npeaks )
 
@@ -209,29 +196,41 @@ def apply_peak_fit( ax, fit_id, x, y, fit_bounds,
     
     while( 1 ):
 
-        all_attempts_failed = next_fit_attempt( p0, p0_attempt,
-                                                fit_bounds, fit_id, fit_bounds_attempt, 
-                                                npeaks, current_attempt, db = db,
-                                                pixel_coords=pixel_coords )
+        status = next_fit_attempt( p0, p0_attempt,
+                                   fit_bounds, fit_id, fit_bounds_attempt, 
+                                   npeaks, current_attempt )
 
-        
-        if not all_attempts_failed:
+        # our fit attempts all failed in this case 
+        if status == fit_attempt_status.FAILURE:
+
             
             if PRINT_FIT_STATUS:
-                print( "WARNING: peak failed to converge." )
+                print( "INFO: fit failed, adding to DB " )
+            
+            if UPDATE_DB and db is not None:
+                db.insert_fit_data( x, y, fit_id,
+                                    last_attempt=attempt )
+
+        # in this case, the fits all failed but it was already in DB 
+        if status == fit_attempt_status.NO_UPDATE:
+            
+            if PRINT_FIT_STATUS:
+                print( "INFO: peak failed to converge, already detected in db.." )
 
             return 0
-        
-        model = jmath.jacob_least_squares( x, y, np.sqrt(y),
-                                           p0_attempt, fitfunc,
-                                           fit_bounds = fit_bounds_attempt,
-                                           reduc_chisq_max = 3.5,
-                                           params_bounds = params_bounds,
-                                           successful_fit_predicate = successful_alpha_fit_predicate,
-                                           print_results = 1 )
+
+
+        # if those 2 cases are not reached, then we have a new fit attempt.
+        # try doing least squares. 
+        model = jmath.jleast_squares( xvals, yvals, np.sqrt( yvals ),
+                                      p0_attempt, fitfunc,
+                                      fit_bounds = fit_bounds_attempt,
+                                      reduc_chisq_max = 3.5,
+                                      params_bounds = params_bounds,
+                                      successful_fit_predicate = successful_alpha_fit_predicate,
+                                      print_results = 0 )
         
         if model is not None:
-
             if PRINT_FIT_STATUS:
                 print( "INFO: success, breaking " )
             break
@@ -255,12 +254,16 @@ def apply_peak_fit( ax, fit_id, x, y, fit_bounds,
 
     
     
-    # # write all relevant data to the db
-    # if UPDATE_DB and db is not None:
-    #     db.insert_fit_data( x, y, fit_id,
-    #                         1, last_attempt, reduc_chisq,
-    #                         pf, pferr, p0_attempt, fit_bounds_attempt,
-    #                         peak_detect ) 
+    # write all relevant data to the db
+    if UPDATE_DB and db is not None:
+        db.insert_fit_data( x, y, fit_id,
+                            successful_fit = 1,
+                            npeaks = npeaks, 
+                            last_attempt = current_attempt,
+                            params_guess = p0_attempt,
+                            fit_bounds = fit_bounds_attempt, 
+                            peak_guesses = peak_detect,
+                            model = model ) 
         
 
     # # where we are after breaking    
@@ -271,8 +274,8 @@ def apply_peak_fit( ax, fit_id, x, y, fit_bounds,
     #     print( "pferr = " + str(pferr) )
 
 
-    final_fitfunc = lambda x : model.eval( x=x ) 
-    jplt.add_fit_to_plot( ax, x, fit_bounds_attempt, final_fitfunc )
+    # final_fitfunc = lambda x : model.eval( x=x ) 
+    jplt.add_fit_to_plot( ax, xvals, fit_bounds_attempt, jmath.model_func( model ) )
 
 
     # # extend vectors as necessary. done here since this is the last time
@@ -291,6 +294,7 @@ def apply_peak_fit( ax, fit_id, x, y, fit_bounds,
     return 1
     
     
+
 
 
 
@@ -320,6 +324,7 @@ def successful_alpha_fit_predicate( params ):
 
 
 
+
 # do all behavior specific to our application: read file, fit peaks,
 # make the plot.  if db is supplied, they we assume that it is a valid
 # open sqlite connection and check db for whether this file has been
@@ -329,8 +334,6 @@ def process_file( ax, infile, x, y, db = None, logfile=None ):
 
     log_enabled = logfile is not None
     
-    coordsstr = "(%d, %d)" % ( x, y )
-
     # x axis, needed no matter what.
     xaxis = np.arange( 5000 )
 
@@ -367,8 +370,7 @@ def process_file( ax, infile, x, y, db = None, logfile=None ):
         
         if db is not None:
             for fit_id in range(3):
-                db.insert_fit_data( x, y, fit_id,
-                                    successful_fit = 0 )
+                db.insert_fit_data( x, y, fit_id, successful_fit = 0 )
 
 
         return 0
@@ -456,26 +458,34 @@ def process_file( ax, infile, x, y, db = None, logfile=None ):
     # muerr_all = []
     reduc_chisq_all = [] # store all reduced chisq values.
     
-    
+
+    # option to pass None as the DB 
     if db is not None:
 
         for i in range(len(fits_to_perform)):
             
             # extract
-            result = db.read_fit_data( x, y, i )
-            successful_fit = result[ 'successful_fit' ]
-            
+            db_data = db.read_fit_data( x, y, i )
+
+            successful_fit = db_data[ 'successful_fit' ]
+
+            # signal that this fit will have to be re-attempted.
             fits_to_perform[i] = not successful_fit
-            
-            fit_attempts[i] = fit_attempt
+
+            # last attempt that we left off on 
+            fit_attempts[i] = db_data[ 'last_attempt' ]
             
             if successful_fit:
-                fitfunc = spec.sum_n_fitfuncs( spec.fitfunc_n_alpha_peaks, NUM_PEAKS_PER_FEATURE[i] )
-                jplt.add_fit_to_plot( ax, xaxis, fit_bounds, pf, pferr, fitfunc )
-                reduc_chisq_all.append( reduc_chisq )
+                # fitfunc = spec.sum_n_fitfuncs( spec.fitfunc_n_alpha_peaks, NUM_PEAKS_PER_FEATURE[i] )
                 
+                model = db_data[ 'model' ] 
+                jplt.add_fit_to_plot( ax, xaxis, db_data[ 'fit_bounds' ], jmath.model_func( model ) )
+                reduc_chisq_all.append( model.redchi )
                 
+
+        # no further processing required if all the fits converged.
         if not any( fits_to_perform ):
+            _add_text( ax, x, y, reduc_chisq_all )
             return 1
                 
  
@@ -538,12 +548,14 @@ def process_file( ax, infile, x, y, db = None, logfile=None ):
     for i in range( NUM_FEATURES ):
         if fits_to_perform[i]:
 
-            print( '\nINFO: fitting feature ' + str(i) + '...' ) 
+            #            print( '\nINFO: fitting feature ' + str(i) + '...' ) 
             
-            apply_peak_fit( ax, i, xaxis, efront_histo, fit_bounds[i], p0[i],
+            apply_peak_fit( ax, x, y, i,
+                            xaxis, efront_histo,
+                            fit_bounds[i], p0[i],
                             num_peaks[i], fit_attempts[i],
                             reduc_chisq_all = reduc_chisq_all, db = db,
-                            peak_detect = peak_detect[i], pixel_coords = (x,y),
+                            peak_detect = peak_detect[i], 
                             params_bounds = params_bounds[i] ) 
     
     
@@ -583,24 +595,30 @@ def process_file( ax, infile, x, y, db = None, logfile=None ):
     #
     #fitstr += '\n' + '\n'.join( [ A_measurements, mu_measurements, sigma_str, eta_str,  tau1_str, tau2_str, chisq_str ] )
     
+
+    _add_text( ax, x, y, reduc_chisq_all ) 
     
-    
-    # formatting only with relevant parameters. 
-    # mu_str= format_measurement_vector( "\\mu", mu_all, muerr_all )
-    reduc_chisq_str = jutils.format_measurement_vector( "\\tilde{\\chi}^2", reduc_chisq_all, 0.01 )
-    
-    # fitstr += '\n' + '\n'.join( [mu_str, reduc_chisq_str] )
-#    fitstr += '\n' + reduc_chisq_str
-    fitstr = '\n' + reduc_chisq_str
-    #ax.text( 0.02, 0.92, fitstr, transform=ax.transAxes, fontsize=12, verticalalignment='top')
-    #ax.text( 0.02, 0.93, coordsstr, transform=ax.transAxes, fontsize=12, verticalalignment='top' )
-    
-    ax.text( 0.02, 1.05, fitstr, transform=ax.transAxes, fontsize=12, verticalalignment='top')
-    ax.text( 0.03, 0.80, coordsstr, transform=ax.transAxes, fontsize=12, verticalalignment='top' )
         
     return 1
 
 
+
+
+
+
+def _add_text( ax, x, y, reduc_chisq_all ):
+    
+    coordsstr = "(%d, %d)" % ( x, y )
+
+    reduc_chisq_str = jutils.format_measurement_vector( "\\tilde{\\chi}^2", reduc_chisq_all, 0.01 )
+
+    fitstr = '\n' + reduc_chisq_str
+    
+    ax.text( 0.02, 1.05, fitstr, transform=ax.transAxes, fontsize=12, verticalalignment='top')
+    ax.text( 0.03, 0.80, coordsstr, transform=ax.transAxes, fontsize=12, verticalalignment='top' )
+
+
+    
 
 
 
@@ -615,84 +633,84 @@ def fit_all_peaks():
     dimx = 4
     dimy = 4
 
-    # used to name the image files
-    files = db.all_db_ids
+    a = -1
 
-    databases = db.all_dbs_list
+    start_time = time.time() 
 
-    # used for estimating time remaining.
-    start_time = time.time()
-  
-    # loop through each file prefix / corresponding database.
-    for a in range( len(files) ):
+    for db in dbmgr.all_dbs:
 
-        # create the current db if it doesn't already exist.
-        if not os.path.exists( databases[a] ):
-            db.create_db( databases[a] )
+        # count number of db's we have processed. 
+        a += 1 
+        print( db.name )
+        
 
-        # this is the name associated with the current db, e.g. 'centered'.
-        fileprefix = files[a]
+        # construct db if not already existing 
+        if not db.exists():
+            db.create()
 
+        db.connect()
+
+       
         # make dir for output images if it doesn't exist 
-        current_outdir = '../../images/current_fit_images/' + fileprefix + '/'
+        current_outdir = '../../images/current_fit_images/' + db.name + '/'
 
         if not os.path.exists( current_outdir ):
             os.mkdir( current_outdir )
 
 
         logfile = current_outdir + 'log.txt'
-
-        with sqlite3.connect( databases[a] ) as sql_conn:
+        
+        
+        # these 2 loops loop over grids of dimx x dimy images. 
+        for x in range( totalx ):
             
-            # these 2 loops loop over grids of dimx x dimy images. 
-            for x in range( totalx ):
+            # these loops create the 4x4 grids. 2 per strip row.
+            for k in range( totaly // (dimx * dimy ) ):
                 
-                # these loops create the 4x4 grids. 2 per strip row.
-                for k in range( totaly // (dimx * dimy ) ):
-
-                    plt.clf()
-                    plt.close()
-                    f, axarr = plt.subplots( dimx, dimy, figsize=(20,10) )    
-                    
-                    for i in range(dimx):
-                        for j in range(dimy):
-
-                            y = ( i * dimx + j ) + ( k * dimx * dimy )
-                                
-                            print( str( [x,y] ) )    
-                                
-                            # this estimates the time remaining for the program to terminate
-                            jutils.estimate_time_left( x * totaly + y
-                                                       + ( a * totalx * totaly ), 
-                                                       len(files) * totalx * totaly,
-                                                       start_time, num_updates=100 )
-                                
-                            # current pixel coords
-                            coords = ( x, y )
-                            
-                            # file containing the data
-                            current_file = fileprefix + "_%d_%d.bin" % coords
-                            
-                            if PRINT_FILE_NAMES:
-                                print( "INFO: processing file: " + current_file )
-                                
-                            current_file = ( "../../data/extracted_ttree_data/"
-                                             + fileprefix + '/' + current_file )
-                                
-                            process_file( axarr[i,j], current_file, coords, sql_conn = sql_conn, logfile = logfile)
-                                
-                            if( BREAK_AFTER_1_PLOT ):
-                                plt.show()
-                                return 1
-                                
-                    jplt.saveplot_low_quality( current_outdir, fileprefix + '_x=%d.%d' % (x, k) )
-
-
+                plt.clf()
+                plt.close()
+                f, axarr = plt.subplots( dimx, dimy, figsize=(20,10) )    
+                
+                for i in range(dimx):
+                    for j in range(dimy):
                         
-    # plt.setp([a.get_xticklabels() for a in axarr[0, :]], visible=False)
-    # plt.setp([a.get_yticklabels() for a in axarr[:, 1]], visible=False)
-    
-
+                        y = ( i * dimx + j ) + ( k * dimx * dimy )
+                        
+                        print( str( [x,y] ) )    
+                        
+                        # this estimates the time remaining for the program to terminate
+                        jutils.estimate_time_left( x * totaly + y
+                                                   + ( a * totalx * totaly ), 
+                                                   len( dbmgr.all_dbs ) * totalx * totaly,
+                                                   start_time, num_updates=100 )
+                        
+                        # current pixel coords
+                        # coords = ( x, y )
+                        
+                        # file containing the data
+                        current_file = db.name + "_%d_%d.bin" % ( x, y )
+                        
+                        if PRINT_FILE_NAMES:
+                            print( "INFO: processing file: " + current_file )
+                            
+                        current_file = ( "../../data/extracted_ttree_data/"
+                                         + db.name + '/' + current_file )
+                        
+                        process_file( axarr[i,j], current_file, x, y,
+                                      db = db, logfile = logfile ) # sql_conn = sql_conn, logfile = logfile)
+                        
+                        if( BREAK_AFTER_1_PLOT ):
+                            plt.show()
+                            return 1
+                        
+                jplt.saveplot_low_quality( current_outdir, db.name + '_x=%d.%d' % (x, k) )
+                            
+            
+        db.disconnect()
+                        # plt.setp([a.get_xticklabels() for a in axarr[0, :]], visible=False)
+                            # plt.setp([a.get_yticklabels() for a in axarr[:, 1]], visible=False)
+                            
+                            
 
     
     
@@ -778,7 +796,7 @@ def set_globals_for_debugging( test_db = 0 ):
     SHOW_HISTO = 0
      
        
-make_one_plot( dbmgr.centered, 16, 16, test_db = 1 )
-# fit_all_peaks()
+# make_one_plot( dbmgr.centered, 16, 16, test_db = 1 )
+fit_all_peaks()
 
 

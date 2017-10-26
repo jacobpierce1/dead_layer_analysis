@@ -1,23 +1,80 @@
-import libjacob.jacob_math as jmath
-import libjacob.jacob_pyplot as jplt
+import libjacob.jmeas as meas
+import libjacob.jmath as jmath
+import libjacob.jpyplot as jplt
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from lmfit.models import LinearModel
 
 
 
+def linear_calibration( x, y, dy = None, m_guess = None, b_guess = None,
+                        print_results = 0, ax = None, invert = 0,
+                        scatter = 0 ):
 
-def linear_calibration( x, y, dy, p0, print_fit_data=0, ax=None, invert=0, scatter=0 ):
+    model = LinearModel() 
+            
+    if m_guess is None:
+
+        xmin = min(x)
+        xmax = max(x)
+        ymin = min(y)
+        ymax = max(y)
+
+        m_guess = ( ymax - ymin ) / ( xmax - xmin )
+
+    if b_guess is None:
+        b_guess = ( y[0] - m_guess * x[0] ) 
     
-    linear_fit = lambda p, x_: p[0]*x_ + p[1]
-    return calibration( linear_fit, x, y, dy, p0, print_fit_data, ax, invert, scatter )
+    model.make_params( m = m_guess, b = b_guess )
 
+    if dy is not None:
+        weights = 1.0 / np.asarray( dy )
+    else:
+        weights = None
+            
+    model_result = model.fit( y, x = x, weights = weights, nan_policy = 'omit' )
 
+    if print_results:
+        print( model_result.fit_report() )
 
-def quadratic_calibration( x, y, dy, p0, print_fit_data=0, ax=None, invert=0, scatter=0 ):
+    # determine if we had a succussful fit. ier
+    # is the return code of scipy.optimize.leastsq.
+    # if this is 1, then lmfit thinks we succeeded. 
+    successful_fit = ( model_result.success and ( model_result.ier < 4 ) )
+                       # and ( model_result.redchi < reduc_chisq_max ) )
+
+    if not successful_fit:
+        return None
+
+    mparam = model_result.params['slope']
+    bparam = model_result.params['intercept']
+
+    m = meas.meas( mparam.value, mparam.stderr )
+    b = meas.meas( bparam.value, bparam.stderr ) 
+
+    # error analysis built into these calculations via meas.
+    if invert: 
+        b = - b / m
+        m = 1 / m 
+
+    return m, b, lambda x : m * x + b 
     
-    quadratic_fit = lambda p, x_: p[0]*x_**2.0 + p[1]*x_ + p[2]
-    return calibration( quadratic_fit, x, y, dy, p0, print_fit_data, ax, invert, scatter )
+    # return model_result if successful_fit else None 
+
+
+
+
+
+    # linear_fit = lambda p, x_: p[0]*x_ + p[1]
+    # return calibration( linear_fit, x, y, dy, p0, print_fit_data, ax, invert, scatter )
+
+
+
+# def quadratic_calibration( x, y, dy, p0, print_fit_data=0, ax=None, invert=0, scatter=0 ):
+    
+#     quadratic_fit = lambda p, x_: p[0]*x_**2.0 + p[1]*x_ + p[2]
+#     return calibration( quadratic_fit, x, y, dy, p0, print_fit_data, ax, invert, scatter )
 
 
 
@@ -29,8 +86,10 @@ def quadratic_calibration( x, y, dy, p0, print_fit_data=0, ax=None, invert=0, sc
 # no error handling done other than returning None if there is a failed fit.
 # if invert is 1 then the linear equation that is returned is inverted.
 # use scatter=1 to do a scatter instead of an errorbar
+
 def calibration( fitfunc, x, y, dy, p0, print_fit_data=0, ax=None, invert=0, scatter=0 ):
-    result = jmath.jacob_least_squares( x, y, dy, p0, fitfunc )
+    
+    result = jmath.jleast_squares( x, y, dy, p0, fitfunc )
     if result is not None:
         reduc_chisq, dof, pf, pf_delta = result
     else:
@@ -40,7 +99,7 @@ def calibration( fitfunc, x, y, dy, p0, print_fit_data=0, ax=None, invert=0, sca
     if print_fit_data:
         messages = [ 'reduc_chisq', 'dof', 'pf', 'pf_delta' ]
         for i in range(len(result)):
-            print messages[i] + ': ' + str(result[i])
+            print( messages[i] + ': ' + str(result[i]) )
     
     # plot the fit
     if ax is not None:
