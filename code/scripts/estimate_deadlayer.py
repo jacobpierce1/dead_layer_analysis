@@ -57,6 +57,9 @@ _stop_power_interp_funcs = [0] * len(_deadlayer_ids)
 #############################################################################
 
 
+def nancount( arr ):
+    return np.count_nonzero( ~np.isnan( arr ) )
+
 
 # this function takes an array of observed channels x and converts to
 # energies of the alphas as they were originally emitted, accounting
@@ -303,111 +306,136 @@ def print_strip_stds( mu_grid ):
 #
 # RESULTS:
 
-def estimate_deadlayer_from_mu_differences():
-
-    x = 14
-
-    # centered_mu = dbmgr.centered.get_mu_grids_where_valid()
-    # moved_mu =  dbmgr.moved.get_mu_grids_where_valid()
-
-    centered_mu = dbmgr.centered.get_mu_for_x_strip( x )
-    moved_mu = dbmgr.moved.get_mu_for_x_strip( x )
+def estimate_deadlayer_from_energy_differences():
     
     f, axarr = plt.subplots( 2 )
-    
-
-    # construct the sec differences from geometry
-
-    cosine_matrices = geom.get_cosine_matrices( debug=0 )
-
-    secant_differences = meas.meas.from_list(
-        1 / cosine_matrices[ 'pu_238_moved' ][ 0, x, : ]
-        - 1 / cosine_matrices[ 'pu_238_centered' ][ 0, x, : ] )
 
 
-    # these two variables store the calibrated energies of the center peaks.
-    moved_calibrated_energies = meas.meas.empty( (2,32 ) )
-    centered_calibrated_energies = meas.meas.empty( (2,32) )
+    # lists to store all the energy difference measurements
+    # and geometry measurements for 2 middle peaks
 
+    moved_calibrated_energies = meas.meas.empty( (2,32,32 ) )
+    centered_calibrated_energies = meas.meas.empty( (2,32,32) )
 
-    # do least squares fit on each pixel
-    mu_vals_array = [ centered_mu, moved_mu ]
     calibrated_energy_array = [ centered_calibrated_energies,
                                 moved_calibrated_energies ] 
     
-    for i in range( 2 ):
-        for j in range( 32 ):
+    # construct the sec differences from geometry
 
-            if mu_vals_array[i][1][0][j].x == np.nan: 
-                for l in range(2):
-                    calibrated_energy_array[i][l][j] = meas.nan
-                continue
+    cosine_matrices = geom.get_cosine_matrices( debug=0 )
+    
+    secant_differences = meas.meas.from_array(
+        1 / cosine_matrices[ 'pu_238_moved' ][ 0 ]
+        - 1 / cosine_matrices[ 'pu_238_centered' ][ 0 ] )
 
-            # construct arrays of mu values for features 0 and 2, ie the calibration
-            # sources. 
-            mu_vals = [ mu_vals_array[i][k][l][j].x
-                        for k in [0,2]
-                        for l in [0,1] ] 
+    
+    for x in range( 32 ):
 
-            mu_deltas = [ mu_vals_array[i][k][l][j].dx
-                          for k in [0,2]
-                          for l in [0,1] ] 
-                                               
-            if np.count_nonzero( ~np.isnan( mu_vals ) ) < 3:
-                for l in range(2):
-                    calibrated_energy_array[i][l][j] = meas.nan
-                    
-                continue
+        centered_mu = dbmgr.centered.get_mu_for_x_strip( x )
+        moved_mu = dbmgr.moved.get_mu_for_x_strip( x )
+        
+        # secant_differences = meas.meas.from_list(
+        #     1 / cosine_matrices[ 'pu_238_moved' ][ 0, x, : ]
+        #     - 1 / cosine_matrices[ 'pu_238_centered' ][ 0, x, : ] )
+
+        
+        # do least squares fit on each pixel
+        
+        mu_vals_array = [ centered_mu, moved_mu ]
+        
+        
+        for i in range( 2 ):
+            for j in range( 32 ):
                 
-            linear_fit = jstats.linear_calibration( flattened_peak_calibration_energies,
-                                                    mu_vals, mu_deltas, print_results = 0,
-                                                    invert = 1 )
+                if mu_vals_array[i][1][0][j].x == np.nan: 
+                    for l in range(2):
+                        calibrated_energy_array[i][l][x][j] = meas.nan
+                    continue
 
-            if linear_fit is not None:
-                m, b, f = linear_fit
-                for l in range(2):
-                    calibrated_energy_array[i][l][j] = meas.meas(
-                        m.x * mu_vals_array[i][1][l][j].x + b.x,
-                        m.x * mu_vals_array[i][1][l][j].dx )
-
-            else:
-                for l in range(2):
-                    calibrated_energy_array[i][l][j] = meas.nan
+                                
+                # construct arrays of mu values for features 0 and 2, ie the calibration
+                # sources. 
+                mu_vals = [ mu_vals_array[i][k][l][j].x
+                            for k in [0,2]
+                            for l in [0,1] ] 
+                
+                mu_deltas = [ mu_vals_array[i][k][l][j].dx
+                              for k in [0,2]
+                              for l in [0,1] ] 
+                
+                if np.count_nonzero( ~np.isnan( mu_vals ) ) < 3:
+                    for l in range(2):
+                        calibrated_energy_array[i][l][x][j] = meas.nan
                     
-                        # f( mu_vals_array[i][1][l][j] ) 
+                    continue
 
-            
+                # print( mu_vals )
+                # print( mu_deltas ) 
+                
+                linear_fit = jstats.linear_calibration( flattened_peak_calibration_energies,
+                                                        mu_vals, mu_deltas, print_results = 0,
+                                                        invert = 1 )
+
+                if linear_fit is not None:
                     
+
+                    m, b, f = linear_fit
+                        
+                    for l in range(2):
+
+                        print( str(x) + ' ' + str(j) ) 
+                        
+                        calibrated_energy_array[i][l][x][j] = meas.meas(
+                            m.x * mu_vals_array[i][1][l][j].x + b.x,
+                            m.x * mu_vals_array[i][1][l][j].dx )
+                        
+                        #energy_differences_flat[l].append( calibrated_energy )
+                                                
+                            
+                else:
+                    for l in range(2):
+                        calibrated_energy_array[i][l][x][j] = meas.nan
+                    continue
+                
+                    # f( mu_vals_array[i][1][l][j] ) 
+
+                    
+                    
+    energy_differences = centered_calibrated_energies - moved_calibrated_energies
+    
+    x = secant_differences.x.flatten()
+    xerr = secant_differences.dx.flatten()
+
+    
     for j in range( 2 ):
                         
-                        # print( i, j ) 
+                
+        y = energy_differences[j].x.flatten()          
+        yerr = energy_differences[j].dx.flatten()
 
-            # moved_mu_tmp = moved_mu[ i, j ]# [ x, : ]
-            # centered_mu_tmp = centered_mu[ i, j ] #[ x, : ]
-            
-            # print( 'moved_mu: ' + str( moved_mu_tmp ) )
-            # print( 'centered_mu : ' + str(centered_mu_tmp ) ) 
-            
-        # mu_differences = moved_mu_tmp - centered_mu_tmp 
-            
-#            print( 'mu_differences: ' + str( mu_differences ) )
-        # print( centered_calibrated_energies )
 
-        # print( '\n' )
-        # print (  moved_calibrated_energies )
-
-        energy_differences = centered_calibrated_energies - moved_calibrated_energies 
-        print( 'energy_differences: ' + str( energy_differences ) )
-            
-        jplt.plot( axarr[j], secant_differences.x,
-                   energy_differences[j].x,
-                   xerr = secant_differences.dx,
-                   yerr = energy_differences[j].dx )
+        energy_differences_mean = meas.meas( y, yerr ).nanmean( option = 'weighted' )
+        secant_differences_mean = meas.meas( x[ ~meas.isnan( y ) ],
+                                             xerr[ ~meas.isnan( y ) ] ).nanmean( option = 'weighted' )
         
-        axarr[j].text( 0.1, 0.9, '(%d, %d)' % (i, j ),
+        print( 'energy_differences_mean: ' + str( energy_differences_mean ) )
+        print( 'secant_differences_mean: ' + str( secant_differences_mean ) )
+                                             
+
+        
+        # print( x[ ~np.isnan( y ) ] )
+        # print( y[ ~np.isnan( y ) ] )
+
+        jplt.plot( axarr[j], x, y, xerr = xerr, yerr = yerr,
+                   ylabel = r'$\Delta E$',
+                   xlabel = r'$\Delta \cos \theta$' ) 
+                   
+        axarr[j].text( 0.1, 0.9, 'Peak %d' % (j,),
                          transform = axarr[j].transAxes,
                          fontsize=12,
                          verticalalignment='top' )
+
+        # jstats.linear_calibration( ax = axarr[j] ) 
         
 
     plt.show()
@@ -415,6 +443,9 @@ def estimate_deadlayer_from_mu_differences():
     return 0
                 
                 
+
+
+
 
 
 
@@ -517,6 +548,7 @@ def get_peakvals( db, x, y, plot_sim_results = -1 ):
 
 
 
+
 # do the analysis for a particular strip to see
 # the relationship between difference of secants and
 # difference in mu values.
@@ -561,7 +593,7 @@ def preview_secant_differences():
     
     peaknums = [ 2, 3 ]
     mu_differences = [0] * 2
-        
+    
     for i in range( 2 ):
 
         moved_mu = dbman.get_mu_grid_where_valid( db.moved_db, peaknums[i] )[ 16, : ] 
@@ -578,7 +610,8 @@ def preview_secant_differences():
         jplt.plot( axarr[i], secant_differences.x,
                    mu_differences[i].x,
                    xerr = secant_differences.dx,
-                   yerr = mu_differences[i].dx )
+                   yerr = mu_differences[i].dx ) 
+
         
         
     
@@ -596,7 +629,7 @@ def preview_secant_differences():
 # print_strip_stds( dbmgr.moved.get_mu_grids_where_valid()[ 1][0] ) 
     
 # example_estimate_for_one_source()
-estimate_deadlayer_from_mu_differences()
+estimate_deadlayer_from_energy_differences()
 
 # preview_secant_differences()
 

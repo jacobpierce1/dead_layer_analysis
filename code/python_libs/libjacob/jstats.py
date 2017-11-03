@@ -8,7 +8,7 @@ from lmfit.models import LinearModel
 
 
 
-def linear_calibration( x, y, dy = None, m_guess = None, b_guess = None,
+def linear_calibration( x, y, dy = None, dx = None, m_guess = None, b_guess = None,
                         print_results = 0, ax = None, invert = 0,
                         scatter = 0 ):
 
@@ -29,10 +29,12 @@ def linear_calibration( x, y, dy = None, m_guess = None, b_guess = None,
     model.make_params( m = m_guess, b = b_guess )
 
     if dy is not None:
+        if 0.0 in dy:
+            return None
         weights = 1.0 / np.asarray( dy )
     else:
         weights = None
-            
+
     model_result = model.fit( y, x = x, weights = weights, nan_policy = 'omit' )
 
     if print_results:

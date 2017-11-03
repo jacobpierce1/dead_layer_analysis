@@ -159,7 +159,7 @@ def plot ( ax, x, y, xerr=None, yerr=None,
             ybounds = [ min(y), max(y) ] 
 
             
-       # set_linear_scale_plot_bounds( ax, xbounds, ybounds  )
+#     set_linear_scale_plot_bounds( ax, xbounds, ybounds  )
         
     # add_legend( ax, legloc )    
 

@@ -76,8 +76,25 @@ class meas( object ):
     def from_list( cls, measlist ):
         return _meas_no_checks( [ measlist[i].x for i in range(len(measlist)) ],
                                 [ measlist[i].dx for i in range(len(measlist)) ] )
-    
 
+    @classmethod
+    def from_array( self, meas_array ):
+
+        ret = np.empty( meas_array.shape )
+
+        return self.__from_array_recurs( meas_array, meas.empty( meas_array.shape ) )
+        
+
+    @classmethod
+    def __from_array_recurs( self, meas_array, ret ):
+
+        if hasattr( meas_array[0], 'dx' ):
+            return self.from_list( meas_array )
+        
+        for i in range( meas_array.shape[0] ):
+            ret[i] = self.__from_array_recurs( meas_array[i], ret[i] )
+
+        return ret
     
     # # construct a new measurement from an ndarr along specified axis. if not specified,
     # # then construct by assuming that measurements are stored in the most deeply
@@ -253,8 +270,9 @@ class meas( object ):
                                 np.sqrt( np.sum( self.dx ** 2, axis=axis ) ) / num_entries )
 
 
+    
     # same as mean but call np.nanmean
-    def nanmean( self, axis=None ):
+    def nanmean( self, axis = None, option = None ):
 
         if axis is not None:
             raise NotImplemented
@@ -267,10 +285,24 @@ class meas( object ):
         else:
             num_entries = self.x.shape[ axis ]
 
-        return _meas_no_checks( np.nanmean( self.x, axis=axis ),
-                                np.sqrt( np.nansum( self.dx ** 2, axis=axis ) )
-                                / len( self.x != np.nan )  )
 
+        if option is None:
+            mean_x = np.nanmean( self.x, axis=axis )
+            mean_dx = ( np.sqrt( np.nansum( self.dx ** 2, axis=axis ) )
+                        / len( self.x != np.nan ) )
+
+        elif option == 'weighted' :
+            one_over_dx_sq = self.dx ** 2  # save some arithmetic
+            mean_x = np.nanmean( self.x, axis = axis, weights = one_over_dx_sq )
+            mean_dx = ( np.sqrt( np.nanmean( self.x ** 2,
+                                             axis = axis,
+                                             weights = one_over_dx_sq ** 2 ) ) 
+                        / np.nansum( one_over_dx_sq, axis = axis ) )
+            
+        return _meas_no_checks( mean_x, mean_dx ) 
+                                
+
+                        
     
     # take std of the elements about specified axis.
     # assume that the self.x is a np.ndarray.
@@ -483,5 +515,9 @@ def append( x, y ):
 def abs( x ):
     return _meas_no_checks( np.abs( x.x ), x.dx )
 
+
+def isnan( x ):
+    return np.isnan( x.x )
+                        
 
 nan = meas( np.nan, np.nan ) 

@@ -426,7 +426,7 @@ class db( object ):
         if not isint( x ):
             raise( ValueError( 'x is not an int.' ) )
 
-        print( 'INFO: loading mu values for x strip ' + str( x ) + ' ...' )
+        # print( 'INFO: loading mu values for x strip ' + str( x ) + ' ...' )
 
         disconnect_conn_when_done = 0
         if self.conn is None:
@@ -437,7 +437,7 @@ class db( object ):
         strip = np.empty( (3, 2), dtype = 'object' )
         for i in range(3):
             for j in range(2):
-                strip[i][j] =  meas.meas( np.empty( 32 ) , np.empty( 32 ) )
+                strip[i][j] =  meas.meas.empty( 32 )
         
         cursor = self.conn.cursor()
         cursor.execute( 'SELECT * FROM ' + _tablename + ' WHERE x = (?)', (x,) )
