@@ -28,13 +28,35 @@ def linear_calibration( x, y, dy = None, dx = None, m_guess = None, b_guess = No
     
     model.make_params( m = m_guess, b = b_guess )
 
-    if dy is not None:
-        if 0.0 in dy:
-            return None
-        weights = 1.0 / np.asarray( dy )
-    else:
-        weights = None
 
+    # construct weights based on the inputs for dx and dy.
+    if dy is not None:
+
+        for i in range( len( dy ) ):
+            if dy[i] == 0:
+                y[i] = np.nan
+                x[i] = np.nan
+                dy[i] = np.nan
+
+        if dx is None:
+            weights = 1.0 / np.asarray( dy )
+        else:
+            raise NotImplementedError()
+            # weights = 1.0 / np.sqrt( 
+    else:
+        if dx is None:
+            weights = None
+        else:
+            raise NotImplementedError()
+
+    print( x )
+    print( y )
+    print( weights )
+
+    print( len( x ) )
+    print( len( y ) )
+    print( len( weights ) ) 
+        
     model_result = model.fit( y, x = x, weights = weights, nan_policy = 'omit' )
 
     if print_results:
@@ -60,7 +82,15 @@ def linear_calibration( x, y, dy = None, dx = None, m_guess = None, b_guess = No
         b = - b / m
         m = 1 / m 
 
-    return m, b, lambda x : m * x + b 
+
+    if ax is not None:
+        graph_func = lambda _x : m.x * _x + b.x 
+        ax_xaxis = np.array( [ xmin, xmax ] ) 
+        
+        ax.plot( ax_xaxis, graph_func( ax_xaxis ), label = 'Fit', color = 'r' )
+        
+    
+    return m, b, model_result
     
     # return model_result if successful_fit else None 
 

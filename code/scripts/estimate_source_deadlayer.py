@@ -1,6 +1,19 @@
-import libjacob as libj
+# this script reads in dataframes containing: 1. the penetration angle
+# of each pixel ( constructed in deadlayer_geometry.py ), 2. the mu
+# values of each peak fit ( originally detected in parse_all_data.py
+# and read into a matrix in deadlayer_analysis.py ) it then reads in a
+# file of stopping power data and interpolates it. using all this data
+# we make estimates of both the source dead layer depths and
+# the pixel dead layer depth.
 
 
+import libjacob.jpyplot as jplt
+import libjacob.jmeas as meas
+import libjacob.jutils as jutils
+import libjacob.jmath as jmath
+import libjacob.jstats as jstats
+
+# import deadlayer_helpers.stopping_power_interpolation as stop
 import deadlayer_helpers.stopping_power_interpolation as stop
 import deadlayer_helpers.geometry as geom
 import deadlayer_helpers.sql_db_manager as dbmgr
@@ -16,10 +29,85 @@ import numpy as np
 import scipy.optimize
 
 
+peak_energies = [ [ 5123.68, 5168.17 ], [ 5456.3, 5499.03 ], [ 5759.5, 5813.10,  ] ]
+flattened_peak_calibration_energies = jutils.flatten_list(
+    [ peak_energies[j] for j in [0,2] ] )
 
 
-def estimate_source_deadlayer():
+# stopping power for the 5456.3 and 5499.03 keV peaks alphas
+# https://physics.nist.gov/cgi-bin/Star/ap_table-t.pl
+stopping_power_energies = np.array( [ 5.802E+02 , 5.802E+02 ] )  # MeV cm^2 / g 
+density_si = 2.328 # g / cm^2
+stopping_power_energies *= density_si * 1000 * 100 / 1e9   # convert to MeV / cm
 
+# modifiable config
+_dir_stopping_power_data = '../../data/stopping_power_data/'
+
+
+
+# constants, need density of each deadlayer id
+
+
+
+# global vars
+_sources = geom.sources
+_all_objects = geom.all_objects
+_deadlayer_ids = [ 'si', 'si', 'si', 'si', 'si', 'si', 'si' ]
+_deadlayer_densities = [ 2.328 ] * len(_deadlayer_ids)
+
+
+# the identity of each dead layer for each unique source. to
+# be populated later
+_stop_power_interp_funcs = [0] * len(_deadlayer_ids)
+
+
+#############################################################################
+
+
+
+
+# print std of x and y strips. the interpretation of this is that the
+# smaller std values correspond to the same detector properties
+# and admit valid comparison. turns out that stripy is the one with a much lower
+# standard deviation (about 0.7)
+
+def print_strip_stds( mu_grid ):
+
+    stripx = mu_grid[ :, 15 ]
+    stripy = mu_grid[ 15, : ]  # this one is constant roughly.
+    
+    # stripx = meas.meas.from_list( mu_grid[ :, 15 ] )
+    # stripy = meas.meas.from_list( mu_grid[ 15, : ] )
+
+    print( 'stripx: ' + str( stripx ) )
+    print( 'stripy: ' + str( stripy ) )
+    
+    print( 'stripx mean: ' + str( stripx.nanmean() ) )
+    print( 'stripx std: ' + str( stripx.nanstd() ) )
+    print( 'stripy mean: ' + str( stripy.nanmean() ) )
+    print( 'stripy std: ' + str( stripy.nanstd() ) )
+    
+
+    
+
+
+
+
+    
+    
+# DESCRIPTION: with this function we make a few significant
+# improvements over example_estimate_for_one_source(). for one, we are
+# no longer sensitive to small variations in the detector / source
+# position.  as another (which could have been incorporated in the
+# previous function but was not) is that we look at the extrapolated
+# peak positoins in the alpha spectra instead of the mu values. the
+# peak positions are more likely to be correlated with the energy of
+# the alpha.
+#
+# RESULTS:
+
+def estimate_deadlayer_from_energy_differences():
+    
     f, axarr = plt.subplots( 2 )
 
 
@@ -43,8 +131,10 @@ def estimate_source_deadlayer():
     
     for x in range( 32 ):
 
-        centered_mu = dbmgr.centered.get_mu_for_x_strip( x )
-        moved_mu = dbmgr.moved.get_mu_for_x_strip( x )
+        print( x )
+
+        centered_mu = dbmgr.flat.get_mu_for_x_strip( x )
+        moved_mu = dbmgr.angled.get_mu_for_x_strip( x )
         
         # secant_differences = meas.meas.from_list(
         #     1 / cosine_matrices[ 'pu_238_moved' ][ 0, x, : ]
@@ -95,8 +185,6 @@ def estimate_source_deadlayer():
                         
                     for l in range(2):
 
-                        print( str(x) + ' ' + str(j) ) 
-                        
                         calibrated_energy_array[i][l][x][j] = meas.meas(
                             m.x * mu_vals_array[i][1][l][j].x + b.x,
                             m.x * mu_vals_array[i][1][l][j].dx )
@@ -110,34 +198,44 @@ def estimate_source_deadlayer():
                     continue
                 
                     # f( mu_vals_array[i][1][l][j] ) 
+
                     
-            
+
+    # load interpolation
+    # si_interpolation = stop.stopping_power_interpolation( 'si', [ 5.40, 5.55 ] ) 
                     
+    energy_differences = centered_calibrated_energies - moved_calibrated_energies
+    
+    x = secant_differences.x.flatten()
+    xerr = secant_differences.dx.flatten()
+
+    
     for j in range( 2 ):
                         
-                        # print( i, j ) 
-
-            # moved_mu_tmp = moved_mu[ i, j ]# [ x, : ]
-            # centered_mu_tmp = centered_mu[ i, j ] #[ x, : ]
-            
-            # print( 'moved_mu: ' + str( moved_mu_tmp ) )
-            # print( 'centered_mu : ' + str(centered_mu_tmp ) ) 
-            
-        # mu_differences = moved_mu_tmp - centered_mu_tmp 
-            
-#            print( 'mu_differences: ' + str( mu_differences ) )
-        # print( centered_calibrated_energies )
-
-        # print( '\n' )
-        # print (  moved_calibrated_energies )
-
-        energy_differences = centered_calibrated_energies - moved_calibrated_energies
-
-        x = secant_differences.x.flatten()
-        xerr = secant_differences.dx.flatten()
-        
+                
         y = energy_differences[j].x.flatten()          
         yerr = energy_differences[j].dx.flatten()
+
+        indices = ~ np.isnan( y ) 
+        
+        energy_differences_mean = meas.meas( y, yerr ).nanmean( option = 'weighted' )
+    
+        secant_differences_mean = meas.meas( x[ indices ],
+                                             xerr[ indices ] ).nanmean( option = 'weighted' )
+
+        
+        
+        deadlayer = ( energy_differences_mean
+                      / ( secant_differences_mean
+                          * stopping_power_energies[i] ) )
+
+        print( 'deadlayer: ' + str( deadlayer ) ) 
+        
+        print( 'energy_differences_mean: ' + str( energy_differences_mean ) )
+
+        print( 'secant_differences_mean: ' + str( secant_differences_mean ) )
+
+                                             
 
         
         # print( x[ ~np.isnan( y ) ] )
@@ -158,3 +256,31 @@ def estimate_source_deadlayer():
     plt.show()
     
     return 0
+                
+                
+
+
+
+
+
+
+
+
+    
+
+
+
+
+
+
+
+
+
+    
+# print_strip_stds( dbmgr.moved.get_mu_grids_where_valid()[ 1][0] ) 
+    
+# example_estimate_for_one_source()
+estimate_deadlayer_from_energy_differences()
+
+# preview_secant_differences()
+

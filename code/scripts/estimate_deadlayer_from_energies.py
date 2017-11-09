@@ -106,10 +106,9 @@ def print_strip_stds( mu_grid ):
 #
 # RESULTS:
 
-def estimate_deadlayer_from_energy_differences():
+def estimate_deadlayer_from_energy_values():
     
     f, axarr = plt.subplots( 2 )
-
 
     # lists to store all the energy difference measurements
     # and geometry measurements for 2 middle peaks
@@ -122,23 +121,18 @@ def estimate_deadlayer_from_energy_differences():
     
     # construct the sec differences from geometry
 
-    cosine_matrices = geom.get_cosine_matrices( debug=0 )
-    
-    secant_differences = meas.meas.from_array(
-        1 / cosine_matrices[ 'pu_238_moved' ][ 0 ]
-        - 1 / cosine_matrices[ 'pu_238_centered' ][ 0 ] )
+    all_cosine_matrices = geom.get_cosine_matrices()
 
-    
+    secant_matrices = [ 1 / meas.meas.from_array( all_cosine_matrices[i][0] ) 
+                        for i in [ 'pu_238_centered', 'pu_238_moved' ] ]
+
+        
     for x in range( 32 ):
 
         print( x )
 
         centered_mu = dbmgr.centered.get_mu_for_x_strip( x )
         moved_mu = dbmgr.moved.get_mu_for_x_strip( x )
-        
-        # secant_differences = meas.meas.from_list(
-        #     1 / cosine_matrices[ 'pu_238_moved' ][ 0, x, : ]
-        #     - 1 / cosine_matrices[ 'pu_238_centered' ][ 0, x, : ] )
 
         
         # do least squares fit on each pixel
@@ -204,59 +198,73 @@ def estimate_deadlayer_from_energy_differences():
     # load interpolation
     # si_interpolation = stop.stopping_power_interpolation( 'si', [ 5.40, 5.55 ] ) 
                     
-    energy_differences = centered_calibrated_energies - moved_calibrated_energies
+    # energy_differences = centered_calibrated_energies - moved_calibrated_energies
+
+
+    x = np.concatenate( [ secant_matrices[i].x.flatten() for i in range(2) ] ) 
+    xerr = np.concatenate( [ secant_matrices[i].dx.flatten() for i in range(2) ] ) 
     
-    x = secant_differences.x.flatten()
-    xerr = secant_differences.dx.flatten()
+    for j in range(2) :
 
-    
-    for j in range( 2 ):
-                        
-                
-        y = energy_differences[j].x.flatten()          
-        yerr = energy_differences[j].dx.flatten()
-
-        indices = ~ np.isnan( y ) 
+        y = np.concatenate( [ calibrated_energy_array[j][i].x.flatten() for i in range(2) ] )
+        yerr = np.concatenate( [ calibrated_energy_array[j][i].dx.flatten() for i in range(2) ] )          
         
-        energy_differences_mean = meas.meas( y, yerr ).nanmean( option = 'weighted' )
-    
-        secant_differences_mean = meas.meas( x[ indices ],
-                                             xerr[ indices ] ).nanmean( option = 'weighted' )
-
+        # indices = ~ np.isnan( y ) 
+        
+        # energy_differences_mean = meas.meas( y, yerr ).nanmean( option = 'weighted' )
+        
+        # secant_differences_mean = meas.meas( x[ indices ],
+        #                                      xerr[ indices ] ).nanmean( option = 'weighted' )
         
         
-        deadlayer = ( energy_differences_mean
-                      / ( secant_differences_mean
-                          * stopping_power_energies[i] ) )
-
-        print( 'deadlayer: ' + str( deadlayer ) ) 
         
-        print( 'energy_differences_mean: ' + str( energy_differences_mean ) )
-
-        print( 'secant_differences_mean: ' + str( secant_differences_mean ) )
-
-                                             
-
+        # deadlayer = ( energy_differences_mean
+        #               / ( secant_differences_mean
+        #                   * stopping_power_energies[i] ) )
+        
+        # print( 'deadlayer: ' + str( deadlayer ) ) 
+        
+        # print( 'energy_differences_mean: ' + str( energy_differences_mean ) )
+        
+        # print( 'secant_differences_mean: ' + str( secant_differences_mean ) )
+        
+        
+        
         
         # print( x[ ~np.isnan( y ) ] )
         # print( y[ ~np.isnan( y ) ] )
 
-        jplt.plot( axarr[j], x, y, xerr = xerr, yerr = yerr,
-                   ylabel = r'$\Delta E$',
-                   xlabel = r'$\Delta \cos \theta$' ) 
-                   
-        axarr[j].text( 0.1, 0.9, 'Peak %d' % (j,),
-                         transform = axarr[j].transAxes,
-                         fontsize=12,
-                         verticalalignment='top' )
 
-        # jstats.linear_calibration( ax = axarr[j] ) 
+
+        print( x )
+        print( y ) 
         
+        jplt.plot( axarr[j], x, y, xerr = xerr, yerr = yerr,
+                   ylabel = r'$E$',
+                   xlabel = r'$\sec \theta$' ) 
+        
+        axarr[j].text( 0.1, 0.9, 'Peak %d' % (j,),
+                       transform = axarr[j].transAxes,
+                       fontsize=12,
+                       verticalalignment='top' )
+        
+        ret = jstats.linear_calibration( x, y, dy = yerr, ax = axarr[j] )
 
+        print( ' min yerr : ' + str( min( yerr[ ~ np.isnan( yerr ) ] )  ) ) 
+
+        if ret is not None:
+            
+            deadlayer = ret[0] / stopping_power_energies[i]
+
+            print( ret[2].fit_report() )  
+        
+            print( 'deadlayer: ' + str( deadlayer ) ) 
+        
+        
     plt.show()
-    
+        
     return 0
-                
+
                 
 
 
@@ -280,7 +288,7 @@ def estimate_deadlayer_from_energy_differences():
 # print_strip_stds( dbmgr.moved.get_mu_grids_where_valid()[ 1][0] ) 
     
 # example_estimate_for_one_source()
-estimate_deadlayer_from_energy_differences()
+estimate_deadlayer_from_energy_values()
 
 # preview_secant_differences()
 

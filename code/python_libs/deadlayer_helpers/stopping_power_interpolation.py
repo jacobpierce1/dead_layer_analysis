@@ -11,22 +11,49 @@ from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
 
 import libjacob.jutils as jutils
+from libjacob.jmath import xcut 
+import os 
 
 
 
-TEST_STOPPING_POWER_INERPOLATION = 1
+
+_current_abs_path = os.path.dirname( __file__ ) + '/'
+
+_FILE_SI = _current_abs_path + '../../../data/stopping_power_data/alpha_stopping_power_si.txt'
+
+
+
+def _read_nist_stopping_power_data( filename ):
+    return np.loadtxt( filename, skiprows=11,
+                       usecols=(0,3), unpack=1 )
+
+
+def _get_filename( material ) :
+    
+    if material == 'si' :
+        ret = _FILE_SI
+        
+    return ret 
+
 
 
 class stopping_power_interpolation( object ):
 
+    
+    # constructor takes material name (string, e.g. ca40 ) and bounds 
+    def __init__( self, material, xbounds=None ):
 
-    # constructor takes x (presumably energy) and y (stopping power).
-    def __init__( self, x, y, xbounds=None ):
+        filename = _get_filename( material ) 
 
-        if len(x) != len(y):
-            print( 'ERROR: lengths of input arrays must be the same.' )
-            self = None
-            return self
+        x, y = _read_nist_stopping_power_data( filename )
+
+        print( x )
+        print( y ) 
+                    
+        # if len(x) != len(y):
+        #     print( 'ERROR: lengths of input arrays must be the same.' )
+        #     self = None
+        #     return self
 
 
         # this is used to check whether input data is in interpolated region.
@@ -36,7 +63,10 @@ class stopping_power_interpolation( object ):
         if xbounds is not None:
             y = xcut( x, y, xbounds )
             x = xcut( x, x, xbounds )
-            
+
+        print(x)
+        print(y) 
+
         # these are used for plotting.
         self.xdata = x
         self.ydata = y

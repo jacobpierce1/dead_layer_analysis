@@ -557,8 +557,9 @@ def _from_bin( bin ):
 ## DECLARE GLOBALS FOR USE ELSEWHERE ######
 ###########################################
 
-all_dbs = [ db( name, (32,32), (2,2,2) ) for name in [ 'centered', 'moved', 'flat', 'angled' ] ]
-centered, moved, flat, angeled = all_dbs
+all_dbs = [ db( name, (32,32), (2,2,2) )
+            for name in [ 'centered', 'moved', 'flat', 'angled' ] ]
+centered, moved, flat, angled = all_dbs
 
 
 

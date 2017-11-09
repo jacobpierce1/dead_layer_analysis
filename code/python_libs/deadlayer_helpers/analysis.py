@@ -93,6 +93,7 @@ def read_nndc_alpha_data( filename ):
 
 def populate_si_stopping_power( si_stopping_power ):
     E, stopping_power = np.loadtxt( FILE_SILICON_STOPPING_POWER, skiprows=11, usecols=(0,3), unpack=1 )
+
     si_stopping_power = pd.Series( stopping_power, index=E )
     
 

@@ -117,6 +117,8 @@ enclosure_data = pd.Series(
 )
 
 
+
+
 ##############################################################################################
 #################################### FUNCTIONS FOR POPULATING THE DATAFRAMES #################
 ##############################################################################################
@@ -485,7 +487,7 @@ def _populate_costheta_grid( cosine_matrices, all_coords, source_theta, source_p
             for j in range(32):
 
                 # this works since all the pixels are separated by 1 mm.
-                displacement = det_coords + 2.0 * np.array([ -i, j, 0 ]) - source_coords
+                displacement = det_coords + 2.0 * np.array([ j, i, 0 ]) - source_coords
                 
                 # print 'displacement: ' + str( displacement )
                 

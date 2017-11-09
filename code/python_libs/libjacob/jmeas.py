@@ -293,10 +293,14 @@ class meas( object ):
 
         elif option == 'weighted' :
             one_over_dx_sq = self.dx ** 2  # save some arithmetic
-            mean_x = np.nanmean( self.x, axis = axis, weights = one_over_dx_sq )
-            mean_dx = ( np.sqrt( np.nanmean( self.x ** 2,
-                                             axis = axis,
-                                             weights = one_over_dx_sq ** 2 ) ) 
+            indices = ~ np.isnan( self.x ) 
+
+            mean_x = np.average( self.x[indices],
+                                 axis = axis,
+                                 weights = one_over_dx_sq[indices] )
+
+            mean_dx = ( np.sqrt( np.sum( ( self.x[indices] * one_over_dx_sq[indices] ) ** 2,
+                                         axis = axis ) )
                         / np.nansum( one_over_dx_sq, axis = axis ) )
             
         return _meas_no_checks( mean_x, mean_dx ) 
@@ -327,6 +331,7 @@ class meas( object ):
         return _meas_no_checks( std_x, std_dx )
                                 
 
+    
     # same as std but call nanstd
     def nanstd( self, axis=None ):
 
