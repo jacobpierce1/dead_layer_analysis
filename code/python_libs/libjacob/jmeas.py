@@ -377,6 +377,8 @@ class meas( object ):
     def size( self ):
         return self.x.size
 
+    def flatten( self ):
+        return _meas_no_checks( self.x.flatten(), self.dx.flatten() )
     
 
 #########################################
@@ -484,12 +486,10 @@ def dot( x, y ):
 
         val = np.dot( x.x, y.x )
         size = len( x.x )
-        delta = np.emppty( size ) 
-        
-        for i in range( size ):
-            delta[i] = np.sqrt( np.sum( ( x.x * y.dx ) ** 2 )  + 
-                                np.sum( ( x.dx * y.x ) ** 2 )  )
-            
+        delta =  np.sqrt( np.sum( ( x.x * y.dx ) ** 2 )  + 
+                          np.sum( ( x.dx * y.x ) ** 2 )  )
+
+        return meas( val, delta )
 
     # scalar case
     elif ndim == 0:

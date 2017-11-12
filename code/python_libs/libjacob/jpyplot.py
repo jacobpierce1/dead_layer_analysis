@@ -112,7 +112,8 @@ def add_fit_to_plot( ax, x, fit_bounds, fitfunc, linewidth=3, color='-r' ):
 def plot ( ax, x, y, xerr=None, yerr=None,
            xlabel=None, ylabel=None,
            title=None, color='r', errorevery=1,
-           legloc = 1, logscale=0 ):
+           leglabel = None,
+           legloc = None, logscale=0 ):
 
     # default: don't plot errorbars.
     plot_errorbar = 0
@@ -123,7 +124,8 @@ def plot ( ax, x, y, xerr=None, yerr=None,
 
         # omit fmt parameter for python 3, use fmt = 'none' for python 2.
         ax.errorbar ( x, y, xerr = xerr, yerr = yerr,
-                      errorevery = errorevery, fmt = 'o' )
+                      errorevery = errorevery, fmt = 'none',
+                      ecolor = color, label = leglabel )
 
     else:
         ax.plot( x, y, color=color )
@@ -158,6 +160,9 @@ def plot ( ax, x, y, xerr=None, yerr=None,
         else:
             ybounds = [ min(y), max(y) ] 
 
+    if legloc != None:
+        add_legend( ax, legloc ) 
+        
             
 #     set_linear_scale_plot_bounds( ax, xbounds, ybounds  )
         

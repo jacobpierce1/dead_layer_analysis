@@ -20,7 +20,7 @@ _CM_PER_INCH = 2.54
 _MM_PER_INCH = 25.4
 
 
-sources = [ 'pu_240', 'cf_249', 'pu_238_centered', 'pu_238_moved', 'pu_238_flat', 'pu_238_tilted' ]
+sources = [ 'pu_240', 'cf_249', 'pu_238_centered', 'pu_238_moved', 'pu_238_flat', 'pu_238_angled' ]
 all_objects = sources + [ 'detector' ]
 
 source_deadlayers = [ 'si' ] * 6
@@ -80,11 +80,11 @@ def _get_source_data():
 
 
 
-# measurements used to construct tilt angle of pu_238_tilted
-pu_238_tilted_data = pd.Series(
+# measurements used to construct tilt angle of pu_238_angled
+pu_238_angled_data = pd.Series(
     {
-        'lower_height' : [1,1,1],
-        'upper_height' : [2,2,2],
+        'lower_height' : 2.14,  # inches 
+        'upper_height' : 3.88,
     }
 )
 
@@ -95,8 +95,8 @@ pu_238_tilted_data = pd.Series(
 # all in cm
 detector_data = pd.Series(
     {
-        'x_offset' : [0.266,0.273,0.263],  # left, or right. todo: figure out.
-        'y_offset' : [0.1555, 0.1575],
+        'x_offset' : [0.2663, 0.2668 ],  # left, or right. todo: figure out.
+        'y_offset' : [ 0.1555, 0.1575 ],
         'height' : [0.1]
     }
 )
@@ -130,7 +130,7 @@ def _fill_redundant_source_data( source_data ):
 
     # these sources share the same diam, height, and wafer because they are the same, just moved.
     reference_source = 'pu_238_centered'
-    redundant_sources = ['pu_238_moved', 'pu_238_flat', 'pu_238_tilted' ] 
+    redundant_sources = ['pu_238_moved', 'pu_238_flat' ] 
     redundant_cols = [ 'diameter', 'height', 'wafer' ]
     for col in redundant_cols:
         for redundant_source in redundant_sources:
@@ -138,15 +138,19 @@ def _fill_redundant_source_data( source_data ):
             
     # in addition these two share the same position with the centered source:
     reference_source = 'pu_238_centered'
-    redundant_sources = [ 'pu_238_flat', 'pu_238_tilted' ]
+    redundant_sources = [ 'pu_238_flat', 'pu_238_angled' ]
     redundant_cols = [ 'top', 'bottom', 'left', 'right' ]
     for col in redundant_cols:
         for redundant_source in redundant_sources:
-            source_data.set_value( redundant_source, col, source_data.loc[ reference_source, col ] )
+            source_data.set_value( redundant_source, col,
+                                   source_data.loc[ reference_source, col ] )
 
-            
+    source_data.set_value( 'pu_238_angled' , 'diameter',
+                           source_data.loc[ 'pu_238_centered', 'diameter' ] )
+    
     
 
+    
 
 # use the measurements in source_data to obtain the coordinates of each source and a
 # edge of the detector.
@@ -165,6 +169,7 @@ def _populate_all_coords( all_coords, source_data ):
     
     all_coords.loc['detector'] = meas.meas.from_list( det_coords ) * _MM_PER_INCH
 
+    
     if _DEBUG_COORDS:
         print( 'det_coords: ' + str( all_coords.loc['detector'] ) )
     
@@ -183,12 +188,18 @@ def _populate_all_coords( all_coords, source_data ):
                  for col in [ 'left', 'bottom' ]  ]
 
         # for the top measurement, reference to the bottom of the enclosure.
-        z = meas.sum( [ meas.meas( source_data.loc[ source, 'height' ],
-                                   _source_data_delta ).mean(),
-                        meas.meas( source_data.loc[ source, 'wafer' ],
-                                   _source_data_delta ).mean() ] )
-
+        if source != 'pu_238_angled' : 
+            z = meas.sum( [ meas.meas( source_data.loc[ source, 'height' ],
+                                       _source_data_delta ).mean(),
+                            meas.meas( source_data.loc[ source, 'wafer' ],
+                                       _source_data_delta ).mean() ] )
+        else:
+            z = ( meas.meas( pu_238_angled_data.loc[ 'upper_height' ],
+                             _source_data_delta ) +
+                  meas.meas( pu_238_angled_data.loc[ 'lower_height' ],
+                             _source_data_delta ) ) / 2
         
+            
         if _DEBUG_COORDS:
             print( 'x: ' + str( x ) )
             print( 'y: ' + str( y ) )
@@ -383,7 +394,7 @@ def _rotate_3d_meas_fprime_tuple( axis, combined_meas ):
 
 
 # generate a unit vec in R^n with entry 1 at k 
-def unit_vec( k, n ):
+def unit_vec( k, n = 3 ):
     if k > n:
         raise ValueError( 'k must be less than n' )
     ret = np.zeros( n )
@@ -415,39 +426,40 @@ def rotation_matrix_delta( theta, x ):
 
 
 
-def _populate_source_theta_phi( source_theta, source_phi, source_data, pu_238_tilted_data ):
+def _populate_source_theta_phi( source_theta, source_phi, source_data, pu_238_angled_data ):
 
     # assume all measured (or implicitly measured, e.g. assuming something is flat ) are known to
     # 1 degree.
     angle_data_delta = np.deg2rad( 1.0 / 360 ) 
 
-    radius = meas.meas( source_data.loc[ 'pu_238_tilted', 'diameter' ],
+    radius = meas.meas( source_data.loc[ 'pu_238_angled', 'diameter' ],
                         _source_data_delta ).mean()
     
-    height_diff = ( meas.meas( pu_238_tilted_data[ 'upper_height' ],
-                               _source_data_delta ).mean() +
-                    meas.meas( pu_238_tilted_data[ 'lower_height' ],
+    height_diff = ( meas.meas( pu_238_angled_data[ 'upper_height' ],
+                               _source_data_delta ) +
+                    meas.meas( pu_238_angled_data[ 'lower_height' ],
                                _source_data_delta ).mean() )
 
     # take inverse tan of opposite over adjacent
     theta = meas.arctan( height_diff / radius ) 
      
-    source_theta[ 'pu_238_tilted' ] = theta
-    source_phi[ 'pu_238_tilted' ] = meas.meas( 0, angle_data_delta )
+    source_theta[ 'pu_238_angled' ] = theta
+    source_phi[ 'pu_238_angled' ] = meas.meas( 0, angle_data_delta )
     
     
-    # add in theta_phi values for everything except pu_238_tilted.
+    # add in theta_phi values for everything except pu_238_angled.
     upright_sources = list(sources)
-    upright_sources.remove( 'pu_238_tilted' )
+    upright_sources.remove( 'pu_238_angled' )
 
     # loop through and add the same angles for the other sources.
     for source in upright_sources:
         source_theta[ source ] = meas.meas( 0, angle_data_delta )
         source_phi[ source ] = meas.meas( 0, angle_data_delta )
                                             
-                                    
 
 
+
+        
 
 
                           
@@ -458,10 +470,21 @@ def _populate_source_theta_phi( source_theta, source_phi, source_data, pu_238_ti
 # theta is measured from 0 to pi with 0 on the z axis, phi from 0 to 2pi with 0 on the x axis,
 # same as the direction of 'right'
 
-def _populate_costheta_grid( cosine_matrices, all_coords, source_theta, source_phi ):
+def _populate_costheta_grid( cosine_matrices, all_coords, source_data,
+                             compute_source_costheta = False ):
        
     det_coords = all_coords.loc['detector']
-    
+
+    pu_238_angled_normal = meas.meas.from_list(
+        np.array( [ - ( meas.meas( pu_238_angled_data[ 'upper_height' ],
+                                   _source_data_delta )
+                        - meas.meas( pu_238_angled_data[ 'lower_height' ],
+                                     _source_data_delta ) ),
+                    meas.meas( 0, _source_data_delta ),
+                    meas.meas(
+                        source_data.loc[ 'pu_238_angled', 'diameter' ],
+                        _source_data_delta ).mean() ] ) )
+        
     sourcenum = -1
 
     for source in sources:
@@ -473,8 +496,8 @@ def _populate_costheta_grid( cosine_matrices, all_coords, source_theta, source_p
         # extract coords and angels 
         source_coords = all_coords.loc[ source ]
 
-        theta = source_theta[ source ]
-        phi = source_theta[ source ]
+        # theta = source_theta[ source ]
+        # phi = source_theta[ source ]
         
 
         # rename matrices in order to enhance readability 
@@ -487,7 +510,7 @@ def _populate_costheta_grid( cosine_matrices, all_coords, source_theta, source_p
             for j in range(32):
 
                 # this works since all the pixels are separated by 1 mm.
-                displacement = det_coords + 2.0 * np.array([ j, i, 0 ]) - source_coords
+                displacement = det_coords + 2.0 * np.array([ -j,-i, 0 ]) - source_coords
                 
                 # print 'displacement: ' + str( displacement )
                 
@@ -497,39 +520,38 @@ def _populate_costheta_grid( cosine_matrices, all_coords, source_theta, source_p
                 # print 'displacement dx: '  + str( displacement.dx ) 
                 costheta = displacement.apply_nd( costheta_from_3d_f,
                                                   costheta_from_3d_fprime_tuple )
-
-                # print costheta
                 
                 det_costheta_grid[i][j] = costheta
-                
-                # now find penetration angle rel to source deadlayer.
-                # see function description for definition of theta and phi
-                
-                # if theta_phi == [0,0]:
-                    
-                #     # avoid the computation if we can. if it is (0,0) then the planes of the detector and
-                #     # source deadlayer are parallel. in this case we have that the angle through the detector
-                #     # is the same as through the source deadlayer. this is the case most of the time.
-                    
-                #     source_costheta_grid_value[i][j] = det_costheta['value']
-                #     source_costheta_grid_delta[i][j] = det_costheta['delta']
-                    
-                    
-                                   
-                # if not, then we rotate the displacement vector by
-                # 0-theta about the z axis, then 0-phi about the x
-                # axis, then take costheta. this is because rotating
-                # by the negative angles is equivalent to rotating the
-                # source by positive angles, which is the definition
-                # of the theta/phi angles. note that this is
-                # independent of the other det_costheta value.
 
-                # this is really only relevant for the rotated source.
-                rotated_displacement = rotate_3d_meas( 0, -phi,
-                                                       rotate_3d_meas( 2, -theta, displacement ) ) 
-                # print 'rotated displacement: ' + str( rotated_displacement )
+                if compute_source_costheta:
+                    if source != 'pu_238_angled' :
+                        source_costheta_grid[i,j] = costheta
+
+                    else:
+                        # rotated_displacement = rotate_3d_meas( 1, -theta, displacement ) ) 
+                        # source_costheta_grid[i][j] = costheta_from_3d( rotated_displacement )
+                        
+                        # todo: proper error anaysis.
+                        tmp = meas.dot( pu_238_angled_normal, displacement )
+                        tmp /=  ( np.linalg.norm( pu_238_angled_normal.x ) *
+                                  np.linalg.norm( displacement.x ) )
+                        
+                        source_costheta_grid[i][j] = tmp        
+                        
+                # # if not, then we rotate the displacement vector by
+                # # 0-theta about the z axis, then 0-phi about the x
+                # # axis, then take costheta. this is because rotating
+                # # by the negative angles is equivalent to rotating the
+                # # source by positive angles, which is the definition
+                # # of the theta/phi angles. note that this is
+                # # independent of the other det_costheta value.
+
+                # # this is really only relevant for the rotated source.
+                # rotated_displacement = rotate_3d_meas( 0, -phi,
+                #                                        rotate_3d_meas( 2, -theta, displacement ) ) 
+                # # print 'rotated displacement: ' + str( rotated_displacement )
                 
-                source_costheta_grid[i][j] = costheta_from_3d( rotated_displacement )
+                # source_costheta_grid[i][j] = costheta_from_3d( rotated_displacement )
                                     
                     
                     
@@ -558,7 +580,7 @@ def _populate_costheta_grid( cosine_matrices, all_coords, source_theta, source_p
 
 # use debug = 1 to return an array of the same type but all entries are 0.5
 
-def get_cosine_matrices( debug=0 ):
+def get_cosine_matrices( compute_source_costheta = 0 ):
 
 
     # if debug:
@@ -577,11 +599,11 @@ def get_cosine_matrices( debug=0 ):
     _fill_redundant_source_data( source_data )
 
     
-    # this shall be populated with the theta_phi angles for all detectors, which are 0
-    # for all but the pu_238_tilted
-    source_theta = pd.Series( sources_index )
-    source_phi = pd.Series( sources_index )
-    _populate_source_theta_phi( source_theta, source_phi, source_data, pu_238_tilted_data )
+    # # this shall be populated with the theta_phi angles for all detectors, which are 0
+    # # for all but the pu_238_angled
+    # source_theta = pd.Series( sources_index )
+    # source_phi = pd.Series( sources_index )
+    # _populate_source_theta_phi( source_theta, source_phi, source_data, pu_238_angled_data )
     
         
     # declare dataframe to store all coordinates, which are pd.Series of two 3-tuples, one for
@@ -591,7 +613,8 @@ def get_cosine_matrices( debug=0 ):
 
 
     # get each array of values / uncertainties and add to the grid.
-    _populate_costheta_grid( cosine_matrices, all_coords, source_theta, source_phi )
+    _populate_costheta_grid( cosine_matrices, all_coords, source_data,
+                             compute_source_costheta )
 
     
     return cosine_matrices

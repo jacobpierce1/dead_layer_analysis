@@ -9,9 +9,13 @@ from lmfit.models import LinearModel
 
 
 def linear_calibration( x, y, dy = None, dx = None, m_guess = None, b_guess = None,
-                        print_results = 0, ax = None, invert = 0,
-                        scatter = 0 ):
+                        print_results = 0, ax = None, invert = 0, ignore_zero_dy = True,
+                        scatter = False, color = 'r', linestyle = '-', leglabel = None ):
 
+    x = np.asarray(x) 
+    y = np.asarray(y)
+    dy = np.asarray(dy) 
+    
     model = LinearModel() 
             
     if m_guess is None:
@@ -27,19 +31,16 @@ def linear_calibration( x, y, dy = None, dx = None, m_guess = None, b_guess = No
         b_guess = ( y[0] - m_guess * x[0] ) 
     
     model.make_params( m = m_guess, b = b_guess )
-
-
+    
     # construct weights based on the inputs for dx and dy.
     if dy is not None:
 
-        for i in range( len( dy ) ):
-            if dy[i] == 0:
-                y[i] = np.nan
-                x[i] = np.nan
-                dy[i] = np.nan
-
         if dx is None:
-            weights = 1.0 / np.asarray( dy )
+            if ignore_zero_dy:
+                weights = np.where( dy != 0, 1.0 / dy, np.nan )
+            else:
+                weights = 1.0 / np.asarray( dy ) 
+                
         else:
             raise NotImplementedError()
             # weights = 1.0 / np.sqrt( 
@@ -49,14 +50,20 @@ def linear_calibration( x, y, dy = None, dx = None, m_guess = None, b_guess = No
         else:
             raise NotImplementedError()
 
-    print( x )
-    print( y )
-    print( weights )
-
-    print( len( x ) )
-    print( len( y ) )
-    print( len( weights ) ) 
+    
+    mask = np.isnan( x ) | np.isnan( y )
+    if weights is not None:
+        mask |= np.isnan( weights )
+                       
+    num_nan_points = np.count_nonzero( mask ) 
+    
+    num_data_points = len(x) - num_nan_points
         
+    if num_data_points < 3:
+        return None
+        
+
+    # apply the least squares fit 
     model_result = model.fit( y, x = x, weights = weights, nan_policy = 'omit' )
 
     if print_results:
@@ -65,7 +72,7 @@ def linear_calibration( x, y, dy = None, dx = None, m_guess = None, b_guess = No
     # determine if we had a succussful fit. ier
     # is the return code of scipy.optimize.leastsq.
     # if this is 1, then lmfit thinks we succeeded. 
-    successful_fit = ( model_result.success and ( model_result.ier < 4 ) )
+    successful_fit = ( model_result.success and ( model_result.ier <= 4 ) )
                        # and ( model_result.redchi < reduc_chisq_max ) )
 
     if not successful_fit:
@@ -87,11 +94,121 @@ def linear_calibration( x, y, dy = None, dx = None, m_guess = None, b_guess = No
         graph_func = lambda _x : m.x * _x + b.x 
         ax_xaxis = np.array( [ xmin, xmax ] ) 
         
-        ax.plot( ax_xaxis, graph_func( ax_xaxis ), label = 'Fit', color = 'r' )
+        ax.plot( ax_xaxis, graph_func( ax_xaxis ),
+                 color = color, linestyle = linestyle,
+                 label = leglabel )
         
     
-    return m, b, model_result
+    return m, b, model_result # , lambda _x : 
+
+
+
+
+
+# # y: a 1D array
+# # x: an array of n entries ( arbitrary, each of which is a 1D
+# # array with the same length as y.
+
+# def linear_calibration_nd( x, y, dy = None, dx = None, m_guess = None, b_guess = None,
+#                         print_results = 0, ax = None, invert = 0, ignore_zero_dy = True,
+#                         scatter = False, color = 'r', linestyle = '-', leglabel = None ):
+
     
+#     x = np.asarray(x) 
+#     y = np.asarray(y)
+#     dy = np.asarray(dy) 
+
+#     model = LinearModel() 
+            
+#     if m_guess is None:
+
+#         xmin = min(x)
+#         xmax = max(x)
+#         ymin = min(y)
+#         ymax = max(y)
+
+#         m_guess = ( ymax - ymin ) / ( xmax - xmin )
+
+#     if b_guess is None:
+#         b_guess = ( y[0] - m_guess * x[0] ) 
+    
+#     model.make_params( m = m_guess, b = b_guess )
+    
+#     # construct weights based on the inputs for dx and dy.
+#     if dy is not None:
+
+#         if dx is None:
+#             if ignore_zero_dy:
+#                 weights = np.where( dy != 0, 1.0 / dy, np.nan )
+#             else:
+#                 weights = 1.0 / np.asarray( dy ) 
+                
+#         else:
+#             raise NotImplementedError()
+#             # weights = 1.0 / np.sqrt( 
+#     else:
+#         if dx is None:
+#             weights = None
+#         else:
+#             raise NotImplementedError()
+
+    
+#     mask = np.isnan( x ) | np.isnan( y )
+#     if weights is not None:
+#         mask |= np.isnan( weights )
+                       
+#     num_nan_points = np.count_nonzero( mask ) 
+    
+#     num_data_points = len(x) - num_nan_points
+        
+#     if num_data_points < 3:
+#         return None
+        
+
+#     # apply the least squares fit 
+#     model_result = model.fit( y, x = x, weights = weights, nan_policy = 'omit' )
+
+#     if print_results:
+#         print( model_result.fit_report() )
+
+#     # determine if we had a succussful fit. ier
+#     # is the return code of scipy.optimize.leastsq.
+#     # if this is 1, then lmfit thinks we succeeded. 
+#     successful_fit = ( model_result.success and ( model_result.ier <= 4 ) )
+#                        # and ( model_result.redchi < reduc_chisq_max ) )
+
+#     if not successful_fit:
+#         return None
+
+#     mparam = model_result.params['slope']
+#     bparam = model_result.params['intercept']
+
+#     m = meas.meas( mparam.value, mparam.stderr )
+#     b = meas.meas( bparam.value, bparam.stderr ) 
+
+#     # error analysis built into these calculations via meas.
+#     if invert: 
+#         b = - b / m
+#         m = 1 / m 
+
+
+#     if ax is not None:
+#         graph_func = lambda _x : m.x * _x + b.x 
+#         ax_xaxis = np.array( [ xmin, xmax ] ) 
+        
+#         ax.plot( ax_xaxis, graph_func( ax_xaxis ),
+#                  color = color, linestyle = linestyle,
+#                  label = leglabel )
+        
+    
+#     return m, b, model_result # , lambda _x : 
+
+
+
+
+
+
+
     # return model_result if successful_fit else None 
 
 
@@ -119,7 +236,9 @@ def linear_calibration( x, y, dy = None, dx = None, m_guess = None, b_guess = No
 # if invert is 1 then the linear equation that is returned is inverted.
 # use scatter=1 to do a scatter instead of an errorbar
 
-def calibration( fitfunc, x, y, dy, p0, print_fit_data=0, ax=None, invert=0, scatter=0 ):
+def calibration( fitfunc, x, y, dy, p0, print_fit_data=0,
+                 ax=None, invert=0, scatter=0, color = 'r',
+                 leglabel = None ):
     
     result = jmath.jleast_squares( x, y, dy, p0, fitfunc )
     if result is not None:
@@ -151,7 +270,8 @@ def calibration( fitfunc, x, y, dy, p0, print_fit_data=0, ax=None, invert=0, sca
     if invert:
         pf_new = [ 1.0 / pf[0], 0 - pf[1] / pf[0] ]
         pf_delta_new = [ pf_delta[0] / pf[0]**2,
-                         ( pf[1] / pf[0] * np.linalg.norm( [ pf_delta[i] / pf[i] for i in range(2) ] ) ) ] 
+                         ( pf[1] / pf[0] * np.linalg.norm(
+                             [ pf_delta[i] / pf[i] for i in range(2) ] ) ) ] 
 
         pf[:] = pf_new[:]
         pf_delta[:] = pf_delta_new[:]

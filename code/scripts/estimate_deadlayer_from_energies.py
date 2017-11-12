@@ -1,4 +1,4 @@
-# this script reads in dataframes containing: 1. the penetration angle
+# This script reads in dataframes containing: 1. the penetration angle
 # of each pixel ( constructed in deadlayer_geometry.py ), 2. the mu
 # values of each peak fit ( originally detected in parse_all_data.py
 # and read into a matrix in deadlayer_analysis.py ) it then reads in a
@@ -32,6 +32,8 @@ import scipy.optimize
 peak_energies = [ [ 5123.68, 5168.17 ], [ 5456.3, 5499.03 ], [ 5759.5, 5813.10,  ] ]
 flattened_peak_calibration_energies = jutils.flatten_list(
     [ peak_energies[j] for j in [0,2] ] )
+
+
 
 
 # stopping power for the 5456.3 and 5499.03 keV peaks alphas
@@ -113,8 +115,8 @@ def estimate_deadlayer_from_energy_values():
     # lists to store all the energy difference measurements
     # and geometry measurements for 2 middle peaks
 
-    moved_calibrated_energies = meas.meas.empty( (2,32,32 ) )
     centered_calibrated_energies = meas.meas.empty( (2,32,32) )
+    moved_calibrated_energies = meas.meas.empty( (2,32,32 ) )
 
     calibrated_energy_array = [ centered_calibrated_energies,
                                 moved_calibrated_energies ] 
@@ -141,104 +143,65 @@ def estimate_deadlayer_from_energy_values():
         
         
         for i in range( 2 ):
-            for j in range( 32 ):
+            for y in range( 32 ):
                 
-                if mu_vals_array[i][1][0][j].x == np.nan: 
+                if meas.isnan( mu_vals_array[i][1][0][y] ) : 
                     for l in range(2):
-                        calibrated_energy_array[i][l][x][j] = meas.nan
+                        calibrated_energy_array[i][l][x][y] = meas.nan
                     continue
 
                                 
                 # construct arrays of mu values for features 0 and 2, ie the calibration
                 # sources. 
-                mu_vals = [ mu_vals_array[i][k][l][j].x
+                mu_vals = [ mu_vals_array[i][k][l][y].x
                             for k in [0,2]
                             for l in [0,1] ] 
                 
-                mu_deltas = [ mu_vals_array[i][k][l][j].dx
+                mu_deltas = [ mu_vals_array[i][k][l][y].dx
                               for k in [0,2]
                               for l in [0,1] ] 
                 
                 if np.count_nonzero( ~np.isnan( mu_vals ) ) < 3:
                     for l in range(2):
-                        calibrated_energy_array[i][l][x][j] = meas.nan
-                    
+                        calibrated_energy_array[i][l][x][y] = meas.nan
                     continue
 
-                # print( mu_vals )
-                # print( mu_deltas ) 
-                
+                                              
                 linear_fit = jstats.linear_calibration( flattened_peak_calibration_energies,
                                                         mu_vals, mu_deltas, print_results = 0,
                                                         invert = 1 )
 
-                if linear_fit is not None:
-                    
+                if linear_fit is not None:                    
 
+                    # print('success') 
                     m, b, f = linear_fit
                         
                     for l in range(2):
 
-                        calibrated_energy_array[i][l][x][j] = meas.meas(
-                            m.x * mu_vals_array[i][1][l][j].x + b.x,
-                            m.x * mu_vals_array[i][1][l][j].dx )
-                        
-                        #energy_differences_flat[l].append( calibrated_energy )
-                                                
+                        # calibrated_energy_array[i][l][x][y] = m * mu_vals_array[i][1][l][y] + b
+                        energy = meas.meas(
+                            m.x * mu_vals_array[i][1][l][y].x + b.x,
+                            m.x * mu_vals_array[i][1][l][y].dx )
                             
+                        calibrated_energy_array[i][l][x][y] = energy
+                        
                 else:
                     for l in range(2):
-                        calibrated_energy_array[i][l][x][j] = meas.nan
+                        calibrated_energy_array[i][l][x][y] = meas.nan
                     continue
                 
-                    # f( mu_vals_array[i][1][l][j] ) 
-
                     
 
-    # load interpolation
-    # si_interpolation = stop.stopping_power_interpolation( 'si', [ 5.40, 5.55 ] ) 
-                    
-    # energy_differences = centered_calibrated_energies - moved_calibrated_energies
+    axarr[0].set_title( 'Ignoring left peak, ignoring source DL' ) 
 
-
-    x = np.concatenate( [ secant_matrices[i].x.flatten() for i in range(2) ] ) 
-    xerr = np.concatenate( [ secant_matrices[i].dx.flatten() for i in range(2) ] ) 
+    x = np.concatenate( [ secant_matrices[i].x.flatten() for i in [0,1] ] ) 
+    xerr = np.concatenate( [ secant_matrices[i].dx.flatten() for i in [0,1] ] ) 
     
     for j in range(2) :
-
-        y = np.concatenate( [ calibrated_energy_array[j][i].x.flatten() for i in range(2) ] )
-        yerr = np.concatenate( [ calibrated_energy_array[j][i].dx.flatten() for i in range(2) ] )          
         
-        # indices = ~ np.isnan( y ) 
-        
-        # energy_differences_mean = meas.meas( y, yerr ).nanmean( option = 'weighted' )
-        
-        # secant_differences_mean = meas.meas( x[ indices ],
-        #                                      xerr[ indices ] ).nanmean( option = 'weighted' )
-        
-        
-        
-        # deadlayer = ( energy_differences_mean
-        #               / ( secant_differences_mean
-        #                   * stopping_power_energies[i] ) )
-        
-        # print( 'deadlayer: ' + str( deadlayer ) ) 
-        
-        # print( 'energy_differences_mean: ' + str( energy_differences_mean ) )
-        
-        # print( 'secant_differences_mean: ' + str( secant_differences_mean ) )
-        
-        
-        
-        
-        # print( x[ ~np.isnan( y ) ] )
-        # print( y[ ~np.isnan( y ) ] )
-
-
-
-        print( x )
-        print( y ) 
-        
+        y = np.concatenate( [ calibrated_energy_array[i][j].x.flatten() for i in [0,1] ] )
+        yerr = np.concatenate( [ calibrated_energy_array[i][j].dx.flatten() for i in [0,1] ] )
+                               
         jplt.plot( axarr[j], x, y, xerr = xerr, yerr = yerr,
                    ylabel = r'$E$',
                    xlabel = r'$\sec \theta$' ) 
@@ -247,18 +210,25 @@ def estimate_deadlayer_from_energy_values():
                        transform = axarr[j].transAxes,
                        fontsize=12,
                        verticalalignment='top' )
-        
+
+       
+            
         ret = jstats.linear_calibration( x, y, dy = yerr, ax = axarr[j] )
-
-        print( ' min yerr : ' + str( min( yerr[ ~ np.isnan( yerr ) ] )  ) ) 
-
+        
         if ret is not None:
             
             deadlayer = ret[0] / stopping_power_energies[i]
 
             print( ret[2].fit_report() )  
         
-            print( 'deadlayer: ' + str( deadlayer ) ) 
+            print( 'deadlayer: ' + str( deadlayer ) )
+
+            axarr[j].text( 0.1, 0.2, r'Effective DL = $ %d \pm %d $ nm ' % ( abs( deadlayer.x ) , deadlayer.dx ),
+                       transform = axarr[j].transAxes,
+                       fontsize=12,
+                       verticalalignment='top' )
+
+            print( '\n\n' ) 
         
         
     plt.show()
