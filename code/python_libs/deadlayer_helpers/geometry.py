@@ -471,7 +471,7 @@ def _populate_source_theta_phi( source_theta, source_phi, source_data, pu_238_an
 # same as the direction of 'right'
 
 def _populate_costheta_grid( cosine_matrices, all_coords, source_data,
-                             compute_source_costheta = False ):
+                             compute_source_costheta = False, source = None ):
        
     det_coords = all_coords.loc['detector']
 
@@ -484,7 +484,7 @@ def _populate_costheta_grid( cosine_matrices, all_coords, source_data,
                     meas.meas(
                         source_data.loc[ 'pu_238_angled', 'diameter' ],
                         _source_data_delta ).mean() ] ) )
-        
+    
     sourcenum = -1
 
     for source in sources:
@@ -505,7 +505,7 @@ def _populate_costheta_grid( cosine_matrices, all_coords, source_data,
         source_costheta_grid = cosine_matrices[ source ][ 1 ]
         
         
-        # keep shifting by 1mm to get next coord 
+        # keep shifting by 2 mm to get next coord 
         for i in range(32):
             for j in range(32):
 
@@ -590,7 +590,7 @@ def get_cosine_matrices( compute_source_costheta = 0 ):
 
     cosine_matrices_labels = [ sources, ['detector', 'source'] ]
     cosine_matrices = dict( zip( sources,
-                                 np.empty( ( len(sources), 2, 32, 32 ), dtype='object' ) ) )
+                                 meas.meas.empty( ( len(sources), 2, 32, 32 ) ) ) )
 
     
     # measurements 
@@ -622,3 +622,15 @@ def get_cosine_matrices( compute_source_costheta = 0 ):
 
 
 
+
+
+def get_secant_matrices( compute_source_costheta = 0 ) :
+
+    cosine_matrices = get_cosine_matrices( compute_source_costheta )
+
+    secant_matrices = {}
+
+    for key in cosine_matrices.keys() :
+        secant_matrices[ key ] = abs( 1 / cosine_matrices[ key ]  ) 
+
+    return secant_matrices 

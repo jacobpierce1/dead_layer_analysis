@@ -95,6 +95,10 @@ class meas( object ):
             ret[i] = self.__from_array_recurs( meas_array[i], ret[i] )
 
         return ret
+
+
+    def __len__( self ) :
+        return len( self.x ) 
     
     # # construct a new measurement from an ndarr along specified axis. if not specified,
     # # then construct by assuming that measurements are stored in the most deeply

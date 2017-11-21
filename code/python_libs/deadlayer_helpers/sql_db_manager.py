@@ -27,10 +27,7 @@ DEBUG_DB = 0
 
 
 
-# constants, do not touch
-NUM_FITS_PER_PIXEL = 3
-NUM_PEAKS_PER_FIT = [ 2, 2, 1 ]
-NUM_SOURCES = 3
+
 
 
 
@@ -72,7 +69,8 @@ class db( object ):
 
         self.xdim = dimensions[0]
         self.ydim = dimensions[1] 
-
+        self.dimensions = dimensions
+        
         
         # must be 1D list, tuple, or ndarray such that the
         # number of entries is equal to the number of fits
@@ -90,10 +88,28 @@ class db( object ):
         
         self.name = name
 
-        self.path = ( _current_abs_path + '../../../databases/'
+        self.path = ( _current_abs_path + '../../../fit_results/databases/'
                       + name + '_fits_data.db' ) 
 
+        self.mu_vals_dir = _current_abs_path + '../../../fit_results/mu_values/' 
+        
+
+        self.peak_vals_dir = _current_abs_path + '../../../fit_results/peak_values/'
+
+        for dir_ in [ self.mu_vals_dir, self.peak_vals_dir ] :
+            if not os.path.exists( dir_ ) :
+                os.mkdir( dir_ )
+                
+                             
         self.conn = None
+        
+        self.num_peaks_per_feature = ( 2, 2, 2 )
+
+        self.num_features = len( self.num_peaks_per_feature ) 
+
+        # self.alternate_shape = [ 0, 0, [0,1] ]
+        
+        # self.num_sources = len( num_peaks_per_fit ) 
         
 
         
@@ -148,6 +164,12 @@ class db( object ):
         if self.conn is None:
             raise ValueError( 'db is not open.' )
 
+    
+
+
+
+    def flatten( self ):
+        return _meas_no_checks( self.x.flatten, self.dx.flatten() )
         
         
 
@@ -313,114 +335,11 @@ class db( object ):
     
 
 
-    ############################################
-    ## FUNCTIONS FOR SPECIALIZED QUERYING ######
-    ############################################
-    
 
 
-    # # read all data for a particular pixel into a df.
-    # def read_pixel_into_df( self, x, y ):
 
-    #     self.assert_open()
-        
-    #     # check that x and y are ints to avoid injection attack
-    #     if not ( isint(x) and isint(y) ):
-
-    #         # print( type(x ) )
-    #         # print( type( y ) ) 
-    #         raise ValueError( 'x or y is not an int: x=%s, y=%s' 
-    #                           % ( str(x), str(y) ) )
-        
-        
-    #     return pd.read_sql_query( 'SELECT * from ' + _tablename
-    #                               + ' WHERE x=%d AND y=%d ORDER BY fit_id'
-    #                               % ( x, y ), self.conn )
-    
 
     
-
-    # # this function returns a list of 5 entries. each entry gives the
-    # # fit parameters for a SINGLE alpha peak. note that this is not
-    # # the same as the peak parameters obtained since we actually only
-    # # do 3 fits. this is meant to be used for processing data from the
-    # # single peak parameters, such as FWHM coords or peak positions.
-    # def get_single_peak_fit_parameters( self, x, y ):
-
-    #     self.assert_open()
-
-    #     # to be returned
-    #     pf_arr = []
-    #     pf_delta_arr = []
-        
-    #     df = self.read_pixel_into_df( x, y )
-        
-    #     # print( df.shape )
-        
-    #     # print df 
-        
-    #     for peaknum in np.arange( 6 ):
-            
-    #         # these will accumulate the fit params and be appended to
-    #         # pf_arr and pf_delta_arr
-    #         pf_current = []
-    #         pf_delta_current = []
-            
-    #         fitnum, mu_index_in_pf = get_fitnum_and_mu_index_in_pf( peaknum )
-            
-    #         row =  fitnum 
-            
-    #         successful_fit = df.successful_fit.values[ row ]
-            
-    #         if successful_fit:
-                
-    #             # read from db
-    #             pf_from_db = json.loads( df['pf'].loc[row] )
-    #             pf_delta_from_db = json.loads( df['pferr'].loc[row] ) 
-                
-    #             # add in the 2 tau values, sigma, and eta value
-    #             pf_current.extend( pf_from_db[ 0:4 ] )
-    #             pf_delta_current.extend( pf_delta_from_db[ 0:4 ] )
-                
-    #             # add in the A and mu values
-    #             A = pf_from_db[ mu_index_in_pf - 1 ]
-    #             mu = pf_from_db[ mu_index_in_pf ]
-    #             A_delta = pf_delta_from_db[ mu_index_in_pf - 1 ]
-    #             mu_delta = pf_delta_from_db[ mu_index_in_pf ]
-                
-    #             # extend current arrays 
-    #             pf_current.extend( [A, mu] )
-    #             pf_delta_current.extend( [A_delta, mu_delta ] )
-                
-    #             # add to pf_arr
-    #             pf_arr.append( pf_current )
-    #             pf_delta_arr.append( pf_delta_current )
-                
-                
-    #             # otherwise we can't extract single-fit params for both
-    #             # peaks.
-                
-    #         else:
-    #             pf_arr.append( [ np.nan ] * 6  )
-    #             pf_delta_arr.append( [ np.nan ] * 6 ) 
-                
-    #     # print( pf_arr )
-    #     # print( pf_delta_arr ) 
-                
-    #     # return the values and deltas as a measurement.
-    #     return meas.meas( pf_arr, pf_delta_arr ) 
-            
-
-
-
-
-    # # input filename of database, return DataFrame containing the DB  
-    # def read_db_into_df( self ):
-    #     self.assert_open()
-    #     return pd.read_sql_query( 'SELECT * from ' + _tablename, self.conn )
-    
-
-
     def get_mu_for_x_strip( self, x ):
 
         if not isint( x ):
@@ -470,67 +389,190 @@ class db( object ):
         return strip 
 
 
+    
 
                                
 
     def get_mu_for_y_strip( self, y ):
         raise( NotImplementedError( 'mu is not const in y direction' ) )
+
+
     
 
-               
-        
-    # if populating an entire array, we can get a bit more efficiency by not calling
-    # get_mu_values
-    def get_mu_grids_where_valid( self ):
 
-        print( 'INFO: loading mu grid...' )
 
+    
+    # get the array of mu values for each pixel and for each peak.
+    
+    def get_all_mu_grids( self, read_from_file = 0 ) :
+
+        # construct appropriately sized container for all the mu grids
+        mu_grids = [ [ 0 ] * self.num_peaks_per_feature[i]
+                     for i in range( self.num_features ) ]
+
+        for i in range( self.num_features ):
+            mu_grids[i] = [ meas.meas.empty( self.dimensions ) ] * self.num_peaks_per_feature[i] 
+
+
+        # meas.meas.empty( self.num_peaks_per_fit + self.dimensions )
+
+        if read_from_file :
+
+            mu_paths = [ [ [  self.mu_vals_dir + self.name + '_%d_%d_%s.bin' % (i,j,s)
+                              for s in [ 'x', 'dx' ] ]
+                           for j in range( self.num_peaks_per_feature[i] ) ]
+                         for i in range( self.num_features) ]
+                        
+            if all( [ os.path.exists( path ) for path in np.array( mu_paths ).flatten() ] ) :
+
+                for i in range( self.num_features ) :
+                    for j in range( self.num_peaks_per_feature[i] ) :
+
+                        mu = np.fromfile( mu_paths[i][j][0] ).reshape( self.dimensions )
+                        mu_delta = np.fromfile( mu_paths[i][j][1] ).reshape( self.dimensions )
+                        mu_grids[i][j] = meas.meas( mu, mu_delta )
+                        
+                return mu_grids
+
+            else:
+                print( 'INFO: requested to read mu and mu_delta from files, but they aren\'t there. constructing them now...' )
+
+
+                
+
+        # construct the array from the db if the files don't exist
+        # yet, or we requested a fresh fetch.
 
         disconnect_conn_when_done = 0
         if self.conn is None:
             self.connect()
             disconnect_conn_when_done = 1
-            
 
-        # to be combined in a meas.
-        grid = np.empty( (3, 2), dtype = 'object' )
+            
+        # populate the grid 
         for i in range(3):
             for j in range(2):
-
-                grid[i][j] = meas.meas( np.empty( ( 32, 32 ) ),
-                                   np.empty( ( 32, 32 ) ) )
+                mu_grids[i][j] =  meas.meas.empty( self.dimensions )
         
         cursor = self.conn.cursor()
         cursor.execute( 'SELECT * FROM ' + _tablename )
 
         for row in cursor:
 
+            x = row['x']
+            y = row['y'] 
+            feature = row[ 'fit_id' ]
+            
             # if fit didn't converge then all the mu values for that
-            # feature are assigned np.nan
-            
-            if not row[ 'successful_fit' ]:
-                for i in range( 2 ):
-                    grid[ row[ 'fit_id' ] ][ i ][ row['x'], row['y'] ] = meas.nan
-                continue
-            
-                # vals[ row[ 'fit_id' ], :, row['x'], row['y'] ] = np.nan
-                # deltas[ row[ 'fit_id' ], :, row['x'], row['y'] ] = np.nan
+            # feature are assigned np.nan            
+            if not row[ 'successful_fit' ]: 
+
+                for i in range( self.num_peaks_per_feature[ feature ]  ):
+                    mu_grids[ feature ][ i ][ x,y ] = meas.nan
                 continue
 
             mu = spec.get_alpha_params_dict( _from_bin( row['model'] ) )[ 'mu' ] 
-            if mu.size() == 1:
-                mu = meas.meas( [ np.nan, mu.x[0] ], [ np.nan, mu.dx[0] ] )
 
-            for i in range(2):
-                # print( ( row['x'], row['y'], row['fit_id'] ), i )
-                # print( mu[i] ) 
-                grid[ row[ 'fit_id' ] ][ i ][ row['x'], row['y'] ] = mu[i]
+            # check if the fit used the alternate shape 
+            if len( mu ) != self.num_peaks_per_feature[ feature ] :
+
+                # todo: this doesn't work in the general case.
+                # this should depend on the specified alternate shape.
+                mu = meas.append( meas.nan, mu ) 
+
+
+            # populate the corresponding entry of the grid.
+            for i in range( self.num_peaks_per_feature[ feature ] ):
+                mu_grids[ feature ][ i ][ x,y ] = mu[i]
 
                 
         if disconnect_conn_when_done:
             self.disconnect()
+
+
+        # write to a file if requested. note that we have already constructed
+        # all the file names.
+        if read_from_file :
+            
+            for i in range( self.num_features ) :
+                for j in range( self.num_peaks_per_feature[i] ) :
+                    
+                    mu_grids[i][j].x.tofile(  mu_paths[i][j][0] )
+                    mu_grids[i][j].dx.tofile( mu_paths[i][j][1] )
+                    
+        
+        return mu_grids
+            
+
+        
+#         for x in range( 32 ) :
+
+
+            
+            # mu = self.get_mu_for_x_strip( x )
+
+
+            
+
+
+
+
+
+
+
+                    
+    # # if populating an entire array, we can get a bit more efficiency by not calling
+    # # get_mu_values
+    # def get_mu_grids_where_valid( self ):
+
+    #     print( 'INFO: loading mu grid...' )
+
+
+    #     disconnect_conn_when_done = 0
+    #     if self.conn is None:
+    #         self.connect()
+    #         disconnect_conn_when_done = 1
+            
+
+    #     # to be combined in a meas.
+    #     grid = np.empty( (3, 2), dtype = 'object' )
+    #     for i in range(3):
+    #         for j in range(2):
+
+    #             grid[i][j] = meas.meas( np.empty( ( 32, 32 ) ),
+    #                                np.empty( ( 32, 32 ) ) )
+        
+    #     cursor = self.conn.cursor()
+    #     cursor.execute( 'SELECT * FROM ' + _tablename )
+
+    #     for row in cursor:
+
+    #         # if fit didn't converge then all the mu values for that
+    #         # feature are assigned np.nan
+            
+    #         if not row[ 'successful_fit' ]:
+    #             for i in range( 2 ):
+    #                 grid[ row[ 'fit_id' ] ][ i ][ row['x'], row['y'] ] = meas.nan
+    #             continue
+            
+    #             # vals[ row[ 'fit_id' ], :, row['x'], row['y'] ] = np.nan
+    #             # deltas[ row[ 'fit_id' ], :, row['x'], row['y'] ] = np.nan
+    #             continue
+
+    #         mu = spec.get_alpha_params_dict( _from_bin( row['model'] ) )[ 'mu' ] 
+    #         if mu.size() == 1:
+    #             mu = meas.meas( [ np.nan, mu.x[0] ], [ np.nan, mu.dx[0] ] )
+
+    #         for i in range(2):
+    #             # print( ( row['x'], row['y'], row['fit_id'] ), i )
+    #             # print( mu[i] ) 
+    #             grid[ row[ 'fit_id' ] ][ i ][ row['x'], row['y'] ] = mu[i]
+
                 
-        return grid 
+    #     if disconnect_conn_when_done:
+    #         self.disconnect()
+                
+    #     return grid 
 
         
 

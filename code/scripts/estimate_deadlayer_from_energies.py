@@ -33,11 +33,13 @@ peak_energies = [ [ 5123.68, 5168.17 ], [ 5456.3, 5499.03 ], [ 5759.5, 5813.10, 
 flattened_peak_calibration_energies = jutils.flatten_list(
     [ peak_energies[j] for j in [0,2] ] )
 
-
-
+si_stopping_powers = [ [ 6.080E+02, 6.046E+02 ],
+                       [ 5.832E+02, 5.802E+02 ],
+                       [ 5.626E+02, 5.591E+02 ] ]
 
 # stopping power for the 5456.3 and 5499.03 keV peaks alphas
 # https://physics.nist.gov/cgi-bin/Star/ap_table-t.pl
+# https://physics.nist.gov/PhysRefData/Star/Text/ASTAR.html
 stopping_power_energies = np.array( [ 5.802E+02 , 5.802E+02 ] )  # MeV cm^2 / g 
 density_si = 2.328 # g / cm^2
 stopping_power_energies *= density_si * 1000 * 100 / 1e9   # convert to MeV / cm
@@ -243,6 +245,7 @@ def estimate_deadlayer_from_energy_values():
 
 
 
+    
 
     
 
