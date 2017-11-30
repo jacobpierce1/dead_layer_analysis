@@ -603,6 +603,7 @@ all_dbs = [ db( name, (32,32), (2,2,2) )
             for name in [ 'centered', 'moved', 'flat', 'angled' ] ]
 centered, moved, flat, angled = all_dbs
 
+normal_dbs = [ centered, moved, flat ]
 
 
 # # fitnum is the fit that this peak belongs to and index_in_pf is 

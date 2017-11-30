@@ -1,7 +1,7 @@
-# the purpose of this module is to construct several global variables that are extremely
-# useful, such as grids of cosine theta values for all the detector pixels.
-# the goal is that geometry issues and calculations will never need to be considered outside the
-# module.
+# the purpose of this module is to construct several global variables
+# that are extremely useful, such as grids of cosine theta values for
+# all the detector pixels.  the goal is that geometry issues and
+# calculations will never need to be considered outside the module.
 
 
 # my includes 
@@ -20,10 +20,12 @@ _CM_PER_INCH = 2.54
 _MM_PER_INCH = 25.4
 
 
-sources = [ 'pu_240', 'cf_249', 'pu_238_centered', 'pu_238_moved', 'pu_238_flat', 'pu_238_angled' ]
+sources = [ 'pu_240', 'cf_249', 'pu_238_centered',
+            'pu_238_moved', 'pu_238_flat', 'pu_238_angled' ]
+
 all_objects = sources + [ 'detector' ]
 
-source_deadlayers = [ 'si' ] * 6
+
 
 # indices to be used for constructing DataFrames
 sources_index = pd.Index( sources )
@@ -95,9 +97,11 @@ pu_238_angled_data = pd.Series(
 # all in cm
 detector_data = pd.Series(
     {
-        'x_offset' : [0.2663, 0.2668 ],  # left, or right. todo: figure out.
+        'x_offset' : [ 2.6630, 2.6685 ], #2.6843, 
+        #'y_offset' : [0.2663, 0.2668 ], 
         'y_offset' : [ 0.1555, 0.1575 ],
-        'height' : [0.1]
+        'height' : [1.], # mm
+        'total_width' : 64 # mm, this is 32 strips * 2 mm in both dimensions 
     }
 )
 
@@ -110,13 +114,21 @@ enclosure_data = pd.Series(
     {
         'top_offset' : [ 0.1260 ],
         'bottom_offset' : [ 0.267 ],
-        'total_x' : [ 151.696 ],
-        'total_y' : [ 50.0 ],
+        #        'total_x' : [ 151.696 ],  # pretty sure this is wrong. unused in analysis
+        #        'total_y' : [ 50.0 ], # pretty sure this is wrong. unused in analysis.
         'total_z' : [ 5.764 ]  # inches, line 211 of pixelanalysissrc.c
     }
 )
 
 
+
+# ambiguity: which is x or y? TODO
+ceramic_data = pd.Series(
+    {
+        'total_x' : 106.0,    # mm
+        'total_y' : 80.0 # mm
+    }
+)
 
 
 ##############################################################################################
@@ -124,8 +136,9 @@ enclosure_data = pd.Series(
 ##############################################################################################
 
 
-# fill in the redundant pu_238 entries. the dataframe / series method set_value allows you to add lists into
-# the dataframe / series.
+# fill in the redundant pu_238 entries. the dataframe / series method
+# set_value allows you to add lists into the dataframe / series.
+
 def _fill_redundant_source_data( source_data ):
 
     # these sources share the same diam, height, and wafer because they are the same, just moved.
@@ -134,7 +147,8 @@ def _fill_redundant_source_data( source_data ):
     redundant_cols = [ 'diameter', 'height', 'wafer' ]
     for col in redundant_cols:
         for redundant_source in redundant_sources:
-            source_data.set_value( redundant_source, col, source_data.loc[ reference_source, col ] )
+            source_data.set_value( redundant_source, col,
+                                   source_data.loc[ reference_source, col ] )
             
     # in addition these two share the same position with the centered source:
     reference_source = 'pu_238_centered'
@@ -145,6 +159,7 @@ def _fill_redundant_source_data( source_data ):
             source_data.set_value( redundant_source, col,
                                    source_data.loc[ reference_source, col ] )
 
+    # final redundant parameter
     source_data.set_value( 'pu_238_angled' , 'diameter',
                            source_data.loc[ 'pu_238_centered', 'diameter' ] )
     
@@ -152,23 +167,77 @@ def _fill_redundant_source_data( source_data ):
 
     
 
-# use the measurements in source_data to obtain the coordinates of each source and a
-# edge of the detector.
+# use the measurements in source_data to obtain the coordinates of
+# each source and a edge of the detector.
 
 _DEBUG_COORDS = 0
 
 def _populate_all_coords( all_coords, source_data ):
 
-    # TODO: verify that this is right...
     # first handle the detector separately
-    det_coords = [ meas.meas( detector_data['x_offset'], _source_data_delta ).mean(),
-                   meas.meas( detector_data['y_offset'], _source_data_delta ).mean(),
-                   meas.meas( enclosure_data['total_z'], _source_data_delta ).mean() -
-                   meas.meas( enclosure_data['top_offset'], _source_data_delta ).mean() -
-                   meas.meas( enclosure_data['bottom_offset'], _source_data_delta ).mean() ]
-    
-    all_coords.loc['detector'] = meas.meas.from_list( det_coords ) * _MM_PER_INCH
 
+    # option 1 : "ceramic L/R" to plate edge in the logbook means
+    # measured from the left
+    # results:
+
+    det_coords = meas.meas.from_list( [ meas.meas( detector_data['x_offset'],
+                                                   _source_data_delta ).mean(),
+                                        meas.meas( detector_data['y_offset'],
+                                                   _source_data_delta ).mean(),
+                                        meas.meas( enclosure_data['total_z'],
+                                                   _source_data_delta ).mean()
+                                        - meas.meas( enclosure_data['top_offset'],
+                                                   _source_data_delta ).mean()
+                                        - meas.meas( enclosure_data['bottom_offset'],
+                                                   _source_data_delta ).mean() ] )
+
+
+    x_measurement_inverted = 0
+    y_measurement_inverted = 0
+
+    if x_measurement_inverted :
+        total_x = ( np.mean( source_data.loc[ 'pu_240', 'left' ] )
+                    + np.mean( source_data.loc[ 'pu_240', 'diameter' ] )
+                    + np.mean( source_data.loc[ 'pu_240', 'right' ] ) )
+
+        det_coords[0] = total_x - det_coords[0]
+
+        
+    if y_measurement_inverted :
+        total_y = ( np.mean( source_data.loc[ 'pu_240', 'bottom' ] )
+                    + np.mean( source_data.loc[ 'pu_240', 'diameter' ] )
+                    + np.mean( source_data.loc[ 'pu_240', 'top' ] ) )
+        
+        det_coords[1] = total_y - det_coords[1]
+
+
+        
+    det_coords *= _MM_PER_INCH
+
+
+    if x_measurement_inverted :
+        shift = - ( ceramic_data[ 'total_x' ]
+                    - detector_data[ 'total_width' ] ) / 2 
+        det_coords += np.array( [ shift, 0, 0 ] )
+
+    else:
+        shift = ( ceramic_data[ 'total_x' ]
+                  + detector_data[ 'total_width' ] ) / 2 
+        det_coords += np.array( [ shift, 0, 0 ] )
+        
+
+    if y_measurement_inverted :
+        shift = - detector_data[ 'total_width' ]
+        det_coords += np.array( [0, shift, 0 ] )
+
+    else:
+        shift = ( ceramic_data[ 'total_y' ]
+                  - detector_data[ 'total_width' ] )
+        det_coords += np.array( [0, shift, 0 ] )
+        
+
+            
+    all_coords.loc['detector'] = det_coords
     
     if _DEBUG_COORDS:
         print( 'det_coords: ' + str( all_coords.loc['detector'] ) )
@@ -188,11 +257,13 @@ def _populate_all_coords( all_coords, source_data ):
                  for col in [ 'left', 'bottom' ]  ]
 
         # for the top measurement, reference to the bottom of the enclosure.
+
         if source != 'pu_238_angled' : 
             z = meas.sum( [ meas.meas( source_data.loc[ source, 'height' ],
                                        _source_data_delta ).mean(),
                             meas.meas( source_data.loc[ source, 'wafer' ],
                                        _source_data_delta ).mean() ] )
+
         else:
             z = ( meas.meas( pu_238_angled_data.loc[ 'upper_height' ],
                              _source_data_delta ) +
@@ -200,18 +271,15 @@ def _populate_all_coords( all_coords, source_data ):
                              _source_data_delta ) ) / 2
         
             
-        if _DEBUG_COORDS:
-            print( 'x: ' + str( x ) )
-            print( 'y: ' + str( y ) )
-            print( 'z: ' + str( z ) )
-            
         xyz = meas.meas.from_list( [ x, y, z ] )
-        all_coords.loc[source] = xyz * _MM_PER_INCH
+        xyz *= _MM_PER_INCH
+        all_coords.loc[source] = xyz
 
-        if _DEBUG_COORDS:
-            print( 'source coords: ' + str( all_coords.loc[source] ) )
-                                    
-        
+    for source in all_objects :
+        print( source + ': ' )
+        print( all_coords.loc[ source ] )
+        print( '' ) 
+        # print( 'all_coords: ' + str(all_coords ) ) 
 
 
 # these functions to be used as input for apply_nd
@@ -237,20 +305,25 @@ def costheta_from_3d( coords ):
 
 # rotate a vector x about an axis ( 0 = x, 1 = y, 2 = z ) by theta
 # applies to a np.ndarray
-def rotate_3d( axis, theta, x ):
+def rotate_3d( axis, theta, x, deg = 0 ):
 
+    if deg :
+        theta *= np.pi / 180
+        
     # select the correct components to be rotated, using the fact that the
     # 3D rotation is identity for one component and 2d rotation of the other
     # two components 
-    rot_indices = np.arange(3)
-    np.delete( rot_indices, axis )
+
+    rot_indices = np.delete( np.arange(3), axis )
 
     # set the component that doesn't change.
+
     ret = np.empty(3)
     ret[axis] = x[axis]
     
     # do the 2D rotation and add it to ret
-    ret[ rot_indices ] = rotate_2d( theta, x[ rot_indices ] )
+    
+    ret[ rot_indices ] = rotate_2d( x[ rot_indices ], theta )
 
     return ret
 
@@ -262,8 +335,11 @@ def rotate_3d( axis, theta, x ):
 # we do not use the apply_nd function which is well-suited for
 # maps from R^n to R. hopefully eventually there will be a similar
 # function that can handle maps R^n to R^m
-def rotate_3d_meas( axis, theta, x ):
+def rotate_3d_meas( axis, theta, x, deg=0 ):
 
+    if deg :
+        theta *= np.pi / 180 
+    
     combined_meas = meas.append( theta, x )
 
     f = lambda _combined_meas : _rotate_3d_meas_f( axis, _combined_meas )
@@ -346,51 +422,6 @@ def _rotate_3d_meas_fprime_tuple( axis, combined_meas ):
 
 
 
-# # in: 3-tuple of x,y,z coordinates
-# # out: rotated vector about z axis by theta
-# def rotate_z( theta, x ):
-
-#     R = np.array( [ [ np.cos(theta['value']), 0-np.sin(theta['value']), 0 ],
-#                     [ np.sin(theta['value']),   np.cos(theta['value']), 0 ],
-#                     [ 0, 0, 1 ] ] )
-       
-#     value = np.dot( R, x['value'] )
-#     delta = np.empty(3)
-#     delta[0:2] = rotation_matrix_delta( theta, x )
-#     delta[2] = x['delta'][2]
-#     return pd.Series( [ value, delta ], error.values_index )
-                                             
-                        
-    
-# def rotate_x( phi, x ):
-#     value = np.dot( np.array( [ [ 1, 0, 0],
-#                                 [ 0, np.cos(phi['value']), 0-np.sin(phi['value']) ],
-#                                 [ 0, np.sin(phi['value']), np.cos(phi['value']) ] ] ),
-#                     x['value']  )
-
-#     delta = np.empty(3)
-#     delta[0] = x['delta'][0]
-#     delta[1:3] = rotation_matrix_delta( phi, x )
-#     return pd.Series( [ value, delta ], error.values_index )
-
-    
-# # unused
-# def rotate_y( theta, x ):
-#     pass 
-
-
-# # all uncertainty calculations with the rotation matrices use this formula for different
-# # permutations of the 3-tuple vector x. not meant to be used more generally outside these
-# # uncertainty calculations. x assumed to have 3 'value' and 'delta' entries.
-# def rotated_delta_entry( theta, x ):
-    
-#     return np.sqrt( ( ( x['value'][0] * np.sin(theta['value'])
-#                         + x['value'][1] * np.cos(theta['value']) )
-#                       * theta['delta'] )**2 +
-#                     + ( x['value'][0] * np.cos(theta['value']))**2 
-#                     + ( x['value'][1] * np.sin(theta['value']))**2 )
-
-
 
 
 # generate a unit vec in R^n with entry 1 at k 
@@ -400,6 +431,8 @@ def unit_vec( k, n = 3 ):
     ret = np.zeros( n )
     ret[k] = 1
     return ret
+
+
 
 
 
@@ -426,35 +459,37 @@ def rotation_matrix_delta( theta, x ):
 
 
 
-def _populate_source_theta_phi( source_theta, source_phi, source_data, pu_238_angled_data ):
 
-    # assume all measured (or implicitly measured, e.g. assuming something is flat ) are known to
-    # 1 degree.
-    angle_data_delta = np.deg2rad( 1.0 / 360 ) 
 
-    radius = meas.meas( source_data.loc[ 'pu_238_angled', 'diameter' ],
-                        _source_data_delta ).mean()
+# def _populate_source_theta_phi( source_theta, source_phi, source_data, pu_238_angled_data ):
+
+#     # assume all measured (or implicitly measured, e.g. assuming something is flat ) are known to
+#     # 1 degree.
+#     angle_data_delta = np.deg2rad( 1.0 / 360 ) 
+
+#     radius = meas.meas( source_data.loc[ 'pu_238_angled', 'diameter' ],
+#                         _source_data_delta ).mean()
     
-    height_diff = ( meas.meas( pu_238_angled_data[ 'upper_height' ],
-                               _source_data_delta ) +
-                    meas.meas( pu_238_angled_data[ 'lower_height' ],
-                               _source_data_delta ).mean() )
+#     height_diff = ( meas.meas( pu_238_angled_data[ 'upper_height' ],
+#                                _source_data_delta ) +
+#                     meas.meas( pu_238_angled_data[ 'lower_height' ],
+#                                _source_data_delta ).mean() )
 
-    # take inverse tan of opposite over adjacent
-    theta = meas.arctan( height_diff / radius ) 
+#     # take inverse tan of opposite over adjacent
+#     theta = meas.arctan( height_diff / radius ) 
      
-    source_theta[ 'pu_238_angled' ] = theta
-    source_phi[ 'pu_238_angled' ] = meas.meas( 0, angle_data_delta )
+#     source_theta[ 'pu_238_angled' ] = theta
+#     source_phi[ 'pu_238_angled' ] = meas.meas( 0, angle_data_delta )
     
     
-    # add in theta_phi values for everything except pu_238_angled.
-    upright_sources = list(sources)
-    upright_sources.remove( 'pu_238_angled' )
+#     # add in theta_phi values for everything except pu_238_angled.
+#     upright_sources = list(sources)
+#     upright_sources.remove( 'pu_238_angled' )
 
-    # loop through and add the same angles for the other sources.
-    for source in upright_sources:
-        source_theta[ source ] = meas.meas( 0, angle_data_delta )
-        source_phi[ source ] = meas.meas( 0, angle_data_delta )
+#     # loop through and add the same angles for the other sources.
+#     for source in upright_sources:
+#         source_theta[ source ] = meas.meas( 0, angle_data_delta )
+#         source_phi[ source ] = meas.meas( 0, angle_data_delta )
                                             
 
 
@@ -484,6 +519,8 @@ def _populate_costheta_grid( cosine_matrices, all_coords, source_data,
                     meas.meas(
                         source_data.loc[ 'pu_238_angled', 'diameter' ],
                         _source_data_delta ).mean() ] ) )
+
+    pu_238_angled_normal *= _MM_PER_INCH
     
     sourcenum = -1
 
@@ -495,23 +532,25 @@ def _populate_costheta_grid( cosine_matrices, all_coords, source_data,
 
         # extract coords and angels 
         source_coords = all_coords.loc[ source ]
-
-        # theta = source_theta[ source ]
-        # phi = source_theta[ source ]
         
 
         # rename matrices in order to enhance readability 
         det_costheta_grid = cosine_matrices[ source ][ 0 ]
         source_costheta_grid = cosine_matrices[ source ][ 1 ]
-        
+
+        first_pixel_coords = det_coords - source_coords
+
+        # print( source + ': ' + str( first_pixel_coords ) )
         
         # keep shifting by 2 mm to get next coord 
         for i in range(32):
             for j in range(32):
 
-                # this works since all the pixels are separated by 1 mm.
-                displacement = det_coords + 2.0 * np.array([ -j,-i, 0 ]) - source_coords
-                
+                # this works since all the pixels are separated by 2 mm.
+                pixel_displacement = 2.0 * rotate_3d( 2, -6, np.array([ -j, i, 0 ] ), deg=1 )
+                displacement = first_pixel_coords + pixel_displacement
+
+                                                
                 # print 'displacement: ' + str( displacement )
                 
                 
@@ -537,21 +576,7 @@ def _populate_costheta_grid( cosine_matrices, all_coords, source_data,
                                   np.linalg.norm( displacement.x ) )
                         
                         source_costheta_grid[i][j] = tmp        
-                        
-                # # if not, then we rotate the displacement vector by
-                # # 0-theta about the z axis, then 0-phi about the x
-                # # axis, then take costheta. this is because rotating
-                # # by the negative angles is equivalent to rotating the
-                # # source by positive angles, which is the definition
-                # # of the theta/phi angles. note that this is
-                # # independent of the other det_costheta value.
-
-                # # this is really only relevant for the rotated source.
-                # rotated_displacement = rotate_3d_meas( 0, -phi,
-                #                                        rotate_3d_meas( 2, -theta, displacement ) ) 
-                # # print 'rotated displacement: ' + str( rotated_displacement )
-                
-                # source_costheta_grid[i][j] = costheta_from_3d( rotated_displacement )
+                     
                                     
                     
                     

@@ -41,15 +41,27 @@ peak_energies = np.array( [ [ 5123.68, 5168.17 ],
 flattened_peak_calibration_energies = peak_energies.flatten()
 
 
+# https://physics.nist.gov/PhysRefData/Star/Text/ASTAR-t.html
+# 5.12368
+# 5.16817
+# 5.4563
+# 5.49903
+# 5.7595
+# 5.81310
 
 si_stopping_powers = np.array( [ [ 6.080E+02, 6.046E+02 ],
                                  [ 5.832E+02, 5.802E+02 ],
                                  [ 5.626E+02, 5.591E+02 ] ] )
 
+si_dioxide_stopping_powers = np.array( [ [ 6.489E+02, 6.452E+02 ],
+                                         [ 6.222E+02, 6.190E+02 ],
+                                         [ 6.001E+02, 5.963E+02   ] ] )
+
 density_si = 2.328 # g / cm^2
+density_si_dioxide = 2.65
 
 si_stopping_powers *= density_si * 1000 * 100 / 1e9   # convert to keV / nm from mev / cm
-
+si_dioxide_stopping_powers *= density_si_dioxide * 1000 * 100 / 1e9
 
 
 # stopping power for the 5456.3 and 5499.03 keV peaks alphas
@@ -421,42 +433,73 @@ def estimate_deadlayers_using_all_4_positions_mu_calibration_sklearn() :
 
 
 def energy_from_mu_lmfit( params, mu, det_sectheta, source_sectheta,
-                          db_name, x, i, j ) :
+                          db_name, x, i, j, vary_det_deadlayer = 0,
+                          const_source_deadlayer = 0,
+                          quadratic_source = 0,
+                          calibrate_each_pixel = 0,
+                          y = 0 ) :
 
-    a = params[ 'a_' + db_name + '_%d' % ( x, ) ].value
-    b = params[ 'b_' + db_name + '_%d' % ( x, ) ].value
+    if not calibrate_each_pixel : 
+        a = params[ 'a_' + db_name + '_%d' % ( x, ) ].value
+        b = params[ 'b_' + db_name + '_%d' % ( x, ) ].value
 
-    det_deadlayer = params[ 'det_deadlayer' ].value
+    else: 
+        a = params[ 'a_' + db_name + '_%d_%d' % ( x,y ) ].value
+        b = params[ 'b_' + db_name + '_%d_%d' % ( x,y ) ].value
 
+        
+    if not vary_det_deadlayer:
+        det_constant = params[ 'det_deadlayer' ].value * si_stopping_powers[ i, j ]
+
+    else:
+        det_constant = params[ 'det_constant_%d_%d' % (i,j) ].value
+
+        
     source_constant = params[ 'source_constant_%d_%d' % (i,j) ].value
 
-    return energy_from_mu( i, j, mu, det_sectheta, source_sectheta,
-                           a, b, det_deadlayer, source_constant )
+    # shift by a constant term if this option is enabled.
+    if const_source_deadlayer :
+        b += source_constant
+        source_constant = 0
+
+    if quadratic_source :
+        source_constant2 = params[ 'source_constant2_%d_%d' % (i,j) ].value
+
+    else:
+        source_constant2 = 0.0
+
+        
+    return energy_from_mu( mu, det_sectheta, source_sectheta,
+                           a, b, det_constant, source_constant, source_constant2 )
     
+ 
 
 
 
 
-
-def energy_from_mu( i, j, mu, det_sectheta, source_sectheta,
-                    a, b, det_deadlayer, source_constant ) :
-
+def energy_from_mu( mu, det_sectheta, source_sectheta,
+                    a, b, det_constant, source_constant, source_constant2 ) :
+    
     return ( a * mu + b
-             + det_deadlayer * si_stopping_powers[ i, j ] * det_sectheta
-             + source_constant * source_sectheta )
-
+             + det_constant * det_sectheta
+             + source_constant * source_sectheta 
+             + source_constant2 * (source_sectheta ** 2) )
     
 
 
 
 
-def objective( params, mu_matrices, secant_matrices, actual_energies ):
+def objective( params, mu_matrices, secant_matrices, actual_energies,
+               dbs, source_indices, vary_det_deadlayer = 0,
+               const_source_deadlayer = 0,
+               quadratic_source = 0,
+               calibrate_each_pixel = 0 ):
 
-    # start_time = time.time() 
+    start_time = time.time() 
     
-    resid = np.empty( ( 4, 3, 2, 32, 32 ) )
+    resid = np.zeros( ( 4, 3, 2, 32, 32 ) )
 
-    db_names = [ db.name for db in dbmgr.all_dbs ]
+    db_names = [ db.name for db in dbs ]
 
     for db_num in range( len( db_names ) ) :
 
@@ -470,21 +513,43 @@ def objective( params, mu_matrices, secant_matrices, actual_energies ):
                                                         for source in source_names ] )
                                           for k in range(2) ]
                 
-        for i in range(3):
-            for j in range(2):
-                for x in range(32):
+        for i in range( len( source_indices ) ) :
+            for j in source_indices[i] :
+                for x in range(32) :
 
-                    computed_energy = energy_from_mu_lmfit(
-                        params,
-                        mu_matrices[ db_name ][ i ][ j ][ x ],
-                        det_sectheta[i,x],
-                        source_sectheta[i,x],
-                        db_name, x, i, j )
-                    
+                    if not calibrate_each_pixel :
+                        computed_energy = energy_from_mu_lmfit(
+                            params,
+                            mu_matrices[ db_name ][ i ][ j ][ x ],
+                            det_sectheta[i,x],
+                            source_sectheta[i,x],
+                            db_name, x, i, j, vary_det_deadlayer,
+                            const_source_deadlayer,
+                            quadratic_source )
+                        
                 
-                    resid[ db_num, i, j, x ] = ( actual_energies[i,j] - computed_energy )
+                        resid[ db_num, i, j, x ] = ( actual_energies[i,j] - computed_energy )
 
-                    
+                    else:
+
+                        for y in range( 32 ) :
+                        
+                            computed_energy = energy_from_mu_lmfit(
+                                params,
+                                mu_matrices[ db_name ][ i ][ j ][ x,y ],
+                                det_sectheta[i,x,y],
+                                source_sectheta[i,x,y],
+                                db_name, x, i, j, vary_det_deadlayer,
+                                const_source_deadlayer,
+                                quadratic_source,
+                                calibrate_each_pixel,
+                                y = y )
+                            
+                            resid[ db_num, i, j, x, y ] = ( actual_energies[i,j]
+                                                            - computed_energy )
+
+                        
+                        
     ret = resid.flatten()
 
     # print( 'objective: %f' % ( time.time() - start_time, ) )
@@ -500,27 +565,62 @@ def objective( params, mu_matrices, secant_matrices, actual_energies ):
 
 # do a fit of the form E = A * mu + b + s * sec(phi) + deadlayer_distance * si_stopping_power * sec(theta)  
 
-def linear_calibration_on_each_x_strip():
+def linear_calibration_on_each_x_strip( vary_det_deadlayer = 0,
+                                        const_source_deadlayer = 0,
+                                        quadratic_source = 0,
+                                        calibrate_each_pixel = 0 ):
 
+    
+    # these are all the dbs we will look at, for quick scripting to look
+    # at subsets of the data. these get passed to objective.
+
+    # dbs = dbmgr.all_dbs
+    # dbs  = dbmgr.normal_dbs
+    # dbs = [ dbmgr.angled ]
+    dbs = [ dbmgr.moved ] 
+    
+    # these are the sources we will look at. neglect the others.
+    # normal operation is [ [0,1], [0,1], [0,1] ]
+
+    source_indices = [ [0,1], [0,1], [0,1] ]
+    # source_indices = [ [0,1], [0,1], [0,1] ]
+
+    
     # prepare a giant Parameters() for the fit
     
     fit_params = lmfit.Parameters()
 
+    if not vary_det_deadlayer : 
+        fit_params.add( 'det_deadlayer', value = 0, vary = 1 ) #, min=0 ) #, min = 0.0 )
 
-    fit_params.add( 'det_deadlayer', value = 100.0 ) #, min = 0.0 )
+    for i in range( len( source_indices ) ) :
+        for j in source_indices[i] :
+
+            fit_params.add( 'source_constant_%d_%d' % (i,j), value = 0.0, vary = 0 )
+
+            if quadratic_source :
+                fit_params.add( 'source_constant2_%d_%d' % (i,j), value = 0.0, vary = 1  )
+                    
+            if vary_det_deadlayer :
+                fit_params.add( 'det_constant_%d_%d' % (i,j), value = 0.0, vary = 1  )
+
 
     
-    for i in range( 3 ) :
-        for j in range( 2 ) :
-            fit_params.add( 'source_constant_%d_%d' % (i,j), value = 2.0 ) #, min = 0.0 )
+    for db in dbs :
 
+        if not calibrate_each_pixel : 
+        
+            for x in range( 32 ) :
+                fit_params.add( 'a_' + db.name + '_%d' % ( x, ), value = 1.99 )
+                fit_params.add( 'b_' + db.name + '_%d' % ( x, ), value = -200 )    
 
-    for db in dbmgr.all_dbs :
-        for x in range( 32 ) :
-            fit_params.add( 'a_' + db.name + '_%d' % ( x, ), value = 1.71 )
-            fit_params.add( 'b_' + db.name + '_%d' % ( x, ), value = 700.0 )    
+        else :
+            for x in range( 32 ) :
+                for y in range( 32 ) :
+                    fit_params.add( 'a_' + db.name + '_%d_%d' % ( x,y ), value = 1.99 )
+                    fit_params.add( 'b_' + db.name + '_%d_%d' % ( x,y ), value = -200 )    
 
-            
+                
     # at this point we have many shared parameters. now read the data
     # and perform the minimization.
     
@@ -533,13 +633,105 @@ def linear_calibration_on_each_x_strip():
 
     secant_matrices = { k : v.x for k, v in secant_matrices.items() }
     
+
     result = lmfit.minimize( objective,
                              fit_params,
-                             args = ( mu_matrices, secant_matrices, peak_energies ),
+                             args = ( mu_matrices, secant_matrices, peak_energies,
+                                      dbs, source_indices,
+                                      vary_det_deadlayer,
+                                      const_source_deadlayer,
+                                      quadratic_source,
+                                      calibrate_each_pixel ),
                              nan_policy = 'omit' )
 
-    lmfit.report_fit( result.params, show_correl = 0 ) 
-        
+    lmfit.report_fit( result.params, show_correl = 0 )
+
+
+    plot_results( result,
+                  secant_matrices, mu_matrices,
+                  dbmgr.moved, 3, source_indices,
+                  vary_det_deadlayer,
+                  const_source_deadlayer,
+                  quadratic_source,
+                  calibrate_each_pixel )
+
+
+
+
+
+    
+
+
+def plot_results( lmfit_result,
+                  secant_matrices, mu_matrices,
+                  test_db, row,
+                  source_indices,
+                  vary_det_deadlayer = 0,
+                  const_source_deadlayer = 0,
+                  quadratic_source = 0,
+                  calibrate_each_pixel = 0 ) :
+
+    if calibrate_each_pixel :
+        return 
+    
+    f, axarr = plt.subplots( 3, 2 )
+
+    for i in range(len( source_indices ) ) :
+        for j in source_indices[i] :
+                
+            if i == 0 :
+                source = 'pu_240'
+                
+            elif i == 1 :
+                source = 'pu_238_' + test_db.name
+            
+            elif i == 2 :
+                source = 'cf_249'
+                            
+            x = secant_matrices[source][0][row]
+            y = secant_matrices[source][1][row]
+            
+            z = mu_matrices[ test_db.name ][i][j][row]
+            
+            axarr[i,j].scatter( x, z )
+            
+            test_id = '_' + test_db.name + '_%d' % ( row, )
+            
+            a = lmfit_result.params[ 'a' + test_id ]
+            b = lmfit_result.params[ 'b' + test_id ]
+            
+            if vary_det_deadlayer:
+                det_constant = lmfit_result.params[ 'det_constant_%d_%d' % (i,j) ] 
+            else:
+                dl = lmfit_result.params[ 'det_deadlayer' ]
+                det_constant = dl * si_stopping_powers[i][j]
+
+            source_constant = lmfit_result.params[ 'source_constant_%d_%d' % (i,j) ] 
+                
+            yfit = ( peak_energies[i][j] - b 
+                     - det_constant * x ) / a 
+
+            if const_source_deadlayer :
+                yfit -= source_constant / a 
+            else:
+                yfit -= source_constant * y / a
+
+            if quadratic_source :
+                yfit -= ( lmfit_result.params[ 'source_constant2_%d_%d' % (i,j) ]
+                          * (y ** 2 ) / a ) 
+
+            mask = ~ np.isnan( z )
+          
+            axarr[i,j].plot( x[ mask ], yfit[ mask ], c = 'r' ) 
+                    
+
+    plt.show()
+
+    # fig = plt.figure()
+    # axarr = [ fig.add_subplot(2, 1, i, projection='3d') for i in [1,2] ]
+
+    
+
                     
             
             
@@ -566,4 +758,6 @@ def linear_calibration_on_each_x_strip():
 # preview_secant_differences()
 
 
-linear_calibration_on_each_x_strip()
+linear_calibration_on_each_x_strip( vary_det_deadlayer = 0,
+                                    quadratic_source = 0,
+                                    calibrate_each_pixel = 0 )
