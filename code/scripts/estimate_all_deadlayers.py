@@ -15,6 +15,7 @@ import libjacob.jutils as jutils
 import libjacob.jmath as jmath
 import libjacob.jstats as jstats
 
+
 # import deadlayer_helpers.stopping_power_interpolation as stop
 import deadlayer_helpers.stopping_power_interpolation as stop
 import deadlayer_helpers.geometry as geom
@@ -24,6 +25,8 @@ import deadlayer_helpers.data_handler as data
 
 import jspectroscopy as spec
 
+
+import heapq
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -87,7 +90,14 @@ si_dioxide_stopping_powers *= density_si_dioxide * 1000 * 100 / 1e9
 
 
 #############################################################################
-    
+
+
+
+def nth_largest(n, iter):
+    return heapq.nlargest(n, iter)[-1]
+
+
+
 
 
 
@@ -437,22 +447,23 @@ def energy_from_mu_lmfit( params, mu, det_sectheta, source_sectheta,
                           const_source_deadlayer = 0,
                           quadratic_source = 0,
                           calibrate_each_pixel = 0,
-                          y = 0 ) :
+                          y = 0,
+                          compute_weight = 0 ) :
 
     if not calibrate_each_pixel : 
-        a = params[ 'a_' + db_name + '_%d' % ( x, ) ].value
-        b = params[ 'b_' + db_name + '_%d' % ( x, ) ].value
+        a = params[ 'a_' + db_name + '_%d' % ( x, ) ].value.item()
+        b = params[ 'b_' + db_name + '_%d' % ( x, ) ].value.item()
 
     else: 
-        a = params[ 'a_' + db_name + '_%d_%d' % ( x,y ) ].value
-        b = params[ 'b_' + db_name + '_%d_%d' % ( x,y ) ].value
+        a = params[ 'a_' + db_name + '_%d_%d' % ( x,y ) ].value.item()
+        b = params[ 'b_' + db_name + '_%d_%d' % ( x,y ) ].value.item()
 
         
     if not vary_det_deadlayer:
-        det_constant = params[ 'det_deadlayer' ].value * si_stopping_powers[ i, j ]
+        det_constant = params[ 'det_deadlayer' ].value.item() * si_stopping_powers[ i, j ]
 
     else:
-        det_constant = params[ 'det_constant_%d_%d' % (i,j) ].value
+        det_constant = params[ 'det_constant_%d_%d' % (i,j) ].value.item()
 
         
     source_constant = params[ 'source_constant_%d_%d' % (i,j) ].value
@@ -463,16 +474,24 @@ def energy_from_mu_lmfit( params, mu, det_sectheta, source_sectheta,
         source_constant = 0
 
     if quadratic_source :
-        source_constant2 = params[ 'source_constant2_%d_%d' % (i,j) ].value
+        source_constant2 = params[ 'source_constant2_%d_%d' % (i,j) ].value.item()
 
     else:
         source_constant2 = 0.0
 
         
-    return energy_from_mu( mu, det_sectheta, source_sectheta,
-                           a, b, det_constant, source_constant, source_constant2 )
-    
- 
+    energy = energy_from_mu( mu.x, det_sectheta.x, source_sectheta.x,
+                             a, b, det_constant, source_constant, source_constant2 )
+
+   
+    if compute_weight : 
+        weight = 1 / ( a * mu.dx )
+        return ( energy, weight ) 
+
+    return energy 
+
+                         
+
 
 
 
@@ -495,7 +514,7 @@ def objective( params, mu_matrices, secant_matrices, actual_energies,
                quadratic_source = 0,
                calibrate_each_pixel = 0 ):
 
-    start_time = time.time() 
+    # start_time = time.time() 
     
     resid = np.zeros( ( 4, 3, 2, 32, 32 ) )
 
@@ -509,47 +528,50 @@ def objective( params, mu_matrices, secant_matrices, actual_energies,
                          'pu_238_' + db_name,
                          'cf_249' ]
 
-        det_sectheta, source_sectheta = [ np.asarray( [ secant_matrices[ source ][k] 
-                                                        for source in source_names ] )
+        det_sectheta, source_sectheta = [ [ secant_matrices[ source ][k] 
+                                            for source in source_names ]
                                           for k in range(2) ]
-                
+
+        
         for i in range( len( source_indices ) ) :
             for j in source_indices[i] :
                 for x in range(32) :
 
-                    if not calibrate_each_pixel :
-                        computed_energy = energy_from_mu_lmfit(
-                            params,
-                            mu_matrices[ db_name ][ i ][ j ][ x ],
-                            det_sectheta[i,x],
-                            source_sectheta[i,x],
-                            db_name, x, i, j, vary_det_deadlayer,
-                            const_source_deadlayer,
-                            quadratic_source )
-                        
-                
-                        resid[ db_num, i, j, x ] = ( actual_energies[i,j] - computed_energy )
+                    # if not calibrate_each_pixel :
 
-                    else:
+                    computed_energy, weight = energy_from_mu_lmfit(
+                        params,
+                        mu_matrices[ db_name ][ i ][ j ][ x ],
+                        det_sectheta[i][x],
+                        source_sectheta[i][x],
+                        db_name, x, i, j, vary_det_deadlayer,
+                        const_source_deadlayer,
+                        quadratic_source,
+                        compute_weight = 1 )
+                    
+                    residual = actual_energies[i,j] - computed_energy
+                                        
+                    resid[ db_num, i, j, x ] = residual * weight
+                    
+                    # else:
 
-                        for y in range( 32 ) :
+                    #     for y in range( 32 ) :
                         
-                            computed_energy = energy_from_mu_lmfit(
-                                params,
-                                mu_matrices[ db_name ][ i ][ j ][ x,y ],
-                                det_sectheta[i,x,y],
-                                source_sectheta[i,x,y],
-                                db_name, x, i, j, vary_det_deadlayer,
-                                const_source_deadlayer,
-                                quadratic_source,
-                                calibrate_each_pixel,
-                                y = y )
+                    #         computed_energy = energy_from_mu_lmfit(
+                    #             params,
+                    #             mu_matrices[ db_name ][ i ][ j ][ x,y ],
+                    #             det_sectheta[i,x,y],
+                    #             source_sectheta[i,x,y],
+                    #             db_name, x, i, j, vary_det_deadlayer,
+                    #             const_source_deadlayer,
+                    #             quadratic_source,
+                    #             calibrate_each_pixel,
+                    #             y = y )
                             
-                            resid[ db_num, i, j, x, y ] = ( actual_energies[i,j]
-                                                            - computed_energy )
+                    #         resid[ db_num, i, j, x, y ] = ( actual_energies[i,j]
+                    #                                         - computed_energy )
 
-                        
-                        
+                                        
     ret = resid.flatten()
 
     # print( 'objective: %f' % ( time.time() - start_time, ) )
@@ -576,14 +598,15 @@ def linear_calibration_on_each_x_strip( vary_det_deadlayer = 0,
 
     # dbs = dbmgr.all_dbs
     # dbs  = dbmgr.normal_dbs
-    # dbs = [ dbmgr.angled ]
-    dbs = [ dbmgr.moved ] 
+    # dbs = [ dbmgr.centered, dbmgr.angled ]
+    # dbs = [ dbmgr.angled ] 
+    dbs = [ dbmgr.centered ] 
     
     # these are the sources we will look at. neglect the others.
     # normal operation is [ [0,1], [0,1], [0,1] ]
 
-    source_indices = [ [0,1], [0,1], [0,1] ]
-    # source_indices = [ [0,1], [0,1], [0,1] ]
+    source_indices = [ [0,1], [0,1], [1] ]
+    # source_indices = [ [], [0,1], [] ]
 
     
     # prepare a giant Parameters() for the fit
@@ -596,8 +619,9 @@ def linear_calibration_on_each_x_strip( vary_det_deadlayer = 0,
     for i in range( len( source_indices ) ) :
         for j in source_indices[i] :
 
-            fit_params.add( 'source_constant_%d_%d' % (i,j), value = 0.0, vary = 0 )
-
+            fit_params.add( 'source_constant_%d_%d' % (i,j), value = 0.0,
+                            vary = ( not vary_det_deadlayer
+                                     and dbmgr.angled in dbs ) )
             if quadratic_source :
                 fit_params.add( 'source_constant2_%d_%d' % (i,j), value = 0.0, vary = 1  )
                     
@@ -623,16 +647,11 @@ def linear_calibration_on_each_x_strip( vary_det_deadlayer = 0,
                 
     # at this point we have many shared parameters. now read the data
     # and perform the minimization.
-    
-    mu_matrices = { db.name : [ [ db.get_all_mu_grids( 1 )[i][j].x
-                                  for j in range(2) ]
-                                for i in range(3) ]
-                    for db in dbmgr.all_dbs }
+
+    mu_matrices = { db.name : db.get_all_mu_grids( 1 )
+                    for db in dbs }
     
     secant_matrices = geom.get_secant_matrices( 1 )
-
-    secant_matrices = { k : v.x for k, v in secant_matrices.items() }
-    
 
     result = lmfit.minimize( objective,
                              fit_params,
@@ -646,15 +665,23 @@ def linear_calibration_on_each_x_strip( vary_det_deadlayer = 0,
 
     lmfit.report_fit( result.params, show_correl = 0 )
 
+    print( 'reduced chisq: ' + str( result.redchi ) )
 
-    plot_results( result,
-                  secant_matrices, mu_matrices,
-                  dbmgr.moved, 3, source_indices,
-                  vary_det_deadlayer,
-                  const_source_deadlayer,
-                  quadratic_source,
-                  calibrate_each_pixel )
+    plot_energy_vs_sectheta( result, secant_matrices, mu_matrices,
+                             dbs, source_indices,
+                             vary_det_deadlayer,
+                             quadratic_source ) 
+    
+    # plot_results( result,
+    #               secant_matrices, mu_matrices,
+    #               dbs[0], 17, source_indices,
+    #               vary_det_deadlayer,
+    #               const_source_deadlayer,
+    #               quadratic_source,
+    #               calibrate_each_pixel )
 
+
+    
 
 
 
@@ -675,6 +702,8 @@ def plot_results( lmfit_result,
         return 
     
     f, axarr = plt.subplots( 3, 2 )
+    
+    axarr[0][0].set_title( r'Absolute $\mu$ vs. $\sec \theta $ For Each Peak' ) 
 
     for i in range(len( source_indices ) ) :
         for j in source_indices[i] :
@@ -690,39 +719,54 @@ def plot_results( lmfit_result,
                             
             x = secant_matrices[source][0][row]
             y = secant_matrices[source][1][row]
-            
             z = mu_matrices[ test_db.name ][i][j][row]
+
+            # print( source ) 
+            # print( 'x: ' + str( x ) )
+            # print( 'y: ' + str( y ) )
+            # print( 'z: ' + str( z ) )
+            # print( '\n\n' )
             
-            axarr[i,j].scatter( x, z )
+            
+            axarr[i,j].errorbar( x.x, z.x, xerr = x.dx, yerr = z.dx,
+                                 fmt = 'o', color='b'  )
             
             test_id = '_' + test_db.name + '_%d' % ( row, )
             
-            a = lmfit_result.params[ 'a' + test_id ]
-            b = lmfit_result.params[ 'b' + test_id ]
+            a = lmfit_result.params[ 'a' + test_id ].value
+            b = lmfit_result.params[ 'b' + test_id ].value
             
             if vary_det_deadlayer:
-                det_constant = lmfit_result.params[ 'det_constant_%d_%d' % (i,j) ] 
+                det_constant = lmfit_result.params[ 'det_constant_%d_%d' % (i,j) ].value
+                print( 'effective dl: ' + str ( det_constant / si_stopping_powers[i][j] ) )
+                
             else:
-                dl = lmfit_result.params[ 'det_deadlayer' ]
+                dl = lmfit_result.params[ 'det_deadlayer' ].value
                 det_constant = dl * si_stopping_powers[i][j]
 
-            source_constant = lmfit_result.params[ 'source_constant_%d_%d' % (i,j) ] 
+            source_constant = np.asscalar( lmfit_result.params[ 'source_constant_%d_%d' % (i,j) ] )
                 
             yfit = ( peak_energies[i][j] - b 
-                     - det_constant * x ) / a 
-
+                     - det_constant * x.x ) / a 
+            
             if const_source_deadlayer :
                 yfit -= source_constant / a 
             else:
-                yfit -= source_constant * y / a
+                yfit -= source_constant * y.x / a
 
             if quadratic_source :
                 yfit -= ( lmfit_result.params[ 'source_constant2_%d_%d' % (i,j) ]
                           * (y ** 2 ) / a ) 
 
-            mask = ~ np.isnan( z )
-          
-            axarr[i,j].plot( x[ mask ], yfit[ mask ], c = 'r' ) 
+            mask = ~ meas.isnan( z )
+
+            # print(x)
+            # print( x[mask] )
+
+            # print(yfit)
+            # print(yfit[mask])
+            
+            axarr[i,j].plot( x[ mask ].x, yfit[ mask ], c = 'r' ) 
                     
 
     plt.show()
@@ -732,9 +776,105 @@ def plot_results( lmfit_result,
 
     
 
+
+    
+
+
+    
+
+    
+
+def plot_energy_vs_sectheta( lmfit_result, secant_matrices, mu_matrices,
+                             dbs, source_indices,
+                             vary_det_deadlayer = 0,
+                             quadratic_source = 0 ) :
+
+    
+    f, axarr = plt.subplots( 3, 2 )
+    
+    axarr[0][0].set_title( r'Absolute $\mu$ vs. $\sec \theta $ For Each Peak' )
+
+
+    for i in range(len( source_indices ) ) :
+        for j in source_indices[i] :
+            
+                           
+            energies = np.empty( ( len(dbs), 32, 32 ) )
+            
+            for d in range( len( dbs ) ) :
+
+                db = dbs[ d ] 
+
+                if i == 0 :
+                    source = 'pu_240'
+                
+                elif i == 1 :
+                    source = 'pu_238_' + db.name
+            
+                elif i == 2 :
+                    source = 'cf_249'
+
                     
+                if vary_det_deadlayer:
+                    det_constant = lmfit_result.params[ 'det_constant_%d_%d' % (i,j) ].value.item()
+                    print( 'effective dl: ' + str ( det_constant / si_stopping_powers[i][j] ) )
+                    
+                else:
+                    dl = lmfit_result.params[ 'det_deadlayer' ].value.item()
+                    det_constant = dl * si_stopping_powers[i][j]
+                    
+                source_constant = lmfit_result.params[ 'source_constant_%d_%d' % (i,j) ].value
+                    
+                for row in range(32):
+                    
+                    x = secant_matrices[source][0][row,:]
+                    y = secant_matrices[source][1][row,:]
+                    z = mu_matrices[ db.name ][i][j][row,:]                   
+                                        
+                    test_id = '_' + db.name + '_%d' % ( row, )
+
+                    a = lmfit_result.params[ 'a' + test_id ].value.item()
+                    b = lmfit_result.params[ 'b' + test_id ].value.item()
+
+                    E = a * z + b
+                                       
+                    energies[ d, row, : ] = E.x
+
+                    calibrated_E = energy_from_mu_lmfit( lmfit_result.params, z,
+                                                         x,
+                                                         y,
+                                                         db.name, row, i, j,
+                                                         vary_det_deadlayer = vary_det_deadlayer,
+                                                         quadratic_source = quadratic_source )
+
+
+                    Efit = ( peak_energies[i][j]
+                             - ( calibrated_E - E.x ) )
+
+                    axarr[i,j].errorbar( x.x, E.x, xerr = x.dx, yerr = E.dx,
+                                         fmt = 'o', color='b', zorder = 1  )
+
+
+                    mask = ~ meas.isnan( z )
+                                
+                    
+                    axarr[i,j].plot( x[ mask ].x, Efit[ mask ], c = 'r', zorder = 2 ) 
+
+
+            # remove outliers (not from fit, just the plot )
+            flattened_energies = energies.flatten()
+            mask = ~ np.isnan( flattened_energies )            
+            sorted_energies = sorted( flattened_energies[ mask ] )
             
+            newmin = sorted_energies[10]
+            newmax = sorted_energies[ len(sorted_energies) - 5 ]
             
+            axarr[i][j].set_ylim( newmin - 10, newmax + 10 )
+
+                    
+    plt.show()
+
+                             
 
 
 
@@ -758,6 +898,6 @@ def plot_results( lmfit_result,
 # preview_secant_differences()
 
 
-linear_calibration_on_each_x_strip( vary_det_deadlayer = 0,
+linear_calibration_on_each_x_strip( vary_det_deadlayer = 1,
                                     quadratic_source = 0,
                                     calibrate_each_pixel = 0 )

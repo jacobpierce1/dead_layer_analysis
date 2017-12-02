@@ -82,6 +82,8 @@ def _get_source_data():
 
 
 
+
+
 # measurements used to construct tilt angle of pu_238_angled
 pu_238_angled_data = pd.Series(
     {
@@ -129,6 +131,18 @@ ceramic_data = pd.Series(
         'total_y' : 80.0 # mm
     }
 )
+
+
+
+
+# extra_source_offset = pd.Series(
+#     {
+#         'x' : 1.2,
+#         'y' : 7.475
+#     }
+# )
+
+
 
 
 ##############################################################################################
@@ -192,7 +206,7 @@ def _populate_all_coords( all_coords, source_data ):
                                                    _source_data_delta ).mean() ] )
 
 
-    x_measurement_inverted = 0
+    x_measurement_inverted = 1
     y_measurement_inverted = 0
 
     if x_measurement_inverted :
@@ -200,8 +214,11 @@ def _populate_all_coords( all_coords, source_data ):
                     + np.mean( source_data.loc[ 'pu_240', 'diameter' ] )
                     + np.mean( source_data.loc[ 'pu_240', 'right' ] ) )
 
+        print( total_x )
+        print( det_coords[0] ) 
         det_coords[0] = total_x - det_coords[0]
-
+        print( det_coords[0] ) 
+        #    print( det_coords ) 
         
     if y_measurement_inverted :
         total_y = ( np.mean( source_data.loc[ 'pu_240', 'bottom' ] )
@@ -231,17 +248,21 @@ def _populate_all_coords( all_coords, source_data ):
         det_coords += np.array( [0, shift, 0 ] )
 
     else:
+        # pass
         shift = ( ceramic_data[ 'total_y' ]
                   - detector_data[ 'total_width' ] )
         det_coords += np.array( [0, shift, 0 ] )
-        
 
+
+    # the 1 mm additions center the pixel. 
+    det_coords += np.array( [ -1, 1, 0 ] ) 
+        
             
     all_coords.loc['detector'] = det_coords
+
     
-    if _DEBUG_COORDS:
-        print( 'det_coords: ' + str( all_coords.loc['detector'] ) )
-    
+
+        
     # now populate all the source indices
     for source in sources_index:
         
@@ -273,13 +294,14 @@ def _populate_all_coords( all_coords, source_data ):
             
         xyz = meas.meas.from_list( [ x, y, z ] )
         xyz *= _MM_PER_INCH
+        xyz += np.array( [ 2, -2, 0 ] )
         all_coords.loc[source] = xyz
 
-    for source in all_objects :
-        print( source + ': ' )
-        print( all_coords.loc[ source ] )
-        print( '' ) 
-        # print( 'all_coords: ' + str(all_coords ) ) 
+    # for source in all_objects :
+    #     print( source + ': ' )
+    #     print( all_coords.loc[ source ] )
+    #     print( '' ) 
+    #     # print( 'all_coords: ' + str(all_coords ) ) 
 
 
 # these functions to be used as input for apply_nd
@@ -347,9 +369,7 @@ def rotate_3d_meas( axis, theta, x, deg=0 ):
 
     return combined_meas.apply_nd( f, fprime_tuple )
 
-    # return combined_meas.apply_nd( _rotate_3d_meas_f,
-    #                                _rotate_3d_meas_fprime_tuple )
-    
+
 
 
     
@@ -528,7 +548,7 @@ def _populate_costheta_grid( cosine_matrices, all_coords, source_data,
 
         sourcenum += 1
         
-        print( str(sourcenum) + ' / ' + str(len(sources)) + '...' )
+        # print( str(sourcenum) + ' / ' + str(len(sources)) + '...' )
 
         # extract coords and angels 
         source_coords = all_coords.loc[ source ]
@@ -547,7 +567,8 @@ def _populate_costheta_grid( cosine_matrices, all_coords, source_data,
             for j in range(32):
 
                 # this works since all the pixels are separated by 2 mm.
-                pixel_displacement = 2.0 * rotate_3d( 2, -6, np.array([ -j, i, 0 ] ), deg=1 )
+                #pixel_displacement = 2.0 * rotate_3d( 1, 6, np.array([ -j, i, 0 ] ), deg=1 )
+                pixel_displacement = 2.0 * np.array( [ -j, i, 0 ] ) 
                 displacement = first_pixel_coords + pixel_displacement
 
                                                 

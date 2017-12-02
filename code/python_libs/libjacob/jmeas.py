@@ -133,9 +133,17 @@ class meas( object ):
                                     np.sqrt( self.dx ** 2 + y.dx ** 2 ) )
 
         else:
-            return _meas_no_checks( self.x - y,
-                                    self.dx )
+            return _meas_no_checks( self.x - y, self.dx )
         
+
+    def __rsub__( self, y ) :
+
+        if hasattr( y, 'x' ):
+            return _meas_no_checks(  y.x - self.x ,
+                                    np.sqrt( self.dx ** 2 + y.dx ** 2 ) )
+
+        else:
+            return _meas_no_checks( y - self.x, self.dx )
         
         
     def __mul__( self, y ):
@@ -178,7 +186,6 @@ class meas( object ):
         
     # other right-hand operations: commutative. 
     __radd__ = __add__
-    __rsub__ = __sub__
     __rmul__ = __mul__
     
     
@@ -383,8 +390,16 @@ class meas( object ):
 
     def flatten( self ):
         return _meas_no_checks( self.x.flatten(), self.dx.flatten() )
-    
 
+    def sort( self ) :
+        indices = np.argsort( self. x )
+        return _meas_no_checks( self.x[indices], self.dx[indices] )
+
+
+
+
+
+    
 #########################################
 #### FAST ALLOC SUBCLASS ################
 #########################################
@@ -407,6 +422,8 @@ class _meas_no_checks( meas ):
             return None
 
 
+
+        
 
 
 ############################################
