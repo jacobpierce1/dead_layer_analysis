@@ -587,7 +587,9 @@ def objective( params, mu_matrices, secant_matrices, actual_energies,
 
 # do a fit of the form E = A * mu + b + s * sec(phi) + deadlayer_distance * si_stopping_power * sec(theta)  
 
-def linear_calibration_on_each_x_strip( vary_det_deadlayer = 0,
+def linear_calibration_on_each_x_strip( dbs,
+                                        source_indices,
+                                        vary_det_deadlayer = 0,
                                         const_source_deadlayer = 0,
                                         quadratic_source = 0,
                                         calibrate_each_pixel = 0 ):
@@ -599,13 +601,13 @@ def linear_calibration_on_each_x_strip( vary_det_deadlayer = 0,
     # dbs = dbmgr.all_dbs
     # dbs  = dbmgr.normal_dbs
     # dbs = [ dbmgr.centered, dbmgr.angled ]
-    # dbs = [ dbmgr.angled ] 
-    dbs = [ dbmgr.centered ] 
+    # dbs = [ dbmgr.flat ] 
+    # dbs = [ dbmgr.centered ] 
     
     # these are the sources we will look at. neglect the others.
     # normal operation is [ [0,1], [0,1], [0,1] ]
 
-    source_indices = [ [0,1], [0,1], [1] ]
+    # source_indices = [ [0,1], [0,1], [1] ]
     # source_indices = [ [], [0,1], [] ]
 
     
@@ -648,8 +650,11 @@ def linear_calibration_on_each_x_strip( vary_det_deadlayer = 0,
     # at this point we have many shared parameters. now read the data
     # and perform the minimization.
 
-    mu_matrices = { db.name : db.get_all_mu_grids( 1 )
-                    for db in dbs }
+    peak_matrices = { db.name : db.get_all_peak_grids( 1 )
+                      for db in dbs }
+    
+    # mu_matrices = { db.name : db.get_all_mu_grids( 1 )
+    #                 for db in dbs }
     
     secant_matrices = geom.get_secant_matrices( 1 )
 
@@ -703,7 +708,7 @@ def plot_results( lmfit_result,
     
     f, axarr = plt.subplots( 3, 2 )
     
-    axarr[0][0].set_title( r'Absolute $\mu$ vs. $\sec \theta $ For Each Peak' ) 
+    axarr[0][0].set_title( r'Absolute calibrated $\mu$ vs. $\sec \theta $ For Each Peak' ) 
 
     for i in range(len( source_indices ) ) :
         for j in source_indices[i] :
@@ -792,7 +797,7 @@ def plot_energy_vs_sectheta( lmfit_result, secant_matrices, mu_matrices,
     
     f, axarr = plt.subplots( 3, 2 )
     
-    axarr[0][0].set_title( r'Absolute $\mu$ vs. $\sec \theta $ For Each Peak' )
+    axarr[0][0].set_title( r'Absolute $E$ vs. $\sec \theta $ For Each Peak' )
 
 
     for i in range(len( source_indices ) ) :
@@ -898,6 +903,8 @@ def plot_energy_vs_sectheta( lmfit_result, secant_matrices, mu_matrices,
 # preview_secant_differences()
 
 
-linear_calibration_on_each_x_strip( vary_det_deadlayer = 1,
+linear_calibration_on_each_x_strip( [ dbmgr.angled ],
+                                    [ [0,1], [0,1], [1] ],
+                                    vary_det_deadlayer = 1,
                                     quadratic_source = 0,
                                     calibrate_each_pixel = 0 )

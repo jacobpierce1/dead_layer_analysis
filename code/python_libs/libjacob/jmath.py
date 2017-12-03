@@ -184,8 +184,11 @@ def jleast_squares( x, y, dy, params_guess, fitfunc, dx = None,
     # determine if we had a succussful fit. ier
     # is the return code of scipy.optimize.leastsq.
     # if this is 1, then lmfit thinks we succeeded. 
-    successful_fit = ( model_result.success and ( model_result.ier < 4 )
-                       and ( model_result.redchi < reduc_chisq_max ) )
+
+    successful_fit = ( model_result.success
+                       and model_result.ier < 4 
+                       and model_result.redchi < reduc_chisq_max
+                       and model.errorbars )
 
     if not successful_fit:
         return None 
@@ -348,6 +351,8 @@ def estimate_peakpos( f, p, p_delta, peakpos_guess, num_iterations=1000 ):
         
     return peakpos_arr
     
+
+
 
 
 

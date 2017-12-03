@@ -11,12 +11,13 @@ import pandas as pd
 import numpy as np
 import libjacob.jmeas as meas
 
-from libjacob.jutils import isint
+from libjacob.jutils import isint, estimate_time_left
 import sys
 import jspectroscopy as spec 
 
 import dill # allow lambda function pickle
-# import _pickle
+
+
 
 
 
@@ -77,7 +78,7 @@ class db( object ):
         # that will be performed on each pixel, and each entry
         # is the number of peaks that will be searched for on
         # the corresponding feature.
-        #
+        
         #TODO: only works for alpha peaks. add feature to specify
         # different types of peaks at each feature.
         
@@ -93,7 +94,8 @@ class db( object ):
 
         self.mu_vals_dir = _current_abs_path + '../../../fit_results/mu_values/' 
         
-
+        self.peak_vals_dir = _current_abs_path + '../../../fit_results/peak_values/' 
+        
         self.peak_vals_dir = _current_abs_path + '../../../fit_results/peak_values/'
 
         for dir_ in [ self.mu_vals_dir, self.peak_vals_dir ] :
@@ -502,79 +504,141 @@ class db( object ):
                     
         
         return mu_grids
-            
 
+
+
+    
+
+
+
+    
+
+    def get_all_peak_grids( self, read_from_file = 1 ) :
         
-#         for x in range( 32 ) :
+        # construct appropriately sized container for all the peak grids
+        peak_grids = [ [ 0 ] * self.num_peaks_per_feature[i]
+                     for i in range( self.num_features ) ]
 
+        for i in range( self.num_features ):
+            peak_grids[i] = [ meas.meas.empty( self.dimensions ) ] * self.num_peaks_per_feature[i] 
+
+
+        # meas.meas.empty( self.num_peaks_per_fit + self.dimensions )
+
+        if read_from_file :
+
+            peak_paths = [ [ [  self.peak_vals_dir + self.name + '_%d_%d_%s.bin' % (i,j,s)
+                              for s in [ 'x', 'dx' ] ]
+                           for j in range( self.num_peaks_per_feature[i] ) ]
+                         for i in range( self.num_features) ]
+                        
+            if all( [ os.path.exists( path ) for path in np.array( peak_paths ).flatten() ] ) :
+
+                for i in range( self.num_features ) :
+                    for j in range( self.num_peaks_per_feature[i] ) :
+
+                        peak = np.fromfile( peak_paths[i][j][0] ).reshape( self.dimensions )
+                        peak_delta = np.fromfile( peak_paths[i][j][1] ).reshape( self.dimensions )
+                        peak_grids[i][j] = meas.meas( peak, peak_delta )
+                        
+                return peak_grids
+
+            else:
+                print( 'INFO: requested to read peak and peak_delta from files, but they aren\'t there. constructing them now...' )
+
+
+                
+
+        # construct the array from the db if the files don't exist
+        # yet, or we requested a fresh fetch.
+
+        disconnect_conn_when_done = 0
+        if self.conn is None:
+            self.connect()
+            disconnect_conn_when_done = 1
 
             
-            # mu = self.get_mu_for_x_strip( x )
+        # populate the grid 
+        for i in range(3):
+            for j in range(2):
+                peak_grids[i][j] =  meas.meas.empty( self.dimensions )
+        
+        cursor = self.conn.cursor()
+        cursor.execute( 'SELECT * FROM ' + _tablename )
 
+        i = 0
+        total_iterations = ( self.dimensions[0] * self.dimensions[1]
+                             * self.num_features ) 
+        
+        for row in cursor:
+
+            i += 1
+            
+            estimate_time_left( i, total_iterations, num_updates = 100 ) 
+
+            x = row['x']
+            y = row['y'] 
+            feature = row[ 'fit_id' ]
+            
+            # if fit didn't converge then all the peak values for that
+            # feature are assigned np.nan
+            
+            if not row[ 'successful_fit' ]: 
+
+                for i in range( self.num_peaks_per_feature[ feature ]  ):
+                    peak_grids[ feature ][ i ][ x,y ] = meas.nan
+                continue
 
             
+            model = _from_bin( row['model'] )
 
 
+            # throw out the data if we didn't estimate errorbars.
 
+            if not model.errorbars :
+                for i in range( self.num_peaks_per_feature[ feature ]  ):
+                    peak_grids[ feature ][ i ][ x,y ] = meas.nan
+                continue
 
+            
+            # do a monte carlo simulation for each peak in this feature.
+                
+            peaks = spec.estimate_alpha_peakpos( model, plot = 0 )
 
-
-
+            # check if the fit used the alternate shape
+            if len( peaks ) != self.num_peaks_per_feature[ feature ] :
                     
-    # # if populating an entire array, we can get a bit more efficiency by not calling
-    # # get_mu_values
-    # def get_mu_grids_where_valid( self ):
-
-    #     print( 'INFO: loading mu grid...' )
-
-
-    #     disconnect_conn_when_done = 0
-    #     if self.conn is None:
-    #         self.connect()
-    #         disconnect_conn_when_done = 1
-            
-
-    #     # to be combined in a meas.
-    #     grid = np.empty( (3, 2), dtype = 'object' )
-    #     for i in range(3):
-    #         for j in range(2):
-
-    #             grid[i][j] = meas.meas( np.empty( ( 32, 32 ) ),
-    #                                np.empty( ( 32, 32 ) ) )
-        
-    #     cursor = self.conn.cursor()
-    #     cursor.execute( 'SELECT * FROM ' + _tablename )
-
-    #     for row in cursor:
-
-    #         # if fit didn't converge then all the mu values for that
-    #         # feature are assigned np.nan
-            
-    #         if not row[ 'successful_fit' ]:
-    #             for i in range( 2 ):
-    #                 grid[ row[ 'fit_id' ] ][ i ][ row['x'], row['y'] ] = meas.nan
-    #             continue
-            
-    #             # vals[ row[ 'fit_id' ], :, row['x'], row['y'] ] = np.nan
-    #             # deltas[ row[ 'fit_id' ], :, row['x'], row['y'] ] = np.nan
-    #             continue
-
-    #         mu = spec.get_alpha_params_dict( _from_bin( row['model'] ) )[ 'mu' ] 
-    #         if mu.size() == 1:
-    #             mu = meas.meas( [ np.nan, mu.x[0] ], [ np.nan, mu.dx[0] ] )
-
-    #         for i in range(2):
-    #             # print( ( row['x'], row['y'], row['fit_id'] ), i )
-    #             # print( mu[i] ) 
-    #             grid[ row[ 'fit_id' ] ][ i ][ row['x'], row['y'] ] = mu[i]
+                # todo: this doesn't work in the general case.
+                # this should depend on the specified alternate shape.
+                peaks = meas.append( meas.nan, peaks ) 
+                    
+                    
+            # populate the corresponding entry of the grid.
+            for i in range( self.num_peaks_per_feature[ feature ] ):
+                peak_grids[ feature ][ i ][ x,y ] = peaks[i]
 
                 
-    #     if disconnect_conn_when_done:
-    #         self.disconnect()
-                
-    #     return grid 
+        if disconnect_conn_when_done:
+            self.disconnect()
 
+
+        # write to a file if requested. note that we have already constructed
+        # all the file names.
+        if read_from_file :
+            
+            for i in range( self.num_features ) :
+                for j in range( self.num_peaks_per_feature[i] ) :
+                    
+                    peak_grids[i][j].x.tofile(  peak_paths[i][j][0] )
+                    peak_grids[i][j].dx.tofile( peak_paths[i][j][1] )
+                    
         
+        return peak_grids    
+    
+
+
+
+
 
     
 
@@ -604,14 +668,4 @@ all_dbs = [ db( name, (32,32), (2,2,2) )
 centered, moved, flat, angled = all_dbs
 
 normal_dbs = [ centered, moved, flat ]
-
-
-# # fitnum is the fit that this peak belongs to and index_in_pf is 
-# # the index of the peak within pf. a dedicated function is necessary because of 
-# # the convoluted way in which the data is stored.
-
-# def get_fitnum_and_mu_index_in_pf( peaknum ):
-#     return ( peaknum // 2, 5 + 2* (peaknum % 2) )
-
-
     

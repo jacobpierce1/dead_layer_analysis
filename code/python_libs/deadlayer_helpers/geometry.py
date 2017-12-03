@@ -214,11 +214,8 @@ def _populate_all_coords( all_coords, source_data ):
                     + np.mean( source_data.loc[ 'pu_240', 'diameter' ] )
                     + np.mean( source_data.loc[ 'pu_240', 'right' ] ) )
 
-        print( total_x )
-        print( det_coords[0] ) 
         det_coords[0] = total_x - det_coords[0]
-        print( det_coords[0] ) 
-        #    print( det_coords ) 
+
         
     if y_measurement_inverted :
         total_y = ( np.mean( source_data.loc[ 'pu_240', 'bottom' ] )
@@ -248,7 +245,6 @@ def _populate_all_coords( all_coords, source_data ):
         det_coords += np.array( [0, shift, 0 ] )
 
     else:
-        # pass
         shift = ( ceramic_data[ 'total_y' ]
                   - detector_data[ 'total_width' ] )
         det_coords += np.array( [0, shift, 0 ] )
@@ -294,7 +290,7 @@ def _populate_all_coords( all_coords, source_data ):
             
         xyz = meas.meas.from_list( [ x, y, z ] )
         xyz *= _MM_PER_INCH
-        xyz += np.array( [ 2, -2, 0 ] )
+        # xyz += np.array( [ 2, -2, 0 ] )
         all_coords.loc[source] = xyz
 
     # for source in all_objects :

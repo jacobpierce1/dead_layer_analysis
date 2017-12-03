@@ -14,18 +14,32 @@ def isint( x ):
 # output is expected to take roughly the same amount of time per run.
 # thiis is the equivaletn of a static variable in c 
 # currently implemented to only be used once per script, could be changed by adding bool reset.
-def estimate_time_left( current_iteration, total_iterations, start_time, num_updates=10 ):
+def estimate_time_left( current_iteration, total_iterations, num_updates=10, reset=0 ):
+
+    # reset if called
     
+    if reset == 1 : 
+        estimate_time_left.counter = 0
+        
+        
+    # set the start time if it's the first call to this function.
+    
+    if estimate_time_left.start_time == 0 :
+        estimate_time_left.start_time += 1
+        estimate_time_left.start_time = time.time()
+
+        
     if( current_iteration * 1.0 / total_iterations >= estimate_time_left.counter * 1.0 / num_updates ): 
         current_time = time.time()
         estimate_time_left.counter += 1
         print( "%d/%d complete, %f mins remaining" \
-               % ( estimate_time_left.counter, num_updates, \
-                   (current_time - start_time) / 60.0
+               % ( estimate_time_left.counter, num_updates,
+                   (current_time - estimate_time_left.start_time) / 60.0
                    * (num_updates - estimate_time_left.counter )
                    / estimate_time_left.counter ) )
 
-estimate_time_left.counter = 1
+estimate_time_left.counter = 0
+estimate_time_left.start_time = 0
 
 
 

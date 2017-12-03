@@ -13,6 +13,10 @@ import scipy.special as special
 from lmfit import Model
 from libjacob import meas 
 
+import matplotlib.pyplot as plt
+
+import scipy.optimize
+
 # from functools import partial 
 
 
@@ -207,7 +211,181 @@ def get_alpha_params_dict( model ):
         #    print( ret ) 
     return ret
 
+
+
+
+
+# estimate the peak position for each peak if they were isolated.
+
+def estimate_alpha_peakpos( model, num_iterations = 1000, plot=0 ) :
     
+    params = get_alpha_params_dict( model )
+
+    A = params['A']
+    
+    npeaks = len( A )
+    
+    peakpos_results = meas.empty( npeaks ) 
+
+    for peaknum in range( npeaks ) :
+
+        params_array = meas.from_array( np.array( [ A[peaknum],
+                                                    params['mu'][peaknum],
+                                                    params['sigma'],
+                                                    params['eta'],
+                                                    params['tau1'],
+                                                    params['tau2'] ] ) )
+        
+        
+        peakpos_arr = np.empty( num_iterations, dtype=np.float64 )
+    
+        for i in range(num_iterations):
+            
+            # keep picking p until the amplitude is positive
+            while 1:
+                current_params = np.random.normal( params_array.x, params_array.dx )
+                
+                if alpha_model_valid_params_array_predicate( current_params ) :
+                    break
+                
+            current_inverted_f = lambda x_: 0 - alpha_fit_array( current_params, x_ )
+                
+            result = scipy.optimize.fmin( current_inverted_f, current_params[1], disp=0 )
+            
+            peakpos_arr[i] = result
+            
+
+
+        
+        sim_result = meas( peakpos_arr.mean(), peakpos_arr.std() )
+
+        # print( sim_result )
+
+        peakpos_results[peaknum] = sim_result
+
+        
+        if plot:
+            ax = plt.axes()
+            ax.hist( peakpos_arr ) 
+            plt.show() 
+
+            
+    return peakpos_results
+
+
+
+
+
+# return 1 if the alpha_model has valid parameters and 0 otherwise.
+
+def alpha_model_valid_params_predicate( alpha_params_dict ) :
+
+
+    for mu in alpha_params_dict['mu'] :
+        if mu.x < 0:
+            return 0
+
+    for A in alpha_params_dict['A'] :
+        if A.x < 0 :
+            return 0 
+    
+    for i in range(2) :
+        tau = alpha_params_dict['tau' + str(i) ]
+        if tau < 0 :
+            return 0
+
+    eta = alpha_params_dict['eta']
+    if eta < 0 or eta > 1 :
+        return 0
+
+    sigma = alpha_params_dict['sigma']
+    if eta < 0 : 
+        return 0
+
+    return 1 
+
+
+
+
+
+
+
+# use for increased efficiency
+
+def alpha_model_valid_params_array_predicate( alpha_params_array ) :
+    
+    A, mu, sigma, eta, tau1, tau2 = alpha_params_array
+
+    if A < 0 :
+        return 0
+
+    if mu < 0 :
+        return 0
+
+    if sigma < 0 :
+        return 0
+
+    if eta < 0 or eta > 1 :
+        return 0 
+    
+    if tau1 < 0 :
+        return 0
+
+    if tau2 < 0 :
+        return 0
+
+    return 1 
+
+    
+
+
+
+
+
+
+# TODO: DO THIS
+
+# # input: a function that takes array of parameters and a scalar
+# # variable x, same as input of optimize.least_sq; pf and pferr,
+# # obtained from jacob_least_squares; peakpos_guess, estimate of the
+# # peak positions; number of iterations to perform.
+
+# # behavior: assume that pferr are standard deviations of a normal
+# # distribution of which pf values are the means; do a monte carlo
+# # simulation in which an array is formed with values from those normal
+# # distributions. then find the maximum of the function and add it to a
+# # list.  return: peakpos (average), peakpos_delta (std of mean),
+# # peakval (function at peakpos), peakval_delta (estimated using 2nd
+# # order taylor expansion of f; first order normally works, but in this
+# # case we know that f'(x) = 0 at the max so it will give 0.
+
+# def estimate_peakpos( spec_model, num_iterations=1000 ):
+
+#     peakpos_arr = np.empty( num_iterations, dtype=np.float64 )
+#     # print( 'p: ' + str(p) ) 
+    
+#     for i in range(num_iterations):
+
+#         # keep picking p until the amplitude is positive
+#         while 1:
+#             current_p = np.random.normal( p, p_delta )
+
+#             # break out of the while if certain entries are
+#             # not physical. TODO: abstract this.
+#             if current_p[4] > 0 and current_p[1] < 1:
+#                 break
+
+#         # now we construct a function from the random p
+#         current_inverted_f = lambda x_: 0 - f( current_p, x_ )  
+#         result = scipy.optimize.fmin( current_inverted_f, peakpos_guess, disp=0 )
+
+#         peakpos_arr[i] = result
+        
+#     return peakpos_arr
+
+
+
+
 # # fit n alpha peaks given vector p and array x 
 # # p format: sigma, tau, A1, mu1, ..., A_n, mu_n
 # def fitfunc_n_alpha_peaks_eta1( n, p, x ):
@@ -235,7 +413,8 @@ def get_alpha_params_dict( model ):
 
 # reference: equation 10 in Bortels 1987  
 # this function is meant to be applied to scalar x, not list
-def alpha_fit( A, mu, sigma, eta, tau1, tau2, x ):        
+
+def alpha_fit( A, mu, sigma, eta, tau1, tau2, x ):
             
     # prevent overflow by computing logs and then exponentiating, at the expense of some
     # floating pt error. logtmpz is the log of the 2 analagous terms in the integrand.
@@ -245,3 +424,10 @@ def alpha_fit( A, mu, sigma, eta, tau1, tau2, x ):
                             + (eta/tau2) * np.exp(logtmpz[1])   ) 
 
 
+
+
+
+# wrapper allows for compact abstractions of the different fitfuncs.
+
+def alpha_fit_array( params_array, x ) :
+    return alpha_fit( * params_array, x ) 
