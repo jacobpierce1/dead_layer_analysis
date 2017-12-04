@@ -206,7 +206,7 @@ def _populate_all_coords( all_coords, source_data ):
                                                    _source_data_delta ).mean() ] )
 
 
-    x_measurement_inverted = 1
+    x_measurement_inverted = 0
     y_measurement_inverted = 0
 
     if x_measurement_inverted :

@@ -27,7 +27,7 @@ def estimate_time_left( current_iteration, total_iterations, num_updates=10, res
     if estimate_time_left.start_time == 0 :
         estimate_time_left.start_time += 1
         estimate_time_left.start_time = time.time()
-
+        return 
         
     if( current_iteration * 1.0 / total_iterations >= estimate_time_left.counter * 1.0 / num_updates ): 
         current_time = time.time()

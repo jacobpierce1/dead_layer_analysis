@@ -660,7 +660,7 @@ def linear_calibration_on_each_x_strip( dbs,
 
     result = lmfit.minimize( objective,
                              fit_params,
-                             args = ( mu_matrices, secant_matrices, peak_energies,
+                             args = ( peak_matrices, secant_matrices, peak_energies,
                                       dbs, source_indices,
                                       vary_det_deadlayer,
                                       const_source_deadlayer,
@@ -672,7 +672,7 @@ def linear_calibration_on_each_x_strip( dbs,
 
     print( 'reduced chisq: ' + str( result.redchi ) )
 
-    plot_energy_vs_sectheta( result, secant_matrices, mu_matrices,
+    plot_energy_vs_sectheta( result, secant_matrices, peak_matrices,
                              dbs, source_indices,
                              vary_det_deadlayer,
                              quadratic_source ) 
@@ -845,9 +845,8 @@ def plot_energy_vs_sectheta( lmfit_result, secant_matrices, mu_matrices,
                                        
                     energies[ d, row, : ] = E.x
 
-                    calibrated_E = energy_from_mu_lmfit( lmfit_result.params, z,
-                                                         x,
-                                                         y,
+                    calibrated_E = energy_from_mu_lmfit( lmfit_result.params,
+                                                         z, x, y,
                                                          db.name, row, i, j,
                                                          vary_det_deadlayer = vary_det_deadlayer,
                                                          quadratic_source = quadratic_source )
@@ -857,7 +856,8 @@ def plot_energy_vs_sectheta( lmfit_result, secant_matrices, mu_matrices,
                              - ( calibrated_E - E.x ) )
 
                     axarr[i,j].errorbar( x.x, E.x, xerr = x.dx, yerr = E.dx,
-                                         fmt = 'o', color='b', zorder = 1  )
+                                         color='b', zorder = 1,
+                                         ls = 'none' )
 
 
                     mask = ~ meas.isnan( z )
@@ -903,8 +903,11 @@ def plot_energy_vs_sectheta( lmfit_result, secant_matrices, mu_matrices,
 # preview_secant_differences()
 
 
-linear_calibration_on_each_x_strip( [ dbmgr.angled ],
+linear_calibration_on_each_x_strip( dbmgr.all_dbs,
+                                    #[ dbmgr.angled, dbmgr.moved, dbmgr.centered ],
+                                    # [ dbmgr.moved, dbmgr.centered ],
+                                    # [ dbmgr.flat ],
                                     [ [0,1], [0,1], [1] ],
-                                    vary_det_deadlayer = 1,
+                                    vary_det_deadlayer = 0,
                                     quadratic_source = 0,
                                     calibrate_each_pixel = 0 )

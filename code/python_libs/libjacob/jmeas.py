@@ -96,6 +96,7 @@ class meas( object ):
 
         return ret
 
+    
 
     def __len__( self ) :
         return len( self.x ) 
@@ -140,7 +141,7 @@ class meas( object ):
 
         if hasattr( y, 'x' ):
             return _meas_no_checks(  y.x - self.x ,
-                                    np.sqrt( self.dx ** 2 + y.dx ** 2 ) )
+                                     np.sqrt( self.dx ** 2 + y.dx ** 2 ) )
 
         else:
             return _meas_no_checks( y - self.x, self.dx )
@@ -545,5 +546,14 @@ def abs( x ):
 def isnan( x ):
     return np.isnan( x.x )
                         
+
+
+
+def ismeas( x ) :
+    if hasattr( x, 'dx' ) :
+        return 1
+    return 0 
+
+
 
 nan = meas( np.nan, np.nan ) 

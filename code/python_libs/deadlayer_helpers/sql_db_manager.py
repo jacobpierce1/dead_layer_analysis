@@ -96,8 +96,6 @@ class db( object ):
         
         self.peak_vals_dir = _current_abs_path + '../../../fit_results/peak_values/' 
         
-        self.peak_vals_dir = _current_abs_path + '../../../fit_results/peak_values/'
-
         for dir_ in [ self.mu_vals_dir, self.peak_vals_dir ] :
             if not os.path.exists( dir_ ) :
                 os.mkdir( dir_ )
@@ -566,19 +564,21 @@ class db( object ):
         cursor = self.conn.cursor()
         cursor.execute( 'SELECT * FROM ' + _tablename )
 
-        i = 0
+        rownum = 0
         total_iterations = ( self.dimensions[0] * self.dimensions[1]
                              * self.num_features ) 
         
         for row in cursor:
 
-            i += 1
+            rownum += 1
             
-            estimate_time_left( i, total_iterations, num_updates = 100 ) 
+            estimate_time_left( rownum, total_iterations, num_updates = 100 ) 
 
             x = row['x']
             y = row['y'] 
             feature = row[ 'fit_id' ]
+
+            print( (x,y,feature)) 
             
             # if fit didn't converge then all the peak values for that
             # feature are assigned np.nan

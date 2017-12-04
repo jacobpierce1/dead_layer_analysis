@@ -11,7 +11,7 @@
 import numpy as np
 import scipy.special as special
 from lmfit import Model
-from libjacob import meas 
+import libjacob.jmeas as meas
 
 import matplotlib.pyplot as plt
 
@@ -192,7 +192,7 @@ def get_alpha_params_dict( model ):
     ret = { 'sigma' : 0, 'tau1' : 0, 'tau2' : 0, 'eta' : 0 } 
 
     for key in ret:
-        ret[ key ] = meas( params[key].value, params[key].stderr )
+        ret[ key ] = meas.meas( params[key].value, params[key].stderr )
 
     for key_base in [ 'mu', 'A' ]:
 
@@ -205,7 +205,7 @@ def get_alpha_params_dict( model ):
             vals[i] = param.value
             deltas[i] = param.stderr
 
-        ret[ key_base ] = meas( vals, deltas ) 
+        ret[ key_base ] = meas.meas( vals, deltas ) 
             
 
         #    print( ret ) 
@@ -225,25 +225,44 @@ def estimate_alpha_peakpos( model, num_iterations = 1000, plot=0 ) :
     
     npeaks = len( A )
     
-    peakpos_results = meas.empty( npeaks ) 
+    peakpos_results = meas.meas.empty( npeaks ) 
 
     for peaknum in range( npeaks ) :
 
-        params_array = meas.from_array( np.array( [ A[peaknum],
+        params_array = meas.meas.from_array( np.array( [ A[peaknum],
                                                     params['mu'][peaknum],
                                                     params['sigma'],
                                                     params['eta'],
                                                     params['tau1'],
                                                     params['tau2'] ] ) )
         
+        # if the starting params_array is invalid, then don't
+        # do the simulation on it.
+        
+        if not alpha_model_valid_params_array_predicate( params_array ) :
+            peakpos_results[peaknum] = meas.nan
+            continue
+
+
+        # otherwise proceed with the simulation.
         
         peakpos_arr = np.empty( num_iterations, dtype=np.float64 )
+
+
+        print( params_array ) 
     
         for i in range(num_iterations):
             
             # keep picking p until the amplitude is positive
             while 1:
-                current_params = np.random.normal( params_array.x, params_array.dx )
+
+                # randomize all params but don't bother with A,
+                # since the peak location doesn't depend on A.
+                
+                current_params = np.empty( len( params_array ) )
+                current_params[0] = params_array[0].x
+                current_params[1:] = np.random.normal( params_array.x[1:],
+                                                        params_array.dx[1:] )
                 
                 if alpha_model_valid_params_array_predicate( current_params ) :
                     break
@@ -257,7 +276,7 @@ def estimate_alpha_peakpos( model, num_iterations = 1000, plot=0 ) :
 
 
         
-        sim_result = meas( peakpos_arr.mean(), peakpos_arr.std() )
+        sim_result = meas.meas( peakpos_arr.mean(), peakpos_arr.std() )
 
         # print( sim_result )
 
@@ -291,15 +310,15 @@ def alpha_model_valid_params_predicate( alpha_params_dict ) :
     
     for i in range(2) :
         tau = alpha_params_dict['tau' + str(i) ]
-        if tau < 0 :
+        if tau.x < 0 or tau.dx > tau.x :
             return 0
 
     eta = alpha_params_dict['eta']
-    if eta < 0 or eta > 1 :
+    if eta.x < 0 or eta.x > 1 or eta.dx > eta.x :
         return 0
 
     sigma = alpha_params_dict['sigma']
-    if eta < 0 : 
+    if sigma.x < 0 or sigma.dx > sigma.x : 
         return 0
 
     return 1 
@@ -313,27 +332,51 @@ def alpha_model_valid_params_predicate( alpha_params_dict ) :
 # use for increased efficiency
 
 def alpha_model_valid_params_array_predicate( alpha_params_array ) :
+
+    if meas.ismeas( alpha_params_array ) :
+
+        A, mu, sigma, eta, tau1, tau2 = [ x for x in alpha_params_array ] 
+        
+        if A.x < 0 :
+            return 0
+        
+        if mu.x < 0 :
+            return 0
+
+        if sigma.x < 0 or sigma.dx > sigma.x :
+            return 0
+        
+        if eta.x < 0 or eta.x > 1 or eta.dx > eta.x :
+            return 0 
+        
+        if tau1.x < 0 or tau1.dx > tau1.x :
+            return 0
+        
+        if tau2.x < 0 or tau2.dx > tau2.x :
+            return 0
+
+    else:
     
-    A, mu, sigma, eta, tau1, tau2 = alpha_params_array
+        A, mu, sigma, eta, tau1, tau2 = alpha_params_array
+        
+        if A < 0 :
+            return 0
+        
+        if mu < 0 :
+            return 0
 
-    if A < 0 :
-        return 0
-
-    if mu < 0 :
-        return 0
-
-    if sigma < 0 :
-        return 0
-
-    if eta < 0 or eta > 1 :
-        return 0 
-    
-    if tau1 < 0 :
-        return 0
-
-    if tau2 < 0 :
-        return 0
-
+        if sigma < 0 :
+            return 0
+        
+        if eta < 0 or eta > 1 :
+            return 0 
+        
+        if tau1 < 0 :
+            return 0
+        
+        if tau2 < 0 :
+            return 0
+        
     return 1 
 
     
