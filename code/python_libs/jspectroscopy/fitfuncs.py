@@ -295,6 +295,9 @@ def estimate_alpha_peakpos( model, num_iterations = 1000, plot=0 ) :
 
 
 
+
+
+
 # return 1 if the alpha_model has valid parameters and 0 otherwise.
 
 def alpha_model_valid_params_predicate( alpha_params_dict ) :
@@ -305,10 +308,10 @@ def alpha_model_valid_params_predicate( alpha_params_dict ) :
             return 0
 
     for A in alpha_params_dict['A'] :
-        if A.x < 0 :
+        if A.x < 0 or A.dx > A.x :
             return 0 
     
-    for i in range(2) :
+    for i in range(1,3) :
         tau = alpha_params_dict['tau' + str(i) ]
         if tau.x < 0 or tau.dx > tau.x :
             return 0

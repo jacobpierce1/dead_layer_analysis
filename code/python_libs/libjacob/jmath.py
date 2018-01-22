@@ -89,7 +89,7 @@ def get_n_peak_positions( n, data ):
 
     
     # return number of peaks detected.
-    return ( output_peak_positions, num_peaks_found )
+    return output_peak_positions
 
 
 
@@ -197,7 +197,7 @@ def jleast_squares( x, y, dy, params_guess, fitfunc, dx = None,
     # optional additional check with a custom function 
     if successful_fit_predicate is not None:
 
-        if not successful_fit_predicate( model_result.params ):
+        if not successful_fit_predicate( model_result ):
             return None
 
         

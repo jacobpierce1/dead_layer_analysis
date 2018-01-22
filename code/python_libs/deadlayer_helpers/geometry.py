@@ -5,8 +5,9 @@
 
 
 # my includes 
-import deadlayer_helpers.sql_db_manager as db
+# import deadlayer_helpers.sql_db_manager as db
 import libjacob.jmeas as meas
+
 
 
 ## includes 
@@ -14,12 +15,35 @@ from mpl_toolkits.mplot3d import axes3d
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import scipy.integrate 
+
+import os
+
+
+
+
+_current_abs_path = os.path.dirname( __file__ ) + '/'
+
+
+
 
 
 _CM_PER_INCH = 2.54
 _MM_PER_INCH = 25.4
 
 
+USE_MARY_DISPLACEMENTS = 1
+
+# these are the first pixel displacements as computed by Mary
+mary_first_pixel_displacements = { 'pu_240' : meas.meas( [87.10, 9.31, 58.35], np.zeros(3) ),
+                                   'cf_249' : meas.meas( [85.35, 46.06, 57.74], np.zeros(3) ),
+                                   'pu_238_centered': meas.meas( [32.95, 31.45, 57.88], np.zeros(3) ),
+                                   'pu_238_flat': meas.meas( [32.95, 31.45, 57.88], np.zeros(3) ),
+                                   'pu_238_angled': meas.meas( [32.95, 31.45, 58.72], np.zeros(3) ),
+                                   'pu_238_moved' : meas.meas( [44.59, 28.58, 57.88], np.zeros(3) ) } 
+
+
+                                   
 sources = [ 'pu_240', 'cf_249', 'pu_238_centered',
             'pu_238_moved', 'pu_238_flat', 'pu_238_angled' ]
 
@@ -74,6 +98,8 @@ def _get_source_data():
             
             'wafer'    :  [ [0.0320,0.0326,0.0300], [0.052,0.0515,0.0530], [0.051,0.050,0.049],
                             [], [], [] ],
+            
+            'source_diameter' : [ 2, 8, 2, 2, 2, 2 ]
         } 
     )
 
@@ -134,13 +160,6 @@ ceramic_data = pd.Series(
 
 
 
-
-# extra_source_offset = pd.Series(
-#     {
-#         'x' : 1.2,
-#         'y' : 7.475
-#     }
-# )
 
 
 
@@ -238,18 +257,19 @@ def _populate_all_coords( all_coords, source_data ):
         shift = ( ceramic_data[ 'total_x' ]
                   + detector_data[ 'total_width' ] ) / 2 
         det_coords += np.array( [ shift, 0, 0 ] )
+
         
+    # if y_measurement_inverted :
+    #     shift = - detector_data[ 'total_width' ]
+    #     det_coords += np.array( [0, shift, 0 ] )
 
-    if y_measurement_inverted :
-        shift = - detector_data[ 'total_width' ]
-        det_coords += np.array( [0, shift, 0 ] )
-
-    else:
-        shift = ( ceramic_data[ 'total_y' ]
-                  - detector_data[ 'total_width' ] )
-        det_coords += np.array( [0, shift, 0 ] )
+    # else:
+    #     shift = ( ceramic_data[ 'total_y' ]
+    #               - detector_data[ 'total_width' ] )
+    #     det_coords += np.array( [0, shift, 0 ] )
 
 
+    
     # the 1 mm additions center the pixel. 
     det_coords += np.array( [ -1, 1, 0 ] ) 
         
@@ -474,43 +494,61 @@ def rotation_matrix_delta( theta, x ):
 
 
 
+def average_sectheta_integrand( R, nhat, r, theta ) :
 
-
-
-# def _populate_source_theta_phi( source_theta, source_phi, source_data, pu_238_angled_data ):
-
-#     # assume all measured (or implicitly measured, e.g. assuming something is flat ) are known to
-#     # 1 degree.
-#     angle_data_delta = np.deg2rad( 1.0 / 360 ) 
-
-#     radius = meas.meas( source_data.loc[ 'pu_238_angled', 'diameter' ],
-#                         _source_data_delta ).mean()
+    rprime = np.array( [ r * np.cos(theta),
+                         r * np.sin(theta),
+                         0 ] )
     
-#     height_diff = ( meas.meas( pu_238_angled_data[ 'upper_height' ],
-#                                _source_data_delta ) +
-#                     meas.meas( pu_238_angled_data[ 'lower_height' ],
-#                                _source_data_delta ).mean() )
-
-#     # take inverse tan of opposite over adjacent
-#     theta = meas.arctan( height_diff / radius ) 
-     
-#     source_theta[ 'pu_238_angled' ] = theta
-#     source_phi[ 'pu_238_angled' ] = meas.meas( 0, angle_data_delta )
+    x = R - rprime
     
-    
-#     # add in theta_phi values for everything except pu_238_angled.
-#     upright_sources = list(sources)
-#     upright_sources.remove( 'pu_238_angled' )
+    return np.abs( np.dot( nhat, x ) ) * r / np.dot( x, x ) 
 
-#     # loop through and add the same angles for the other sources.
-#     for source in upright_sources:
-#         source_theta[ source ] = meas.meas( 0, angle_data_delta )
-#         source_phi[ source ] = meas.meas( 0, angle_data_delta )
-                                            
+
+
+
+def source_sectheta_distribution( R, nhat, r, theta ) :
+
+    rprime = np.array( [ r * np.cos(theta),
+                         r * np.sin(theta),
+                         0 ] )
+    
+    x = R - rprime
+
+    return np.abs( np.dot( nhat, x ) ) * r / np.dot( x, x ) ** 1.5
+    
+
+
+
+
+
+def compute_average_sectheta_over_source( R, nhat, radius ) :
+                        
+    # todo: do rotation here if necessary. requires normal vector of the
+    # source.
+
+    # compute normalizing factor for the distribution.
+
+    A_integrand = lambda r, theta : source_sectheta_distribution( R, nhat, r, theta ) 
+    
+    A = scipy.integrate.dblquad( A_integrand,
+                                 0, 2 * np.pi,
+                                 lambda x : 0,
+                                 lambda x : radius )
+
+    ave_sectheta_integrand = lambda r, theta : average_sectheta_integrand( R, nhat, r, theta )
+
+    ave_sectheta = scipy.integrate.dblquad( ave_sectheta_integrand,
+                                            0, 2 * np.pi,
+                                            lambda x : 0,
+                                            lambda x : radius )
+    
+    return ave_sectheta[0] / ( A[0] * R[2] ) 
 
 
 
         
+
 
 
                           
@@ -521,8 +559,9 @@ def rotation_matrix_delta( theta, x ):
 # theta is measured from 0 to pi with 0 on the z axis, phi from 0 to 2pi with 0 on the x axis,
 # same as the direction of 'right'
 
-def _populate_costheta_grid( cosine_matrices, all_coords, source_data,
-                             compute_source_costheta = False, source = None ):
+def _populate_sectheta_grid( secant_matrices, all_coords, source_data,
+                             compute_source_costheta = False,
+                             average_over_source = False ):
        
     det_coords = all_coords.loc['detector']
 
@@ -536,11 +575,13 @@ def _populate_costheta_grid( cosine_matrices, all_coords, source_data,
                         source_data.loc[ 'pu_238_angled', 'diameter' ],
                         _source_data_delta ).mean() ] ) )
 
+    
+    
     pu_238_angled_normal *= _MM_PER_INCH
     
     sourcenum = -1
 
-    for source in sources:
+    for source in sources :
 
         sourcenum += 1
         
@@ -551,12 +592,17 @@ def _populate_costheta_grid( cosine_matrices, all_coords, source_data,
         
 
         # rename matrices in order to enhance readability 
-        det_costheta_grid = cosine_matrices[ source ][ 0 ]
-        source_costheta_grid = cosine_matrices[ source ][ 1 ]
+        det_sectheta_grid = secant_matrices[ source ][ 0 ]
+        source_sectheta_grid = secant_matrices[ source ][ 1 ]
 
         first_pixel_coords = det_coords - source_coords
 
-        # print( source + ': ' + str( first_pixel_coords ) )
+        # debug: replace the first pixel coords with mary's
+        if USE_MARY_DISPLACEMENTS : 
+            first_pixel_coords = mary_first_pixel_displacements[ source ] 
+
+        print( source + ': ' + str( first_pixel_coords ) )
+        print( 'mary: ' + str( mary_first_pixel_displacements[ source ]  ) )
         
         # keep shifting by 2 mm to get next coord 
         for i in range(32):
@@ -577,61 +623,105 @@ def _populate_costheta_grid( cosine_matrices, all_coords, source_data,
                 costheta = displacement.apply_nd( costheta_from_3d_f,
                                                   costheta_from_3d_fprime_tuple )
                 
-                det_costheta_grid[i][j] = costheta
+                sectheta = 1 / costheta
+
+                det_sectheta_grid[i][j] = sectheta
 
                 if compute_source_costheta:
-                    if source != 'pu_238_angled' :
-                        source_costheta_grid[i,j] = costheta
+
+                    if not average_over_source : 
+                        
+                        if source != 'pu_238_angled' :
+                            source_sectheta_grid[i,j] = sectheta
+                        
+                        else:
+                            # rotated_displacement = rotate_3d_meas( 1, -theta, displacement ) ) 
+                            # source_costheta_grid[i][j] = costheta_from_3d( rotated_displacement )
+                        
+                            # todo: proper error anaysis.
+                            tmp = meas.dot( pu_238_angled_normal, displacement )
+                            tmp /=  ( np.linalg.norm( pu_238_angled_normal.x ) *
+                                      np.linalg.norm( displacement.x ) )
+                            
+                            source_sectheta_grid[i][j] = 1 / tmp        
 
                     else:
-                        # rotated_displacement = rotate_3d_meas( 1, -theta, displacement ) ) 
-                        # source_costheta_grid[i][j] = costheta_from_3d( rotated_displacement )
                         
-                        # todo: proper error anaysis.
-                        tmp = meas.dot( pu_238_angled_normal, displacement )
-                        tmp /=  ( np.linalg.norm( pu_238_angled_normal.x ) *
-                                  np.linalg.norm( displacement.x ) )
-                        
-                        source_costheta_grid[i][j] = tmp        
-                     
-                                    
+                        if source == 'pu_238_angled' :
+                            tmp = meas.dot( pu_238_angled_normal, displacement )
+                            tmp /=  ( np.linalg.norm( pu_238_angled_normal.x ) *
+                                      np.linalg.norm( displacement.x ) )
+                            
+                            source_sectheta_grid[i][j] = 1 / tmp        
+
+                        else:
+                            source_radius = source_data.loc[ source, 'source_diameter' ] / 2 
+                            ave_sectheta = (
+                                compute_average_sectheta_over_source( displacement.x,
+                                                                      np.array( [0.0, 0.0, 1.0] ),
+                                                                      source_radius ) )
+
+                            source_sectheta_grid[i][j] = meas.meas( ave_sectheta, 0 ) 
                     
                     
-                    
-                        
+
+                            
+
+                            
+                            
+
+# construct matrices containing secant of penetration
+# angle through all sources as well as the detector.
+
+def get_secant_matrices( compute_source_sectheta = 0,
+                         average_over_source = 0,
+                         reset = 0 ):
+
+    data_path =  _current_abs_path + '../../../storage/secant_matrices/'
+
+    if average_over_source :
+        data_path += 'average_over_source/'
+    else:
+        data_path += 'regular/'
+        
+    if not os.path.exists( data_path ) :
+        os.makedirs( data_path )
 
 
+    # what to do if not rewriting all the files: read them from
+    # existing location 
+        
+    if not reset:
+        print( 'INFO: attempting to read secant matrices from disk...' )
 
+        secant_matrices = {}
 
-######################################################################## MAIN ##########################
+        if all( [ os.path.exists( data_path + key + z + '.bin' )
+                  for z in [ '_x', '_dx' ]
+                  for key in sources ] ) :
 
-# call get_costheta_grid in order to populate the cosine matrices with
-# uncertainties.  construct all unnecessary (outside this module)
-# intermediaries, such as source coordinates.
+            for key in sources :
+                
+                xpath, dxpath = [ data_path + key + z + '.bin'
+                                  for z in [ '_x', '_dx' ] ]
+                if os.path.exists( xpath ) and os.path.exists( dxpath ) :
 
-# data structure to hold the cosine matrices: ( source ) -> ( detector
-# angle, source angle ) -> ( value, delta )
+                    secant_matrices[ key ] = meas.meas( np.fromfile( xpath ).reshape( 2, 32, 32 ),
+                                                        np.fromfile( dxpath ).reshape( 2, 32, 32 ) )
 
-#  i thought for a while about what pandas data structure to use
-# before realizing that they all kind of suck. i am just going to
-# declare an array here that has the labels for each dimension. if you
-# really need to look up by a particular label, just figure out the
-# index and do it. good riddance. in retrospect i probably will never
-# use pandas again and always take the route of using an array with
-# labels stored elsewhere.
+            print( 'INFO: success.' )
+            return secant_matrices
 
-# use debug = 1 to return an array of the same type but all entries are 0.5
-
-def get_cosine_matrices( compute_source_costheta = 0 ):
-
-
-    # if debug:
-    #     return np.ones{ ( len(sources), 2, 32, 32 ) ) / 2.0
+        else:
+            print( 'INFO: not all matrices present, reconstructing...' )
     
-    print( 'INFO: constructing costheta grid...' )
+    else:
+        print( 'INFO: constructing costheta grid...' )
 
-    cosine_matrices_labels = [ sources, ['detector', 'source'] ]
-    cosine_matrices = dict( zip( sources,
+
+        
+    secant_matrices_labels = [ sources, ['detector', 'source'] ]
+    secant_matrices = dict( zip( sources,
                                  meas.meas.empty( ( len(sources), 2, 32, 32 ) ) ) )
 
     
@@ -640,14 +730,7 @@ def get_cosine_matrices( compute_source_costheta = 0 ):
     source_data = source_data.set_index( sources_index )
     _fill_redundant_source_data( source_data )
 
-    
-    # # this shall be populated with the theta_phi angles for all detectors, which are 0
-    # # for all but the pu_238_angled
-    # source_theta = pd.Series( sources_index )
-    # source_phi = pd.Series( sources_index )
-    # _populate_source_theta_phi( source_theta, source_phi, source_data, pu_238_angled_data )
-    
-        
+            
     # declare dataframe to store all coordinates, which are pd.Series of two 3-tuples, one for
     # value and one for delta.
     all_coords = pd.Series( index = all_objects_index )
@@ -655,24 +738,52 @@ def get_cosine_matrices( compute_source_costheta = 0 ):
 
 
     # get each array of values / uncertainties and add to the grid.
-    _populate_costheta_grid( cosine_matrices, all_coords, source_data,
-                             compute_source_costheta )
+    _populate_sectheta_grid( secant_matrices, all_coords, source_data,
+                             compute_source_sectheta,
+                             average_over_source )
 
+    for key, val in secant_matrices.items() :
+        secant_matrices[key] = abs( val )
+
+
+    # write the arrays to files, both bin and csv.
     
-    return cosine_matrices
+    for key in sources :
+        
+        xpath, dxpath = [ [ data_path + key + z + suffix
+                            for suffix in [ '.bin', '.csv' ] ]
+                          for z in [ '_x', '_dx' ] ]
+                
+        secant_matrices[ key ].x.tofile( xpath[0] ) 
+        secant_matrices[ key ].dx.tofile( dxpath[0] )
+        
+        
+        np.savetxt( xpath[1], secant_matrices[ key ].x[0], delimiter = ',', fmt = '%4f' )
+
+        if key == 'pu_238_angled' :
+            np.savetxt( xpath[1].replace( key, key + '_source_sectheta' ),
+                        secant_matrices[ key ].x[0],
+                        delimiter = ',', fmt = '%4f' )
+
+        
+        
+    return secant_matrices
     
 
 
 
 
 
-def get_secant_matrices( compute_source_costheta = 0 ) :
 
-    cosine_matrices = get_cosine_matrices( compute_source_costheta )
+# def get_secant_matrices( compute_source_costheta = 0,
+#                          average_over_source = 0 ) :
 
-    secant_matrices = {}
+#     cosine_matrices = get_cosine_matrices( compute_source_costheta,
+#                                            average_over_source )
 
-    for key in cosine_matrices.keys() :
-        secant_matrices[ key ] = abs( 1 / cosine_matrices[ key ]  ) 
+#     secant_matrices = {}
 
-    return secant_matrices 
+#     for key in cosine_matrices.keys() :
+#         secant_matrices[ key ] = abs( 1 / cosine_matrices[ key ]  ) 
+
+#     return secant_matrices 

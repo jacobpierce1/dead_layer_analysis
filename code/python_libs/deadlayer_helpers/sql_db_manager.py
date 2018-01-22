@@ -89,12 +89,12 @@ class db( object ):
         
         self.name = name
 
-        self.path = ( _current_abs_path + '../../../fit_results/databases/'
+        self.path = ( _current_abs_path + '../../../storage/databases/'
                       + name + '_fits_data.db' ) 
 
-        self.mu_vals_dir = _current_abs_path + '../../../fit_results/mu_values/' 
+        self.mu_vals_dir = _current_abs_path + '../../../storage/mu_values/' 
         
-        self.peak_vals_dir = _current_abs_path + '../../../fit_results/peak_values/' 
+        self.peak_vals_dir = _current_abs_path + '../../../storage/peak_values/' 
         
         for dir_ in [ self.mu_vals_dir, self.peak_vals_dir ] :
             if not os.path.exists( dir_ ) :
@@ -340,61 +340,61 @@ class db( object ):
 
 
     
-    def get_mu_for_x_strip( self, x ):
+    # def get_mu_for_x_strip( self, x ):
 
-        if not isint( x ):
-            raise( ValueError( 'x is not an int.' ) )
+    #     if not isint( x ):
+    #         raise( ValueError( 'x is not an int.' ) )
 
-        # print( 'INFO: loading mu values for x strip ' + str( x ) + ' ...' )
+    #     # print( 'INFO: loading mu values for x strip ' + str( x ) + ' ...' )
 
-        disconnect_conn_when_done = 0
-        if self.conn is None:
-            self.connect()
-            disconnect_conn_when_done = 1
+    #     disconnect_conn_when_done = 0
+    #     if self.conn is None:
+    #         self.connect()
+    #         disconnect_conn_when_done = 1
 
-        # populate the grid 
-        strip = np.empty( (3, 2), dtype = 'object' )
-        for i in range(3):
-            for j in range(2):
-                strip[i][j] =  meas.meas.empty( 32 )
+    #     # populate the grid 
+    #     strip = np.empty( (3, 2), dtype = 'object' )
+    #     for i in range(3):
+    #         for j in range(2):
+    #             strip[i][j] =  meas.meas.empty( 32 )
         
-        cursor = self.conn.cursor()
-        cursor.execute( 'SELECT * FROM ' + _tablename + ' WHERE x = (?)', (x,) )
+    #     cursor = self.conn.cursor()
+    #     cursor.execute( 'SELECT * FROM ' + _tablename + ' WHERE x = (?)', (x,) )
 
-        for row in cursor:
+    #     for row in cursor:
 
-            # if fit didn't converge then all the mu values for that
-            # feature are assigned np.nan
+    #         # if fit didn't converge then all the mu values for that
+    #         # feature are assigned np.nan
             
-            if not row[ 'successful_fit' ]:
-                for i in range( 2 ):
-                    # grid[ row[ 'fit_id' ][ i ] ].x[ row['y'] ] = np.nan
-                    # grid[ row[ 'fit_id' ][ i ] ].dx[ row['y'] ] = np.nan
-                    strip[ row[ 'fit_id' ], i ][ row['y'] ] = meas.nan
+    #         if not row[ 'successful_fit' ]:
+    #             for i in range( 2 ):
+    #                 # grid[ row[ 'fit_id' ][ i ] ].x[ row['y'] ] = np.nan
+    #                 # grid[ row[ 'fit_id' ][ i ] ].dx[ row['y'] ] = np.nan
+    #                 strip[ row[ 'fit_id' ], i ][ row['y'] ] = meas.nan
                     
-                continue
+    #             continue
 
-            mu = spec.get_alpha_params_dict( _from_bin( row['model'] ) )[ 'mu' ] 
-            if mu.size() == 1:
-                # mu = meas.meas( [ np.nan, mu.x[0] ], [ np.nan, mu.dx[0] ] )
-                mu = meas.append( meas.nan, mu )
+    #         mu = spec.get_alpha_params_dict( _from_bin( row['model'] ) )[ 'mu' ] 
+    #         if mu.size() == 1:
+    #             # mu = meas.meas( [ np.nan, mu.x[0] ], [ np.nan, mu.dx[0] ] )
+    #             mu = meas.append( meas.nan, mu )
                 
-            for i in range(2):
-                strip[ row[ 'fit_id' ], i ][ row['y'] ] = mu[i]
+    #         for i in range(2):
+    #             strip[ row[ 'fit_id' ], i ][ row['y'] ] = mu[i]
 
                 
-        if disconnect_conn_when_done:
-            self.disconnect()
+    #     if disconnect_conn_when_done:
+    #         self.disconnect()
                 
-        return strip 
+    #     return strip 
 
 
     
 
                                
 
-    def get_mu_for_y_strip( self, y ):
-        raise( NotImplementedError( 'mu is not const in y direction' ) )
+    # def get_mu_for_y_strip( self, y ):
+    #     raise( NotImplementedError( 'mu is not const in y direction' ) )
 
 
     
@@ -471,8 +471,24 @@ class db( object ):
                     mu_grids[ feature ][ i ][ x,y ] = meas.nan
                 continue
 
-            mu = spec.get_alpha_params_dict( _from_bin( row['model'] ) )[ 'mu' ] 
+            params = spec.get_alpha_params_dict( _from_bin( row['model'] ) ) 
 
+            if not spec.alpha_model_valid_params_predicate( params ) :
+            
+                for i in range( self.num_peaks_per_feature[ feature ]  ):
+                    mu_grids[ feature ][ i ][ x,y ] = meas.nan
+                continue
+
+            mu = params[ 'mu' ]
+
+            if len( mu ) > 1 :
+                if ( np.abs( mu[1].x - mu[0].x - 20 ) > 10
+                     or any( mu.dx < 0.1 ) ):
+                    
+                    for i in range( self.num_peaks_per_feature[ feature ]  ):
+                        mu_grids[ feature ][ i ][ x,y ] = meas.nan
+                    continue
+            
             # check if the fit used the alternate shape 
             if len( mu ) != self.num_peaks_per_feature[ feature ] :
 
@@ -509,6 +525,8 @@ class db( object ):
 
 
 
+
+    
     
 
     def get_all_peak_grids( self, read_from_file = 1 ) :

@@ -162,6 +162,8 @@ def next_fit_attempt( p0, p0_attempt, fit_bounds, fit_id,
 
 
 
+
+
 # if db connection supplied, then we assume that the entry is supposed
 # to be put in, it makes more sense for the check on whether the data
 # is in the db to be performed before calling this function. when
@@ -193,6 +195,8 @@ def apply_peak_fit( ax, x, y, fit_id,
     # start attempt is the one after the most recently tested attempt.
     current_attempt = last_attempt + 1
 
+    # keep trying new fit parameters till they are exhausted and all fits
+    # fail, or if we have a convergent fit.
     
     while( 1 ):
 
@@ -225,21 +229,62 @@ def apply_peak_fit( ax, x, y, fit_id,
         model = jmath.jleast_squares( xvals, yvals, np.sqrt( yvals ),
                                       p0_attempt, fitfunc,
                                       fit_bounds = fit_bounds_attempt,
-                                      reduc_chisq_max = 3.5,
+                                      reduc_chisq_max = 2,
                                       params_bounds = params_bounds,
                                       successful_fit_predicate = successful_alpha_fit_predicate,
                                       print_results = 0 )
         
+        # if done, do final checks on the fit. if successful, break out of
+        # loop and proceed to add to DB / create plot
+
         if model is not None:
             if PRINT_FIT_STATUS:
                 print( "INFO: success, breaking " )
+
+            # take the data from the model and apply a peakdetect. make sure that
+            # the peaks are the same. model.best_fit is the model evaluated on the
+            # x data provided, which is xvals.
+        
+            if peak_detect is not None:
+
+                # peaks predicted by model: 
+                model_peaks = jmath.get_n_peak_positions( npeaks, model.best_fit )
+
+                # peaks observed, corrected for the new start channel:
+                original_peaks = np.array( peak_detect ) - xvals[0]
+
+                print( 'model_peaks: ' + str( model_peaks ) )
+                print( 'peak_detect: ' + str( peak_detect ) )
+                print( 'original_peaks: ' + str( original_peaks ) )
+
+                
+                # try again if wrong number of peaks
+                if len( model_peaks != npeaks ) :
+                    current_attempt += 1
+                    continue
+
+                # now make sure the peaks are the same
+                restart = 0 
+                for a in range( npeaks ) :
+                    if original_peaks[a] != model_peaks[a] :
+                        restart = 1
+                        break
+
+                if restart :
+                    current_attempt += 1
+                    continue
+
+            # if this is reached, then a fit converged which passed all the tests
+            # now break and add to DB / create plot.
             break
 
-        
+            
+        # otherwise try new fit params.
         else:
             if PRINT_FIT_STATUS:
                 print( "WARNING: Unsuccessful fit, trying new parameters...\n\n" )
             current_attempt += 1
+            continue
 
 
     # now we have broken out of the loop after a successful fit. unpack the results.
@@ -266,25 +311,8 @@ def apply_peak_fit( ax, x, y, fit_id,
                             model = model ) 
         
 
-    # # where we are after breaking    
-    # if PRINT_PF:
-    #     print( "pf = " + str(pf) )
-    
-    # if PRINT_PFERR:
-    #     print( "pferr = " + str(pferr) )
-
-
-    # final_fitfunc = lambda x : model.eval( x=x ) 
     jplt.add_fit_to_plot( ax, xvals, fit_bounds_attempt, jmath.model_func( model ) )
 
-
-    # # extend vectors as necessary. done here since this is the last time
-    # # we get access to such variables unless taking such an approach.
-    # if mu_all is not None:
-    #     mu_all.extend( [pf[ 5:3+2*npeaks:2 ] ]  )
-
-    # if muerr_all is not None:
-    #     muerr_all.extend( [pferr[ 5:3+2*npeaks:2 ] ] )
 
     if reduc_chisq_all is not None:
         reduc_chisq_all.append( reduc_chisq )
@@ -301,8 +329,10 @@ def apply_peak_fit( ax, x, y, fit_id,
 # only allow a successful fit if we have sub-2 channel precision
 # on the mu values.
 
-def successful_alpha_fit_predicate( params ):
+def successful_alpha_fit_predicate( model ):
 
+    params = model.params
+    
     i = 0
     keys = params.keys()
 
@@ -355,8 +385,9 @@ def process_file( ax, infile, x, y, db = None, logfile=None ):
     
     
     # get the 6 suspected peaks
-    our_peaks = [0] * NUM_PEAKS
-    our_peaks, num_peaks_found = jmath.get_n_peak_positions( NUM_PEAKS, efront_histo )
+    # our_peaks = [0] * NUM_PEAKS
+    our_peaks = jmath.get_n_peak_positions( NUM_PEAKS, efront_histo )
+    num_peaks_found = len( our_peaks )
 
     if num_peaks_found < 5:
 
@@ -559,43 +590,6 @@ def process_file( ax, infile, x, y, db = None, logfile=None ):
                             params_bounds = params_bounds[i] ) 
     
     
-    # # add a description of the fit to the plot
-    # # note: \mathrm{} is replacement for \text{}
-    # fitstr = "$ f(E) = \\sum_{i,\pm} \\frac{A_i \eta_\pm}{2 \\tau_\pm}    \
-    #                     \\cdot \\exp \\left[   \
-    #                             \\frac{E-\\mu_i}{\\tau_\pm}   \
-    #                             + \\frac{\\sigma^2}{2 \\tau_\pm^2 }  \
-    #                     \\right] \
-    #                     \\cdot \\mathrm{erfc} \\left[   \
-    #                             \\frac{1}{\\sqrt{2}} \\left(  \
-    #                                     \\frac{x-\\mu}{\\sigma}    \
-    #                                     + \\frac{\\sigma}{\\tau_\pm}   \
-    #                             \\right)   \
-    #                     \\right] $"
-    
-    
-    
-    
-        
-    
-    ### FORMATTING FOR A FREE ETA FIT
-    ## p format: sigma, eta, tau1, tau2, A1, mu1, ..., A_n, mu_n
-    #A_measurements = format_measurement_vector( "A", pf[range(4,pf.size,2)].tolist(), pferr[range(4,pf.size,2)].tolist() )
-    #
-    #mu_measurements = format_measurement_vector( "\\mu", pf[range(5,pf.size,2)].tolist(), pferr[range(5,pf.size,2)].tolist() )
-    #
-    #tau1_str = " $ \\tau_1 = %s \\pm %s $" % tuple( sigfig( pf[2], pferr[2] ) )
-    #tau2_str = " $ \\tau_2 = %s \\pm %s $" % tuple( sigfig( pf[3], pferr[3] ) )
-    #
-    #sigma_str = "$ \\sigma = %s \\pm %s $" % tuple( sigfig( pf[0], pferr[0] ) )
-    #
-    #eta_str = "$ \\eta = %s \\pm %s $" % tuple( sigfig( pf[1], pferr[1] ) )
-    #
-    #chisq_str = "$ \\tilde{\\chi}^2 = %s \; (\mathrm{dof} = %d ) $" % ( sigfig(reduc_chisq, 0.01)[0], dof )
-    #
-    #fitstr += '\n' + '\n'.join( [ A_measurements, mu_measurements, sigma_str, eta_str,  tau1_str, tau2_str, chisq_str ] )
-    
-
     _add_text( ax, x, y, reduc_chisq_all ) 
     
         
@@ -629,7 +623,7 @@ def fit_all_peaks():
     totalx = 32
     totaly = 32
 
-    # dimensions of output images
+    # dimensions of output images: number of plots in each dimension
     dimx = 4
     dimy = 4
 

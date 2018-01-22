@@ -1,6 +1,7 @@
-# this is a class for doing all common error analysis operations. the class meas
-# is constructed from a numpy ndarray x and ndarray dx, or an ndarray x and a scalar x
-# in which case dx is set to an array with all values dx of same shape as x.
+# this is a class for doing all common error analysis operations. the
+# class meas is constructed from a numpy ndarray x and ndarray dx, or
+# an ndarray x and a scalar x in which case dx is set to an array with
+# all values dx of same shape as x.
 
 
 import numpy as np
@@ -20,7 +21,16 @@ class meas( object ):
 
     # CONSTRUCTOR
     # https://stackoverflow.com/questions/29318459/python-function-that-handles-scalar-or-arrays
-    def __init__( self, x, dx, checksize=1, checktype=1 ):
+    def __init__( self, x, dx, checksize=1, checktype=1, bypass_checks=0 ):
+
+        if bypass_checks :
+
+            self.x = x
+            self.y = y
+            return None
+        
+
+        # print( 'called __init__' )
 
         x = np.asarray( x )
         dx = np.asarray( dx )
@@ -57,7 +67,7 @@ class meas( object ):
             if checksize:
                 if x.shape != dx.shape:
                     raise InputError( 'x and dx supplied have different shape.' )
-
+                
         # set instance vars and return
         self.x = x
         self.dx = dx
@@ -97,7 +107,13 @@ class meas( object ):
         return ret
 
     
+    # def __array_wrap__( self, result ):
 
+    #     print( result ) 
+        
+    #     return _meas_no_checks( result )  
+
+    
     def __len__( self ) :
         return len( self.x ) 
     
@@ -117,16 +133,23 @@ class meas( object ):
     # x and y must be uncorrelated for any of these to make sense.
     def __add__( self, y ):
 
+        # print( type( y ) ) 
+
+        # print( 'called __add__' ) 
+
         if hasattr( y, 'x' ):
             return _meas_no_checks( self.x + y.x,
                                     np.sqrt( self.dx ** 2 + y.dx ** 2 ) )
 
         else:
-            return _meas_no_checks( self.x + y,
-                                    self.dx )
+            return _meas_no_checks( self.x + y, self.dx )
                                                  
-        
-        
+
+    # def __radd__( self, y ) :
+    #     print( 'called __radd' )
+    #     return self + y
+
+    
     def __sub__( self, y ):
         
         if hasattr( y, 'x' ):
@@ -186,7 +209,7 @@ class meas( object ):
             return __div__( y, self )
         
     # other right-hand operations: commutative. 
-    __radd__ = __add__
+    # __radd__ = __add__
     __rmul__ = __mul__
     
     
@@ -199,7 +222,7 @@ class meas( object ):
         return _meas_no_checks( 0-self.x, self.dx )
 
     def __str__( self ):
-        return 'x: %s\ndx: %s' % ( str( self.x ), str( self.dx ) )
+        return 'x: %s\ndx: %s\n' % ( str( self.x ), str( self.dx ) )
 
     def __eq__( self, y ):
         return ( self.x == y.x ) and ( self.dx == y.dx )
@@ -208,7 +231,7 @@ class meas( object ):
         return not self.__eq__( y )
 
     def __repr__( self ):
-        return 'Measurement:\n' + str( self )
+        return str( self )
 
     # use the power law of calculus
     def __pow__( self, n ):
@@ -404,20 +427,24 @@ class meas( object ):
 #########################################
 #### FAST ALLOC SUBCLASS ################
 #########################################
+
 # this class is equivalent to meas except the constrcutor is more
 # efficient. note that type errors resulting from using this will
 # most likely result in unintelligible errors. designed for absolute
 # efficiency
+
 class _meas_no_checks( meas ):
 
     def __init__( self, x, dx ):
+
+        # print( 'called' ) 
 
         if np.isscalar(x):
             self.x = x
             self.dx = dx
             return None
 
-        else: 
+        else:            
             self.x = np.asarray( x )
             self.dx = np.asarray( dx )
             return None
@@ -430,6 +457,7 @@ class _meas_no_checks( meas ):
 ############################################
 # NON CLASS METHODS ########################
 ############################################
+
 # common functions
 def cos( _meas ):
     return _meas.apply( np.cos, np.sin )

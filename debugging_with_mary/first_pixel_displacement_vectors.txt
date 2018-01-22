@@ -1,0 +1,13 @@
+displacement vector between center of each source and the corner pixel: (front, back) = (1,1) (using number scheme of manufacturer)
+
+pu_240: [ 87.10938333   4.17977333  59.35895333]
+
+cf_249: [ 85.36313333 -32.55624667  58.74596667]
+
+pu_238_centered: [ 31.76320667 -18.74203333  58.83486667]
+
+pu_238_moved: [-45.80839333 -15.88453333  58.83486667]
+
+pu_238_flat: [ 31.76320667 -18.74203333  58.83486667]
+
+pu_238_angled: [ 31.76320667 -18.74203333  59.9694    ]
