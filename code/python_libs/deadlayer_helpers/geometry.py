@@ -32,15 +32,15 @@ _CM_PER_INCH = 2.54
 _MM_PER_INCH = 25.4
 
 
-USE_MARY_DISPLACEMENTS = 1
+USE_MARY_DISPLACEMENTS = 0
 
 # these are the first pixel displacements as computed by Mary
-mary_first_pixel_displacements = { 'pu_240' : meas.meas( [87.10, 9.31, 58.35], np.zeros(3) ),
-                                   'cf_249' : meas.meas( [85.35, 46.06, 57.74], np.zeros(3) ),
-                                   'pu_238_centered': meas.meas( [32.95, 31.45, 57.88], np.zeros(3) ),
-                                   'pu_238_flat': meas.meas( [32.95, 31.45, 57.88], np.zeros(3) ),
-                                   'pu_238_angled': meas.meas( [32.95, 31.45, 58.72], np.zeros(3) ),
-                                   'pu_238_moved' : meas.meas( [44.59, 28.58, 57.88], np.zeros(3) ) } 
+mary_first_pixel_displacements = { 'pu_240' : meas.meas( [87.10, -9.31, 58.35], np.zeros(3) ),
+                                   'cf_249' : meas.meas( [85.35, -46.06, 57.74], np.zeros(3) ),
+                                   'pu_238_centered': meas.meas( [32.95, -31.45, 57.88], np.zeros(3) ),
+                                   'pu_238_flat': meas.meas( [32.95, -31.45, 57.88], np.zeros(3) ),
+                                   'pu_238_angled': meas.meas( [32.95, -31.45, 58.72], np.zeros(3) ),
+                                   'pu_238_moved' : meas.meas( [-44.59, -28.58, 57.88], np.zeros(3) ) } 
 
 
                                    
@@ -271,7 +271,7 @@ def _populate_all_coords( all_coords, source_data ):
 
     
     # the 1 mm additions center the pixel. 
-    det_coords += np.array( [ -1, 1, 0 ] ) 
+    det_coords += np.array( [ -1, -1, 0 ] ) 
         
             
     all_coords.loc['detector'] = det_coords
@@ -310,7 +310,6 @@ def _populate_all_coords( all_coords, source_data ):
             
         xyz = meas.meas.from_list( [ x, y, z ] )
         xyz *= _MM_PER_INCH
-        # xyz += np.array( [ 2, -2, 0 ] )
         all_coords.loc[source] = xyz
 
     # for source in all_objects :
@@ -320,6 +319,8 @@ def _populate_all_coords( all_coords, source_data ):
     #     # print( 'all_coords: ' + str(all_coords ) ) 
 
 
+
+    
 # these functions to be used as input for apply_nd
 def costheta_from_3d_f( coords ):
     return coords[2] / np.sqrt( np.sum( coords ** 2 ) )  
@@ -575,9 +576,11 @@ def _populate_sectheta_grid( secant_matrices, all_coords, source_data,
                         source_data.loc[ 'pu_238_angled', 'diameter' ],
                         _source_data_delta ).mean() ] ) )
 
-    
+    # print( pu_238_angled_normal )
     
     pu_238_angled_normal *= _MM_PER_INCH
+
+    # print( pu_238_angled_normal ) 
     
     sourcenum = -1
 
@@ -601,8 +604,8 @@ def _populate_sectheta_grid( secant_matrices, all_coords, source_data,
         if USE_MARY_DISPLACEMENTS : 
             first_pixel_coords = mary_first_pixel_displacements[ source ] 
 
-        print( source + ': ' + str( first_pixel_coords ) )
-        print( 'mary: ' + str( mary_first_pixel_displacements[ source ]  ) )
+        # print( source + ': ' + str( first_pixel_coords ) )
+        # print( 'mary: ' + str( mary_first_pixel_displacements[ source ]  ) )
         
         # keep shifting by 2 mm to get next coord 
         for i in range(32):
@@ -639,21 +642,24 @@ def _populate_sectheta_grid( secant_matrices, all_coords, source_data,
                             # source_costheta_grid[i][j] = costheta_from_3d( rotated_displacement )
                         
                             # todo: proper error anaysis.
-                            tmp = meas.dot( pu_238_angled_normal, displacement )
-                            tmp /=  ( np.linalg.norm( pu_238_angled_normal.x ) *
-                                      np.linalg.norm( displacement.x ) )
+                            tmp = ( np.linalg.norm( pu_238_angled_normal.x ) *
+                                    np.linalg.norm( displacement.x ) )
                             
-                            source_sectheta_grid[i][j] = 1 / tmp        
+                            tmp /= meas.dot( pu_238_angled_normal, displacement )
+                            
+                            source_sectheta_grid[i][j] = tmp        
 
                     else:
-                        
-                        if source == 'pu_238_angled' :
-                            tmp = meas.dot( pu_238_angled_normal, displacement )
-                            tmp /=  ( np.linalg.norm( pu_238_angled_normal.x ) *
-                                      np.linalg.norm( displacement.x ) )
-                            
-                            source_sectheta_grid[i][j] = 1 / tmp        
 
+                        # todo: haven't figured out how to do this calculation yet.
+                        if source == 'pu_238_angled' :
+                            tmp = ( np.linalg.norm( pu_238_angled_normal.x ) *
+                                    np.linalg.norm( displacement.x ) )
+                            
+                            tmp /= meas.dot( pu_238_angled_normal, displacement )
+                            
+                            source_sectheta_grid[i][j] = tmp
+                            
                         else:
                             source_radius = source_data.loc[ source, 'source_diameter' ] / 2 
                             ave_sectheta = (
@@ -716,7 +722,7 @@ def get_secant_matrices( compute_source_sectheta = 0,
             print( 'INFO: not all matrices present, reconstructing...' )
     
     else:
-        print( 'INFO: constructing costheta grid...' )
+        print( 'INFO: reconstructing sectheta grid...' )
 
 
         
@@ -749,11 +755,11 @@ def get_secant_matrices( compute_source_sectheta = 0,
     # write the arrays to files, both bin and csv.
     
     for key in sources :
-        
+
         xpath, dxpath = [ [ data_path + key + z + suffix
                             for suffix in [ '.bin', '.csv' ] ]
                           for z in [ '_x', '_dx' ] ]
-                
+
         secant_matrices[ key ].x.tofile( xpath[0] ) 
         secant_matrices[ key ].dx.tofile( dxpath[0] )
         
@@ -762,7 +768,7 @@ def get_secant_matrices( compute_source_sectheta = 0,
 
         if key == 'pu_238_angled' :
             np.savetxt( xpath[1].replace( key, key + '_source_sectheta' ),
-                        secant_matrices[ key ].x[0],
+                        secant_matrices[ key ].x[1],
                         delimiter = ',', fmt = '%4f' )
 
         

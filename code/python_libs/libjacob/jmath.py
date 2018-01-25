@@ -183,12 +183,12 @@ def jleast_squares( x, y, dy, params_guess, fitfunc, dx = None,
 
     # determine if we had a succussful fit. ier
     # is the return code of scipy.optimize.leastsq.
-    # if this is 1, then lmfit thinks we succeeded. 
+    # if this is 1, then lmfit thinks we succeeded.
 
     successful_fit = ( model_result.success
-                       and model_result.ier < 4 
+                       and model_result.ier < 4  # scipy error code
                        and model_result.redchi < reduc_chisq_max
-                       and model.errorbars )
+                       and model_result.errorbars )
 
     if not successful_fit:
         return None 

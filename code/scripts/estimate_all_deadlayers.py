@@ -453,9 +453,50 @@ def objective( params, mu_matrices, secant_matrices, actual_energies,
 def linear_calibration_on_each_x_strip( dbs,
                                         source_indices,
                                         model_params,
-                                        annotate = 0 ) : 
+                                        annotate = 0,
+                                        subtitle = '',
+                                        view_pixel = None ) : 
 
 
+    
+    # next, read the data that will go into the regression. 
+    if model_params.mu : 
+        mu_matrices = { db.name : db.get_all_mu_grids( 1 )
+                        for db in dbs }
+
+        peak_matrices = mu_matrices
+
+    else:
+        peak_matrices = { db.name : db.get_all_peak_grids( 1 )
+                          for db in dbs }
+
+    # filter out bad data 
+    for db_name in [ db.name for db in dbs ] :
+        for i in range(3) :
+            for j in range( 2 ) :
+                mask = peak_matrices[db_name][i][j].dx > 2
+                peak_matrices[db_name][i][j][ mask ] = meas.nan
+                
+                
+    secant_matrices = geom.get_secant_matrices( compute_source_sectheta = 1,
+                                                average_over_source = model_params.average_over_source,
+                                                reset = not model_params.average_over_source )
+
+    # cut out large sec theta 
+    for key, val in secant_matrices.items() :
+        mask = ( val[0].x >= 1.45 )
+        secant_matrices[key][0][mask] = meas.nan
+
+        
+    if view_pixel is not None :
+        plot_energy_vs_sectheta( None, secant_matrices, peak_matrices,
+                                 dbs, source_indices, model_params,
+                                 subtitle = subtitle,
+                                 view_pixel = view_pixel )
+        return 1
+
+    
+        
     if model_params.pulse_height_defect :
         interp_stopping_power = 1
 
@@ -505,30 +546,8 @@ def linear_calibration_on_each_x_strip( dbs,
         fit_params.add( 'k', value = 0 )
 
 
-    # next, read the data that will go into the regression.
+
     
-    if model_params.mu : 
-        mu_matrices = { db.name : db.get_all_mu_grids( 1 )
-                        for db in dbs }
-
-        peak_matrices = mu_matrices
-
-    else:
-        peak_matrices = { db.name : db.get_all_peak_grids( 1 )
-                          for db in dbs }
-
-    # filter out bad data 
-    for db_name in [ db.name for db in dbs ] :
-        for i in range(3) :
-            for j in range( 2 ) :
-                mask = peak_matrices[db.name][i][j].dx > 2
-                peak_matrices[db.name][i][j][ mask ] = meas.nan
-                
-                
-    secant_matrices = geom.get_secant_matrices( compute_source_sectheta = 1,
-                                                average_over_source = model_params.average_over_source,
-                                                reset = not model_params.average_over_source )
-
     # construct an interpolation if required.
     
     if model_params.interp_stopping_power :
@@ -559,7 +578,9 @@ def linear_calibration_on_each_x_strip( dbs,
     plot_energy_vs_sectheta( result, secant_matrices, peak_matrices,
                              dbs, source_indices,
                              model_params,
-                             annotate = annotate ) 
+                             annotate = annotate,
+                             subtitle = subtitle,
+                             view_pixel = view_pixel ) 
     
 
     
@@ -576,14 +597,22 @@ def linear_calibration_on_each_x_strip( dbs,
 def plot_energy_vs_sectheta( lmfit_result, secant_matrices, mu_matrices,
                              dbs, source_indices,
                              model_params,
-                             annotate = 0 ) :
+                             annotate = 0,
+                             subtitle = '',
+                             view_pixel = None ) :
     
     f, axarr = plt.subplots( 3, 2 )
 
-    # \mathrm instead of \text    
-    f.suptitle( r'Absolute $ E_\mathrm{det}$ vs. $\sec ( \theta_\mathrm{det} ) $ For Each Peak' )
+    # \mathrm instead of \text
+    if view_pixel is None :
+        
+        f.suptitle( r'Absolute $ E_\mathrm{det}$ vs. $\sec ( \theta_\mathrm{det} ) $ For Each Peak'
+                    + '\n' + subtitle + ', ' + r'$ \tilde{\chi}^2 = '
+                    + '%.2f' % ( lmfit_result.redchi , ) + '$' )
 
 
+    # f.text( 0.95, 0.95, r'$ \tilde{\chi}^2 = ' + str( lmfit_result.redchi ) + '$' )
+    
     # create common axis labels
     
     f.add_subplot(111, frameon=False)
@@ -593,99 +622,130 @@ def plot_energy_vs_sectheta( lmfit_result, secant_matrices, mu_matrices,
     plt.tick_params(labelcolor='none', top='off', bottom='off', left='off', right='off')
     plt.grid(False)
     plt.xlabel( r'$sec ( \theta_\mathrm{det} ) $' )
-    plt.ylabel( r'$E_\mathrm{det}$ (keV)' )
 
+    if view_pixel is not None : 
+        plt.ylabel( r'$E_\mathrm{det}$ (keV)' )
+
+    else : 
+        plt.ylabel( r'$\mu$ (channels)' )
+        
     titles = [ 'Pu 240', 'Pu 238', 'Cf 249' ]
     
     for i in range(len( source_indices ) ) :
 
         for j in source_indices[i] :
 
-            if model_params.vary_det_deadlayer:
-                det_constant = lmfit_result.params[ 'source_constant_%d_%d' % (i,j) ].value.item()
-                print( 'effective dl: ' + str ( det_constant / si_stopping_powers[i][j] ) )
-
             axarr[i,j].set_title( titles[i] )
             
             # energies = np.empty( ( len(dbs), 32, 32 ) )
-            
-            for d in range( len( dbs ) ) :
+            if view_pixel is None :
+                
+                if model_params.vary_det_deadlayer:
+                    det_constant = lmfit_result.params[ 'source_constant_%d_%d' % (i,j) ].value.item()
+                    print( 'effective dl: ' + str ( det_constant / si_stopping_powers[i][j] ) )
 
-                db = dbs[ d ] 
+                for d in range( len( dbs ) ) :
+
+                    db = dbs[ d ] 
+
+                    if i == 0 :
+                        source = 'pu_240'
+
+                    elif i == 1 :
+                        source = 'pu_238_' + db.name
+
+                    elif i == 2 :
+                        source = 'cf_249'
+
+
+                    # else:
+                    #     dl = lmfit_result.params[ 'det_deadlayer' ].value.item()
+                    #     det_constant = dl * si_stopping_powers[i][j]
+
+                    # source_constant = lmfit_result.params[ 'source_constant_%d_%d' % (i,j) ].value
+
+                    for row in model_params.fstrips :
+
+                        x = secant_matrices[source][0][row][ model_params.bstrips ]
+                        y = secant_matrices[source][1][row][ model_params.bstrips ]
+                        z = mu_matrices[ db.name ][i][j][row][ model_params.bstrips ]
+
+                        test_id = '_' + db.name + '_%d' % ( row, )
+
+                        a = lmfit_result.params[ 'a' + test_id ].value.item()
+                        b = lmfit_result.params[ 'b' + test_id ].value.item()
+
+                        E = a * z + b
+
+                        # energies[ d, row, : ] = E.x
+
+                        calibrated_E = energy_from_mu_lmfit( lmfit_result.params,
+                                                             z, x, y,
+                                                             db.name, row, i, j,
+                                                             model_params )
+
+                        Efit = peak_energies[i][j] - ( calibrated_E.x - E.x )
+
+                        if not annotate: 
+                            axarr[i,j].errorbar( x.x, E.x, xerr = x.dx, yerr = E.dx,
+                                                 color='b', zorder = 1,
+                                                 ls = 'none' )
+                            
+                        else:
+                            for a in range( len( model_params.bstrips ) ) :
+
+                                if not meas.isnan( z[a] ) :
+
+                                    label = '(%s,%d,%d,%.1f)' % (db.name, row, model_params.bstrips[a],
+                                                               z[a].x ) 
+
+                                    axarr[i,j].scatter( [ x.x[a] ] , [ E.x[a] ], color='b',
+                                                        zorder = 1, label = label )
+
+
+                        mask = ~ meas.isnan( z )
+
+                        axarr[i,j].plot( x[ mask ].x, Efit[ mask ], c = 'r', zorder = 2 ) 
+
+
+                # # remove outliers (not from fit, just the plot )
+
+                # flattened_energies = energies.flatten()
+                # mask = ~ np.isnan( flattened_energies )            
+                # sorted_energies = sorted( flattened_energies[ mask ] )
+
+                # newmin = sorted_energies[10]
+                # newmax = sorted_energies[ len(sorted_energies) - 5 ]
+
+                # # axarr[i][j].set_ylim( newmin - 10, newmax + 10 )
+
+            else :
+
+                db = view_pixel[0]
+                row = view_pixel[1]
 
                 if i == 0 :
                     source = 'pu_240'
-                
+
                 elif i == 1 :
                     source = 'pu_238_' + db.name
-            
+                        
                 elif i == 2 :
                     source = 'cf_249'
+                
+                x = secant_matrices[source][0][row][ model_params.bstrips ]
+                y = secant_matrices[source][1][row][ model_params.bstrips ]
+                z = mu_matrices[ db.name ][i][j][row][ model_params.bstrips ]
 
-                                        
-                # else:
-                #     dl = lmfit_result.params[ 'det_deadlayer' ].value.item()
-                #     det_constant = dl * si_stopping_powers[i][j]
-                    
-                # source_constant = lmfit_result.params[ 'source_constant_%d_%d' % (i,j) ].value
-                    
-                for row in model_params.fstrips :
-                    
-                    x = secant_matrices[source][0][row][ model_params.bstrips ]
-                    y = secant_matrices[source][1][row][ model_params.bstrips ]
-                    z = mu_matrices[ db.name ][i][j][row][ model_params.bstrips ]
-                                        
-                    test_id = '_' + db.name + '_%d' % ( row, )
+                print( (i,j) )
+                print( 'mu / peak values: ' )
+                print( z )
+                print('\n' )
+                
+                axarr[i,j].errorbar( x.x, z.x, yerr = z.dx,
+                                     color='b', zorder = 1, ls = 'none' ) #, label = 'test' )
 
-                    a = lmfit_result.params[ 'a' + test_id ].value.item()
-                    b = lmfit_result.params[ 'b' + test_id ].value.item()
-                         
-                    E = a * z + b
-                                       
-                    # energies[ d, row, : ] = E.x
-
-                    calibrated_E = energy_from_mu_lmfit( lmfit_result.params,
-                                                         z, x, y,
-                                                         db.name, row, i, j,
-                                                         model_params )
-                        
-                    Efit = peak_energies[i][j] - ( calibrated_E.x - E.x )
-
-                    if not annotate: 
-                        axarr[i,j].errorbar( x.x, E.x, xerr = x.dx, yerr = E.dx,
-                                             color='b', zorder = 1,
-                                             ls = 'none',
-                                             label = 'test' ) # '$ID: %d$' % (row,) )
-
-                    else:
-                        for a in range( len( model_params.bstrips ) ) :
-
-                            if not meas.isnan( z[a] ) :
                                 
-                                label = '(%s,%d,%d,%.1f)' % (db.name, row, model_params.bstrips[a],
-                                                           z[a].x ) 
-                            
-                                axarr[i,j].scatter( [ x.x[a] ] , [ E.x[a] ], color='b',
-                                                    zorder = 1, label = label )
-
-   
-                    mask = ~ meas.isnan( z )
-
-                    axarr[i,j].plot( x[ mask ].x, Efit[ mask ], c = 'r', zorder = 2 ) 
-
-
-            # # remove outliers (not from fit, just the plot )
-                                                  
-            # flattened_energies = energies.flatten()
-            # mask = ~ np.isnan( flattened_energies )            
-            # sorted_energies = sorted( flattened_energies[ mask ] )
-            
-            # newmin = sorted_energies[10]
-            # newmax = sorted_energies[ len(sorted_energies) - 5 ]
-            
-            # # axarr[i][j].set_ylim( newmin - 10, newmax + 10 )
-
-
 
     if annotate :
         datacursor( formatter = '{label}'.format )
@@ -706,29 +766,53 @@ def plot_energy_vs_sectheta( lmfit_result, secant_matrices, mu_matrices,
 # dbs = [ dbmgr.centered, dbmgr.angled ]
 # dbs = [ dbmgr.angled, dbmgr.centered, dbmgr.flat ]
 # dbs = dbmgr.all_dbs
-# dbs = [ dbmgr.angled ]
-dbs = [ dbmgr.flat, dbmgr.centered ] 
-# dbs = [ dbmgr.centered ] 
+# dbs = [ dbmgr.angled, dbmgr.centered ]
+# dbs = [ dbmgr.angled ] 
+dbs = [ dbmgr.centered, dbmgr.angled, dbmgr.moved ] # , dbmgr.flat ] 
 
+
+
+# source_indices = [ [0,1], [0,1], [1] ]
 source_indices = [ [0,1], [0,1], [1] ]
-# source_indices = [ [0,1], [0,1], [0,1] ]
 
-model_params = dead_layer_model_params( vary_det_deadlayer = 1,
-                                        quadratic_source = 1,
+
+
+# subtitle = 'Angled Dataset'
+subtitle = 'Centered, Angled, Moved'
+
+
+fstrips = np.arange( 3, 30 )
+
+# a = 2
+# b = 31
+# c = 27
+
+# fstrips = np.zeros( b-a - 1, dtype='int' )
+
+# fstrips[ 0 : c-a ] = np.arange( a,c)
+# fstrips[ c-a : b-a-1 ] = np.arange( c+1, b )
+# print( fstrips )
+
+
+model_params = dead_layer_model_params( vary_det_deadlayer = 0,
+                                        quadratic_source = 0,
                                         quadratic_det = 0,
                                         calibrate_each_pixel = 0,
                                         interp_stopping_power = 1,
                                         mu = 0,
                                         average_over_source = 0,
                                         pulse_height_defect = 0,
-                                        fstrips = np.arange( 2, 30 ),
+                                        fstrips = fstrips,
                                         bstrips = np.arange( 2, 30 ) )
                                         # ignore_outer_pixels = 0 )
 
+                                        
 
 linear_calibration_on_each_x_strip( dbs, source_indices,
                                     model_params,
-                                    annotate = 0 )
+                                    annotate = 0,
+                                    # view_pixel = [ dbmgr.centered, 13 ],
+                                    subtitle = subtitle )
 
 
 

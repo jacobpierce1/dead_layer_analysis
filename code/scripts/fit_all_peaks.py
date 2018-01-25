@@ -251,22 +251,22 @@ def apply_peak_fit( ax, x, y, fit_id,
                 model_peaks = jmath.get_n_peak_positions( npeaks, model.best_fit )
 
                 # peaks observed, corrected for the new start channel:
-                original_peaks = np.array( peak_detect ) - xvals[0]
+                original_peaks = np.array( peak_detect ) - fit_bounds_attempt[0]
 
-                print( 'model_peaks: ' + str( model_peaks ) )
-                print( 'peak_detect: ' + str( peak_detect ) )
-                print( 'original_peaks: ' + str( original_peaks ) )
+                # print( 'model_peaks: ' + str( model_peaks ) )
+                # print( 'peak_detect: ' + str( peak_detect ) )
+                # print( 'original_peaks: ' + str( original_peaks ) )
 
                 
                 # try again if wrong number of peaks
-                if len( model_peaks != npeaks ) :
+                if len( model_peaks ) != npeaks :
                     current_attempt += 1
                     continue
 
                 # now make sure the peaks are the same
                 restart = 0 
                 for a in range( npeaks ) :
-                    if original_peaks[a] != model_peaks[a] :
+                    if abs( original_peaks[a] - model_peaks[a] ) >= 2 :
                         restart = 1
                         break
 
@@ -629,8 +629,6 @@ def fit_all_peaks():
 
     a = -1
 
-    start_time = time.time() 
-
     for db in dbmgr.all_dbs:
 
         # count number of db's we have processed. 
@@ -673,10 +671,9 @@ def fit_all_peaks():
                         print( str( [x,y] ) )    
                         
                         # this estimates the time remaining for the program to terminate
-                        jutils.estimate_time_left( x * totaly + y
-                                                   + ( a * totalx * totaly ), 
+                        jutils.estimate_time_left( x * totaly + y + ( a * totalx * totaly ), 
                                                    len( dbmgr.all_dbs ) * totalx * totaly,
-                                                   start_time, num_updates=100 )
+                                                   num_updates=100 )
                         
                         # current pixel coords
                         # coords = ( x, y )

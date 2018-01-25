@@ -249,7 +249,7 @@ def estimate_alpha_peakpos( model, num_iterations = 1000, plot=0 ) :
         peakpos_arr = np.empty( num_iterations, dtype=np.float64 )
 
 
-        print( params_array ) 
+        # print( params_array ) 
     
         for i in range(num_iterations):
             
