@@ -621,7 +621,7 @@ class db( object ):
             
             # do a monte carlo simulation for each peak in this feature.
                 
-            peaks = spec.estimate_alpha_peakpos( model, plot = 0 )
+            peaks = spec.estimate_alpha_peakpos( model, plot = 1 )
 
             # check if the fit used the alternate shape
             if len( peaks ) != self.num_peaks_per_feature[ feature ] :

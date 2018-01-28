@@ -43,6 +43,14 @@ mary_first_pixel_displacements = { 'pu_240' : meas.meas( [87.10, -9.31, 58.35], 
                                    'pu_238_moved' : meas.meas( [-44.59, -28.58, 57.88], np.zeros(3) ) } 
 
 
+# mary_first_pixel_displacements = { 'pu_240' : meas.meas( [87.10, -9.31, 58.35], np.zeros(3) ),
+#                                    'cf_249' : meas.meas( [85.35, -46.06, 57.74], np.zeros(3) ),
+#                                    'pu_238_centered': meas.meas( [32.95, -31.45, 57.88], np.zeros(3) ),
+#                                    'pu_238_flat': meas.meas( [32.95, -31.45, 57.88], np.zeros(3) ),
+#                                    'pu_238_angled': meas.meas( [32.95, -31.45, 58.72], np.zeros(3) ),
+#                                    'pu_238_moved' : meas.meas( [-44.59, -28.58, 57.88], np.zeros(3) ) } 
+
+
                                    
 sources = [ 'pu_240', 'cf_249', 'pu_238_centered',
             'pu_238_moved', 'pu_238_flat', 'pu_238_angled' ]
@@ -271,7 +279,7 @@ def _populate_all_coords( all_coords, source_data ):
 
     
     # the 1 mm additions center the pixel. 
-    det_coords += np.array( [ -1, -1, 0 ] ) 
+    det_coords += np.array( [ -1, 1, 0 ] ) 
         
             
     all_coords.loc['detector'] = det_coords
@@ -604,8 +612,8 @@ def _populate_sectheta_grid( secant_matrices, all_coords, source_data,
         if USE_MARY_DISPLACEMENTS : 
             first_pixel_coords = mary_first_pixel_displacements[ source ] 
 
-        # print( source + ': ' + str( first_pixel_coords ) )
-        # print( 'mary: ' + str( mary_first_pixel_displacements[ source ]  ) )
+        print( source + ': ' + str( first_pixel_coords ) )
+        print( 'mary: ' + str( mary_first_pixel_displacements[ source ]  ) )
         
         # keep shifting by 2 mm to get next coord 
         for i in range(32):

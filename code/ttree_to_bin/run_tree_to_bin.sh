@@ -44,7 +44,7 @@ fi
 
 
 # in principle u could supply different output path here and the cpp program would work as expected. 
-OUTPUT_DIR=../extracted_ttree_data/$prefix/
+OUTPUT_DIR=../../data/extracted_ttree_data/$prefix/
 
 
 # give warning if this dir exists

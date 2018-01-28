@@ -161,7 +161,9 @@ class dead_layer_model_params( object ) :
                   pulse_height_defect = 0,
                   # ignore_outer_pixels = 0,
                   fstrips = None,
-                  bstrips = None ) :
+                  bstrips = None,
+                  different_fstrip_deadlayers = 0,
+                  different_pixel_deadlayers = 1 ) :
 
         # various options that change the model the data is fit
         # to. see energy_from_mu_lmfit() for what they do.
@@ -201,6 +203,10 @@ class dead_layer_model_params( object ) :
             self.bstrips = np.arange(32)
         else:
             self.bstrips = bstrips
+
+        self.different_fstrip_deadlayers = different_fstrip_deadlayers
+        
+        self.different_pixel_deadlayers = different_pixel_deadlayers
         
         return None
 
@@ -301,10 +307,20 @@ def energy_from_mu_lmfit( params,
     
     if not model_params.vary_det_deadlayer:
 
-        det_deadlayer = params[ 'det_deadlayer' ].value.item()
-        
+        if model_params.different_fstrip_deadlayers : 
+            det_deadlayer = params[ 'det_deadlayer_%d' % (x,) ].value.item()
+
+        elif model_params.different_pixel_deadlayers :
+            det_deadlayer = np.array( [ params[ 'det_deadlayer_%d_%d' % ( x,y ) ]
+                                        for y in model_params.bstrips ] )
+
+        else :
+            det_deadlayer = params[ 'det_deadlayer' ].value.item()
+            
         if model_params.si_stopping_power_interpolation is not None :
 
+            # print( source_constant ) 
+            
             S = model_params.si_stopping_power_interpolation( peak_energies[i][j]
                                                  - source_constant * source_sectheta.x )
             
@@ -435,9 +451,9 @@ def objective( params, mu_matrices, secant_matrices, actual_energies,
     # ret = resid.flatten()
     
     # print( 'objective: %f' % ( time.time() - start_time, ) )
-           
-    # return ret 
+      
     return resid
+
 
 
 
@@ -454,8 +470,12 @@ def linear_calibration_on_each_x_strip( dbs,
                                         source_indices,
                                         model_params,
                                         annotate = 0,
+                                        cut_high_sectheta = 0,
                                         subtitle = '',
-                                        view_pixel = None ) : 
+                                        view_pixel = None,
+                                        reset_angles = None,
+                                        residual_scatter_plot = 0,
+                                        plot_3d = 0 ) : 
 
 
     
@@ -477,15 +497,19 @@ def linear_calibration_on_each_x_strip( dbs,
                 mask = peak_matrices[db_name][i][j].dx > 2
                 peak_matrices[db_name][i][j][ mask ] = meas.nan
                 
+    if reset_angles is None :
+        reset_angles = not model_params.average_over_source
                 
     secant_matrices = geom.get_secant_matrices( compute_source_sectheta = 1,
                                                 average_over_source = model_params.average_over_source,
-                                                reset = not model_params.average_over_source )
+                                                reset = reset_angles )
 
+    
     # cut out large sec theta 
-    for key, val in secant_matrices.items() :
-        mask = ( val[0].x >= 1.45 )
-        secant_matrices[key][0][mask] = meas.nan
+    if cut_high_sectheta : 
+        for key, val in secant_matrices.items() :
+            mask = ( val[0].x >= 1.45 )
+            secant_matrices[key][0][mask] = meas.nan
 
         
     if view_pixel is not None :
@@ -512,15 +536,34 @@ def linear_calibration_on_each_x_strip( dbs,
     set_lower_bound = 0 
 
     if not model_params.vary_det_deadlayer :
-        fit_params.add( 'det_deadlayer', value = 100, vary = 1 ) #, min=0 ) #, min = 0.0 )
-        if set_lower_bound :
-            fit_params[ 'det_deadlayer' ].min = 0
 
-        
+        # add 1 dead layer thickness for entire 
+        if  model_params.different_fstrip_deadlayers : 
+            for x in model_params.fstrips :
+                fit_params.add( 'det_deadlayer_%d' % (x,), value = 100 ) # , min=70, max=130 )
+            
+                    
+        # add 32^2 different dead layers
+        elif model_params.different_pixel_deadlayers :
+            for x in model_params.fstrips :
+                for y in model_params.bstrips : 
+                    fit_params.add( 'det_deadlayer_%d_%d' % (x,y), value = 100 ) # , min=70, max=130 )
+            
+                
+        # final option: just one thickness for the entire grid.
+        else :
+            fit_params.add( 'det_deadlayer', value = 100, vary = 1 ) #, min=0 ) #, min = 0.0 )
+            if set_lower_bound :
+                fit_params[ 'det_deadlayer' ].min = 0
+
+                
     for i in range( len( source_indices ) ) :
         for j in source_indices[i] :
 
             fit_params.add( 'source_constant_%d_%d' % (i,j), value = 6.0 )
+            # if model_params.different_fstrip_deadlayers :
+            #     fit_params[ 'source_constant_%d_%d' % (i,j) ].min=0
+            #     fit_params[ 'source_constant_%d_%d' % (i,j) ].max=30
             
             if set_lower_bound :
                 fit_params[ 'source_constant_%d_%d' % (i,j) ].min = 0
@@ -535,6 +578,10 @@ def linear_calibration_on_each_x_strip( dbs,
     for db in dbs :
         for x in model_params.fstrips :
             fit_params.add( 'a_' + db.name + '_%d' % ( x, ), value = 1.99 )
+            # if model_params.different_fstrip_deadlayers :
+            #     fit_params[ 'a_' + db.name + '_%d' % ( x, ) ].min = 1.85
+            #     fit_params[ 'a_' + db.name + '_%d' % ( x, ) ].max = 2.20
+            
             fit_params.add( 'b_' + db.name + '_%d' % ( x, ), value = -50 )    
 
             
@@ -580,7 +627,9 @@ def linear_calibration_on_each_x_strip( dbs,
                              model_params,
                              annotate = annotate,
                              subtitle = subtitle,
-                             view_pixel = view_pixel ) 
+                             view_pixel = view_pixel,
+                             residual_scatter_plot = residual_scatter_plot,
+                             plot_3d = plot_3d ) 
     
 
     
@@ -599,17 +648,26 @@ def plot_energy_vs_sectheta( lmfit_result, secant_matrices, mu_matrices,
                              model_params,
                              annotate = 0,
                              subtitle = '',
-                             view_pixel = None ) :
+                             view_pixel = None,
+                             residual_scatter_plot = 0,
+                             plot_3d = 0 ) :
     
     f, axarr = plt.subplots( 3, 2 )
 
     # \mathrm instead of \text
     if view_pixel is None :
-        
-        f.suptitle( r'Absolute $ E_\mathrm{det}$ vs. $\sec ( \theta_\mathrm{det} ) $ For Each Peak'
-                    + '\n' + subtitle + ', ' + r'$ \tilde{\chi}^2 = '
-                    + '%.2f' % ( lmfit_result.redchi , ) + '$' )
 
+        if not residual_scatter_plot : 
+        
+            f.suptitle( r'Absolute $ E_\mathrm{det}$ vs. $\sec ( \theta_\mathrm{det} ) $ For Each Peak'
+                        + '\n' + subtitle + ', ' + r'$ \tilde{\chi}^2 = '
+                        + '%.2f' % ( lmfit_result.redchi , ) + '$' )
+
+        else :
+            f.suptitle( r'Model Residuals vs. $\sec ( \theta_\mathrm{det} ) $ For Each Peak'
+                        + '\n' + subtitle + ', ' + r'$ \tilde{\chi}^2 = '
+                        + '%.2f' % ( lmfit_result.redchi , ) + '$' )
+            
 
     # f.text( 0.95, 0.95, r'$ \tilde{\chi}^2 = ' + str( lmfit_result.redchi ) + '$' )
     
@@ -623,11 +681,17 @@ def plot_energy_vs_sectheta( lmfit_result, secant_matrices, mu_matrices,
     plt.grid(False)
     plt.xlabel( r'$sec ( \theta_\mathrm{det} ) $' )
 
-    if view_pixel is not None : 
-        plt.ylabel( r'$E_\mathrm{det}$ (keV)' )
+    if view_pixel is None :
+        
+        if residual_scatter_plot :
+            plt.ylabel( r'$(E - E_\mathrm{cal}) / \Delta( E_\mathrm{cal} )' )
+            
+        else :
+            plt.ylabel( r'$E_\mathrm{det}$ (keV)' )
 
     else : 
         plt.ylabel( r'$\mu$ (channels)' )
+
         
     titles = [ 'Pu 240', 'Pu 238', 'Cf 249' ]
     
@@ -678,18 +742,24 @@ def plot_energy_vs_sectheta( lmfit_result, secant_matrices, mu_matrices,
                         E = a * z + b
 
                         # energies[ d, row, : ] = E.x
-
+                            
                         calibrated_E = energy_from_mu_lmfit( lmfit_result.params,
                                                              z, x, y,
                                                              db.name, row, i, j,
                                                              model_params )
 
+                        E_residual = peak_energies[i][j] - calibrated_E.x
                         Efit = peak_energies[i][j] - ( calibrated_E.x - E.x )
 
                         if not annotate: 
-                            axarr[i,j].errorbar( x.x, E.x, xerr = x.dx, yerr = E.dx,
-                                                 color='b', zorder = 1,
-                                                 ls = 'none' )
+
+                            if residual_scatter_plot :
+                                axarr[i,j].scatter( x.x, E_residual / E.dx, color='b' )
+                                
+                            else :
+                                axarr[i,j].errorbar( x.x, E.x, xerr = x.dx, yerr = E.dx,
+                                                     color='b', zorder = 1,
+                                                     ls = 'none' )
                             
                         else:
                             for a in range( len( model_params.bstrips ) ) :
@@ -705,7 +775,8 @@ def plot_energy_vs_sectheta( lmfit_result, secant_matrices, mu_matrices,
 
                         mask = ~ meas.isnan( z )
 
-                        axarr[i,j].plot( x[ mask ].x, Efit[ mask ], c = 'r', zorder = 2 ) 
+                        if not residual_scatter_plot : 
+                            axarr[i,j].plot( x[ mask ].x, Efit[ mask ], c = 'r', zorder = 2 ) 
 
 
                 # # remove outliers (not from fit, just the plot )
@@ -767,13 +838,13 @@ def plot_energy_vs_sectheta( lmfit_result, secant_matrices, mu_matrices,
 # dbs = [ dbmgr.angled, dbmgr.centered, dbmgr.flat ]
 # dbs = dbmgr.all_dbs
 # dbs = [ dbmgr.angled, dbmgr.centered ]
-# dbs = [ dbmgr.angled ] 
-dbs = [ dbmgr.centered, dbmgr.angled, dbmgr.moved ] # , dbmgr.flat ] 
+# dbs = [ dbmgr.angled ]
+dbs = [ dbmgr.centered, dbmgr.angled, dbmgr.moved, dbmgr.flat ] 
+# dbs = [ dbmgr.flat ]
 
 
-
-# source_indices = [ [0,1], [0,1], [1] ]
 source_indices = [ [0,1], [0,1], [1] ]
+# source_indices = [ [], [], [1] ]
 
 
 
@@ -781,17 +852,17 @@ source_indices = [ [0,1], [0,1], [1] ]
 subtitle = 'Centered, Angled, Moved'
 
 
-fstrips = np.arange( 3, 30 )
+# fstrips = np.arange( 2, 30 )
 
-# a = 2
-# b = 31
-# c = 27
+a = 2
+b = 30
+c = 12
 
-# fstrips = np.zeros( b-a - 1, dtype='int' )
+fstrips = np.empty( b-a - 1, dtype='int' )
 
-# fstrips[ 0 : c-a ] = np.arange( a,c)
-# fstrips[ c-a : b-a-1 ] = np.arange( c+1, b )
-# print( fstrips )
+fstrips[ 0 : c-a ] = np.arange( a,c)
+fstrips[ c-a : b-a-1 ] = np.arange( c+1, b )
+print( fstrips )
 
 
 model_params = dead_layer_model_params( vary_det_deadlayer = 0,
@@ -803,16 +874,23 @@ model_params = dead_layer_model_params( vary_det_deadlayer = 0,
                                         average_over_source = 0,
                                         pulse_height_defect = 0,
                                         fstrips = fstrips,
-                                        bstrips = np.arange( 2, 30 ) )
+                                        bstrips = np.arange( 2, 30 ),
+                                        different_fstrip_deadlayers = 0,
+                                        different_pixel_deadlayers = 0 )
                                         # ignore_outer_pixels = 0 )
 
+                                        
                                         
 
 linear_calibration_on_each_x_strip( dbs, source_indices,
                                     model_params,
+                                    cut_high_sectheta = 0,
                                     annotate = 0,
-                                    # view_pixel = [ dbmgr.centered, 13 ],
-                                    subtitle = subtitle )
+                                    # view_pixel = [ dbmgr.moved, 5 ],
+                                    subtitle = subtitle,
+                                    reset_angles = None,
+                                    residual_scatter_plot = 0,
+                                    plot_3d = 1 )
 
 
 

@@ -230,11 +230,11 @@ def estimate_alpha_peakpos( model, num_iterations = 1000, plot=0 ) :
     for peaknum in range( npeaks ) :
 
         params_array = meas.meas.from_array( np.array( [ A[peaknum],
-                                                    params['mu'][peaknum],
-                                                    params['sigma'],
-                                                    params['eta'],
-                                                    params['tau1'],
-                                                    params['tau2'] ] ) )
+                                                         params['mu'][peaknum],
+                                                         params['sigma'],
+                                                         params['eta'],
+                                                         params['tau1'],
+                                                         params['tau2'] ] ) )
         
         # if the starting params_array is invalid, then don't
         # do the simulation on it.
@@ -283,9 +283,13 @@ def estimate_alpha_peakpos( model, num_iterations = 1000, plot=0 ) :
         peakpos_results[peaknum] = sim_result
 
         
-        if plot:
+        if plot :
+            ax = plt.axes() 
+            ax.set_title( 'Estimated Peak Channel Distribution', fontsize = 20 )
+            ax.set_xlabel( 'Peak Channel', fontsize = 18 )
+            ax.set_ylabel( 'Counts', fontsize = 18 )
             ax = plt.axes()
-            ax.hist( peakpos_arr ) 
+            ax.hist( peakpos_arr, bins = 20 ) 
             plt.show() 
 
             
