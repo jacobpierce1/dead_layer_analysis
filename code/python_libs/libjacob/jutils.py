@@ -20,6 +20,7 @@ def estimate_time_left( current_iteration, total_iterations, num_updates=10, res
     
     if reset == 1 : 
         estimate_time_left.counter = 0
+        return
         
         
     # set the start time if it's the first call to this function.

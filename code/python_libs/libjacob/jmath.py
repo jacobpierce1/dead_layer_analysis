@@ -6,6 +6,7 @@ import scipy.special
 from math import log10, floor
 import peakdetect.peakdetect as peakdetect
 
+from scipy.stats import chi2
 
 import sys
 import warnings
@@ -116,9 +117,10 @@ def model_func( model ):
 np.seterr(divide='ignore', invalid='ignore')
 
 def jleast_squares( x, y, dy, params_guess, fitfunc, dx = None,
-                         reduc_chisq_max = np.inf, fit_bounds = None,
-                         params_bounds = None, successful_fit_predicate = None,
-                         print_results = 0 ):
+                    reduc_chisq_max = np.inf, fit_bounds = None,
+                    params_bounds = None, successful_fit_predicate = None,
+                    pvalue = None,
+                    print_results = 0 ):
 
     # print( 'fitfunc: ' + str( fitfunc ) ) 
 
@@ -200,6 +202,10 @@ def jleast_squares( x, y, dy, params_guess, fitfunc, dx = None,
         if not successful_fit_predicate( model_result ):
             return None
 
+    # do a check on pvalue
+    if pvalue is not None :
+        if 1 - chi2.cdf( model_result.chisqr, model_result.nfree ) < pvalue :
+            return None
         
     # if we made it past those if's then we return a valid model.
     return model_result

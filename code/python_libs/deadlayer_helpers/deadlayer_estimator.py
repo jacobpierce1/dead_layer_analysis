@@ -94,25 +94,6 @@ si_interp_stopping_powers = np.array( [ 6.138E+02, 6.107E+02, 6.075E+02, 6.044E+
                                         5.591E+02 ] ) 
 
 
-# big_si_interp_energies = np.linspace( 0.1, 6.0, 60 )
-
-# big_si_interp_stopping_powers = np.array( [ 9.107E+02, 1.232E+03, 1.364E+03, 1.412E+03,
-#                                             1.420E+03, 1.408E+03, 1.386E+03, 1.358E+03,
-#                                             1.328E+03, 1.296E+03, 1.265E+03, 1.234E+03,
-#                                             1.204E+03, 1.175E+03, 1.148E+03, 1.121E+03,
-#                                             1.095E+03, 1.070E+03, 1.046E+03, 1.024E+03,
-#                                             1.002E+03, 9.815E+02, 9.618E+02, 9.429E+02,
-#                                             9.248E+02, 9.073E+02, 8.904E+02, 8.742E+02,
-#                                             8.584E+02, 8.432E+02, 8.284E+02, 8.141E+02,
-#                                             8.003E+02, 7.868E+02, 7.738E+02, 7.611E+02,
-#                                             7.487E+02, 7.367E+02, 7.251E+02, 7.137E+02,
-#                                             7.027E+02, 6.919E+02, 6.815E+02, 6.715E+02,
-#                                             6.618E+02, 6.524E+02, 6.433E+02, 6.346E+02,
-#                                             6.261E+02, 6.179E+02, 6.099E+02, 6.021E+02,
-#                                             5.946E+02, 5.873E+02, 5.802E+02, 5.732E+02,
-#                                             5.665E+02, 5.600E+02, 5.536E+02, 5.474E+02 ] )
-
-
 
 
 density_si = 2.328 # g / cm^2
@@ -413,6 +394,7 @@ def energy_from_mu_lmfit( params,
 
 
 
+
 def objective( params, mu_matrices, secant_matrices, actual_energies,
                dbs, source_indices, model_params ):
 
@@ -423,9 +405,6 @@ def objective( params, mu_matrices, secant_matrices, actual_energies,
                        * sum( [ len( model_params.fstrips[ db.name ] ) for db in dbs ] ) 
                        * len( model_params.bstrips ) , ) ) # np.zeros( ( len(dbs), 3, 2, 32, 32 ) )
 
-    # print( len( resid ) )
-    
-    # for i
     db_names = [ db.name for db in dbs ]
 
     # keep track of where the 1D residual array has been
@@ -461,8 +440,6 @@ def objective( params, mu_matrices, secant_matrices, actual_energies,
                     resid[ resid_idx : resid_idx + num_bstrips ] = residual.x * weight
                     resid_idx += num_bstrips 
                     
-    # ret = resid.flatten()
-    
     # print( 'objective: %f' % ( time.time() - start_time, ) )
       
     return resid
@@ -478,19 +455,16 @@ def objective( params, mu_matrices, secant_matrices, actual_energies,
 
 # do a fit of the form E = A * mu + b + s * sec(phi) +
 # deadlayer_distance * si_stopping_power * sec(theta)
+# for all data points in the dataset. also offers plotting
+# options.
 
-def linear_calibration_on_each_x_strip( dbs,
-                                        source_indices,
-                                        model_params,
-                                        annotate = 0,
-                                        cut_high_sectheta = 0,
-                                        subtitle = '',
-                                        view_pixel = None,
-                                        reset_angles = None,
-                                        residual_scatter_plot = 0,
-                                        plot_3d = 0,
-                                        savefig_dir = None ) : 
-
+def deadlayer_regression( dbs, source_indices, model_params,
+                          annotate = 0, cut_high_sectheta = 0,
+                          subtitle = '', view_pixel = None,
+                          reset_angles = None,
+                          residual_scatter_plot = 0,
+                          plot_3d = 0,
+                          savefig_dir = None ) : 
 
     
     # next, read the data that will go into the regression. 

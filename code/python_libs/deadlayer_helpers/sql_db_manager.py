@@ -18,6 +18,8 @@ import jspectroscopy as spec
 import dill # allow lambda function pickle
 
 
+# todo: remove this
+from scipy.stats import chi2
 
 
 
@@ -32,10 +34,7 @@ DEBUG_DB = 0
 
 
 
-################################
-# begin module #################
-################################
-
+# global constants for use later 
 
 _current_abs_path = os.path.dirname( __file__ ) + '/'
 
@@ -52,13 +51,19 @@ schema_cols = [ 'x', 'y', 'fit_id', 'successful_fit',
 
 
 
+
 # class providing complete set of operations for writing
 # and specialized querying for the DBs.
+# det_number is optional number of the detector, in case
+# multiple detectors were used for the same dataset.
+# sources is a list of the names of the sources used.
 
 class db( object ):
 
     
-    def __init__( self, name, dimensions = None, features_shape = None ):
+    def __init__( self, name, dimensions = None,
+                  features_shape = None, det_number = None,
+                  sources = None ):
 
         # state the number of x and y dimensions of the detector
         # to be stored in the database. for example, if you passed
@@ -107,6 +112,10 @@ class db( object ):
 
         self.num_features = len( self.num_peaks_per_feature ) 
 
+        self.det_number = det_number
+
+        self.sources = sources
+        
         # self.alternate_shape = [ 0, 0, [0,1] ]
         
         # self.num_sources = len( num_peaks_per_fit ) 
@@ -167,11 +176,12 @@ class db( object ):
     
 
 
-
+    # TODO: remove
     def flatten( self ):
         return _meas_no_checks( self.x.flatten, self.dx.flatten() )
         
-        
+
+    
 
     # this function shall only write the fit parametetrs and things
     # that can be obtained only from the histograms, especially the
@@ -336,68 +346,6 @@ class db( object ):
 
 
 
-
-
-
-    
-    # def get_mu_for_x_strip( self, x ):
-
-    #     if not isint( x ):
-    #         raise( ValueError( 'x is not an int.' ) )
-
-    #     # print( 'INFO: loading mu values for x strip ' + str( x ) + ' ...' )
-
-    #     disconnect_conn_when_done = 0
-    #     if self.conn is None:
-    #         self.connect()
-    #         disconnect_conn_when_done = 1
-
-    #     # populate the grid 
-    #     strip = np.empty( (3, 2), dtype = 'object' )
-    #     for i in range(3):
-    #         for j in range(2):
-    #             strip[i][j] =  meas.meas.empty( 32 )
-        
-    #     cursor = self.conn.cursor()
-    #     cursor.execute( 'SELECT * FROM ' + _tablename + ' WHERE x = (?)', (x,) )
-
-    #     for row in cursor:
-
-    #         # if fit didn't converge then all the mu values for that
-    #         # feature are assigned np.nan
-            
-    #         if not row[ 'successful_fit' ]:
-    #             for i in range( 2 ):
-    #                 # grid[ row[ 'fit_id' ][ i ] ].x[ row['y'] ] = np.nan
-    #                 # grid[ row[ 'fit_id' ][ i ] ].dx[ row['y'] ] = np.nan
-    #                 strip[ row[ 'fit_id' ], i ][ row['y'] ] = meas.nan
-                    
-    #             continue
-
-    #         mu = spec.get_alpha_params_dict( _from_bin( row['model'] ) )[ 'mu' ] 
-    #         if mu.size() == 1:
-    #             # mu = meas.meas( [ np.nan, mu.x[0] ], [ np.nan, mu.dx[0] ] )
-    #             mu = meas.append( meas.nan, mu )
-                
-    #         for i in range(2):
-    #             strip[ row[ 'fit_id' ], i ][ row['y'] ] = mu[i]
-
-                
-    #     if disconnect_conn_when_done:
-    #         self.disconnect()
-                
-    #     return strip 
-
-
-    
-
-                               
-
-    # def get_mu_for_y_strip( self, y ):
-    #     raise( NotImplementedError( 'mu is not const in y direction' ) )
-
-
-    
 
 
 
@@ -602,7 +550,6 @@ class db( object ):
             # feature are assigned np.nan
             
             if not row[ 'successful_fit' ]: 
-
                 for i in range( self.num_peaks_per_feature[ feature ]  ):
                     peak_grids[ feature ][ i ][ x,y ] = meas.nan
                 continue
@@ -612,16 +559,21 @@ class db( object ):
 
 
             # throw out the data if we didn't estimate errorbars.
-
             if not model.errorbars :
                 for i in range( self.num_peaks_per_feature[ feature ]  ):
                     peak_grids[ feature ][ i ][ x,y ] = meas.nan
                 continue
 
-            
+            # do check on chi2. TODO: this should be removed and incorporated
+            # in the fit itself.
+            if 1 - chi2.cdf( model.chisqr, model.nfree ) < 0.05 :
+                for i in range( self.num_peaks_per_feature[ feature ]  ):
+                    peak_grids[ feature ][ i ][ x,y ] = meas.nan
+                continue
+                
             # do a monte carlo simulation for each peak in this feature.
                 
-            peaks = spec.estimate_alpha_peakpos( model, plot = 1 )
+            peaks = spec.estimate_alpha_peakpos( model, plot = 0 )
 
             # check if the fit used the alternate shape
             if len( peaks ) != self.num_peaks_per_feature[ feature ] :
@@ -635,6 +587,8 @@ class db( object ):
             for i in range( self.num_peaks_per_feature[ feature ] ):
                 peak_grids[ feature ][ i ][ x,y ] = peaks[i]
 
+        # reset the counter 
+        estimate_time_left( 0, 0, reset = 1 ) 
                 
         if disconnect_conn_when_done:
             self.disconnect()
@@ -681,9 +635,20 @@ def _from_bin( bin ):
 ## DECLARE GLOBALS FOR USE ELSEWHERE ######
 ###########################################
 
-all_dbs = [ db( name, (32,32), (2,2,2) )
+all_dbs = [ db( name, (32,32), (2,2,2), det_number = 1,
+                sources = [ 'pu_240', 'pu_238_' + name,
+                            'cf_249' ] )
             for name in [ 'centered', 'moved', 'flat', 'angled' ] ]
 centered, moved, flat, angled = all_dbs
 
-normal_dbs = [ centered, moved, flat ]
+
+_det3_pu_238_states = [ 'centered', 'moved' ]
+_det3_names = [ 'det3_cent', 'det3_moved' ]
+
+det3_dbs = [0] * 2
+for i in range(2) :
+    det3_dbs[i] = db( _det3_names[i], (32,32),
+                      (2,2,2), det_number = 3,
+                      sources = [ 'pu_240', 'pu_238_' + _det3_pu_238_states[i],
+                                  'cf_249' ] )
     

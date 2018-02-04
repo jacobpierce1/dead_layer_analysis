@@ -5,6 +5,8 @@ from .jmath import xcut
 import array
 import numpy as np
 import matplotlib.pyplot as plt
+plt.rcParams["font.family"] = "Times New Roman"
+
 from collections import OrderedDict
 
 import sys

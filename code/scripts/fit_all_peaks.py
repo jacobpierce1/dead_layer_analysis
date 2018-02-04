@@ -57,12 +57,14 @@ import jspectroscopy as spec
 ## includes 
 import numpy as np
 import matplotlib.pyplot as plt
+plt.rcParams["font.family"] = "Times New Roman"
+
 import time 
 import sys
 import sqlite3
 import os
 from enum import Enum 
-
+from scipy.stats import chi2
 
 
 
@@ -232,6 +234,7 @@ def apply_peak_fit( ax, x, y, fit_id,
                                       reduc_chisq_max = 2,
                                       params_bounds = params_bounds,
                                       successful_fit_predicate = successful_alpha_fit_predicate,
+                                      pvalue = 0.05,
                                       print_results = 0 )
         
         # if done, do final checks on the fit. if successful, break out of
@@ -289,6 +292,7 @@ def apply_peak_fit( ax, x, y, fit_id,
 
     # now we have broken out of the loop after a successful fit. unpack the results.
     reduc_chisq = model.redchi
+    
 
     # model.plot_fit( ax = ax, datafmt = '-r', numpoints = 100 * model.ndata )
 
@@ -315,6 +319,8 @@ def apply_peak_fit( ax, x, y, fit_id,
 
 
     if reduc_chisq_all is not None:
+        if PRINT_FIT_ATTEMPT :
+            print( 'p value: ' + str( 1 - chi2.cdf( model.chisqr, model.nfree ) ) )
         reduc_chisq_all.append( reduc_chisq )
 
 
@@ -360,7 +366,8 @@ def successful_alpha_fit_predicate( model ):
 # open sqlite connection and check db for whether this file has been
 # processed before.
 
-def process_file( ax, infile, x, y, db = None, logfile=None ):
+def process_file( ax, infile, x, y, db = None,
+                  logfile=None, nice_format = 0 ):
 
     log_enabled = logfile is not None
     
@@ -417,11 +424,28 @@ def process_file( ax, infile, x, y, db = None, logfile=None ):
 
  
     # plot the histogram without fit yet 
-    jplt.plot_histo( ax, xaxis, efront_histo, plot_bounds=plot_bounds, logscale=0,
-                     title = "", 
-                     xlabel = "", 
-                     ylabel = "" )
+    if nice_format : 
+        jplt.plot_histo( ax, xaxis, efront_histo,
+                         plot_bounds=plot_bounds, logscale = 0,
+                         title = "Example Spectrum", xlabel = "Channel",
+                         ylabel = "Counts" )
 
+        labels = [ '$^{240}\mathrm{Pu}$', '$^{238}\mathrm{Pu}$',
+                       '$^{249}\mathrm{Cf}$' ]
+
+        for l in range( 3 ) :
+
+            peakpos = our_peaks[ 2*l ]
+            ax.text( peakpos - 30, 30 + efront_histo[ peakpos ],
+                     labels[l] ) # , xycoords = 'data' )
+
+            # l.draggable()
+            
+    else :
+        jplt.plot_histo( ax, xaxis, efront_histo,
+                         plot_bounds=plot_bounds, logscale = 0,
+                         title = "", xlabel = "",
+                         ylabel = "" )
 
     if SHOW_HISTO:
         plt.show()
@@ -510,7 +534,10 @@ def process_file( ax, infile, x, y, db = None, logfile=None ):
                 # fitfunc = spec.sum_n_fitfuncs( spec.fitfunc_n_alpha_peaks, NUM_PEAKS_PER_FEATURE[i] )
                 
                 model = db_data[ 'model' ] 
-                jplt.add_fit_to_plot( ax, xaxis, db_data[ 'fit_bounds' ], jmath.model_func( model ) )
+                jplt.add_fit_to_plot( ax, xaxis, db_data[ 'fit_bounds' ],
+                                      jmath.model_func( model ),
+                                      logscale = 1 )
+                
                 reduc_chisq_all.append( model.redchi )
                 
 
@@ -590,7 +617,7 @@ def process_file( ax, infile, x, y, db = None, logfile=None ):
                             params_bounds = params_bounds[i] ) 
     
     
-    _add_text( ax, x, y, reduc_chisq_all ) 
+    _add_text( ax, x, y, reduc_chisq_all, nice_format ) 
     
         
     return 1
@@ -600,16 +627,25 @@ def process_file( ax, infile, x, y, db = None, logfile=None ):
 
 
 
-def _add_text( ax, x, y, reduc_chisq_all ):
+def _add_text( ax, x, y, reduc_chisq_all, nice_format ):
     
     coordsstr = "(%d, %d)" % ( x, y )
 
     reduc_chisq_str = jutils.format_measurement_vector( "\\tilde{\\chi}^2", reduc_chisq_all, 0.01 )
 
     fitstr = '\n' + reduc_chisq_str
-    
-    ax.text( 0.02, 1.05, fitstr, transform=ax.transAxes, fontsize=12, verticalalignment='top')
-    ax.text( 0.03, 0.80, coordsstr, transform=ax.transAxes, fontsize=12, verticalalignment='top' )
+
+    if not nice_format : 
+        ax.text( 0.02, 1.05, fitstr, transform=ax.transAxes,
+                 fontsize=12, verticalalignment='top')
+        ax.text( 0.03, 0.80, coordsstr, transform=ax.transAxes,
+                 fontsize=12, verticalalignment='top' )
+
+    else :
+        ax.text( 0.02, 1.0, fitstr, transform=ax.transAxes,
+                 fontsize=12, verticalalignment='top')
+        
+        
 
 
     
@@ -617,7 +653,7 @@ def _add_text( ax, x, y, reduc_chisq_all ):
 
 
 # main function, goes through all the data.
-def fit_all_peaks():
+def fit_all_peaks( dbs ):
 
     # dimesions of detector
     totalx = 32
@@ -629,7 +665,7 @@ def fit_all_peaks():
 
     a = -1
 
-    for db in dbmgr.all_dbs:
+    for db in dbs :
 
         # count number of db's we have processed. 
         a += 1 
@@ -738,7 +774,7 @@ def make_one_plot( db, x, y, test_db = 0 ):
         db.disconnect()
 
     else:
-        process_file( ax, current_file, x, y ) 
+        process_file( ax, current_file, x, y, nice_format = 1 ) 
 
         
     plt.show()
@@ -787,7 +823,7 @@ def set_globals_for_debugging( test_db = 0 ):
     SHOW_HISTO = 0
      
        
-# make_one_plot( dbmgr.centered, 16, 16, test_db = 1 )
-fit_all_peaks()
+make_one_plot( dbmgr.angled, 24, 30, test_db = 0 )
+# fit_all_peaks( dbmgr.all_dbs )
 
 
