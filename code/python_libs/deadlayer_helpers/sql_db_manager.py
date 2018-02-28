@@ -651,4 +651,5 @@ for i in range(2) :
                       (2,2,2), det_number = 3,
                       sources = [ 'pu_240', 'pu_238_' + _det3_pu_238_states[i],
                                   'cf_249' ] )
-    
+
+det3_cent, det3_moved = det3_dbs

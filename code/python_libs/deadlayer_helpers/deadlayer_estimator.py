@@ -94,6 +94,25 @@ si_interp_stopping_powers = np.array( [ 6.138E+02, 6.107E+02, 6.075E+02, 6.044E+
                                         5.591E+02 ] ) 
 
 
+# big_si_interp_energies = np.linspace( 0.1, 6.0, 60 )
+
+# big_si_interp_stopping_powers = np.array( [ 9.107E+02, 1.232E+03, 1.364E+03, 1.412E+03,
+#                                             1.420E+03, 1.408E+03, 1.386E+03, 1.358E+03,
+#                                             1.328E+03, 1.296E+03, 1.265E+03, 1.234E+03,
+#                                             1.204E+03, 1.175E+03, 1.148E+03, 1.121E+03,
+#                                             1.095E+03, 1.070E+03, 1.046E+03, 1.024E+03,
+#                                             1.002E+03, 9.815E+02, 9.618E+02, 9.429E+02,
+#                                             9.248E+02, 9.073E+02, 8.904E+02, 8.742E+02,
+#                                             8.584E+02, 8.432E+02, 8.284E+02, 8.141E+02,
+#                                             8.003E+02, 7.868E+02, 7.738E+02, 7.611E+02,
+#                                             7.487E+02, 7.367E+02, 7.251E+02, 7.137E+02,
+#                                             7.027E+02, 6.919E+02, 6.815E+02, 6.715E+02,
+#                                             6.618E+02, 6.524E+02, 6.433E+02, 6.346E+02,
+#                                             6.261E+02, 6.179E+02, 6.099E+02, 6.021E+02,
+#                                             5.946E+02, 5.873E+02, 5.802E+02, 5.732E+02,
+#                                             5.665E+02, 5.600E+02, 5.536E+02, 5.474E+02 ] )
+
+
 
 
 density_si = 2.328 # g / cm^2
@@ -152,7 +171,8 @@ class dead_layer_model_params( object ) :
                   bstrips = None,
                   different_fstrip_deadlayers = 0,
                   different_pixel_deadlayers = 1,
-                  fix_source_deadlayers = None ) :
+                  fix_source_deadlayers = None,
+                  one_source_constant = 0 ) :
 
         # various options that change the model the data is fit
         # to. see energy_from_mu_lmfit() for what they do.
@@ -202,6 +222,8 @@ class dead_layer_model_params( object ) :
         # dict of source deadlayers is supplied and fixed in the fit
         # so that they are not varied in the fit.
         self.fix_source_deadlayers = fix_source_deadlayers 
+
+        self.one_source_constant = one_source_constant
         
         return None
 
@@ -295,7 +317,12 @@ def energy_from_mu_lmfit( params,
 
     a = params[ 'a_' + db_name + '_%d' % ( x, ) ].value.item()
     b = params[ 'b_' + db_name + '_%d' % ( x, ) ].value.item()
-    source_constant = params[ 'source_constant_%d_%d' % (i,j) ].value
+
+    if model_params.one_source_constant : 
+        source_constant = params[ 'source_constant_%d' % (i) ].value
+        
+    else :
+        source_constant = params[ 'source_constant_%d_%d' % (i,j) ].value
     
     energy_det = a * mu + b 
 
@@ -394,7 +421,6 @@ def energy_from_mu_lmfit( params,
 
 
 
-
 def objective( params, mu_matrices, secant_matrices, actual_energies,
                dbs, source_indices, model_params ):
 
@@ -405,6 +431,9 @@ def objective( params, mu_matrices, secant_matrices, actual_energies,
                        * sum( [ len( model_params.fstrips[ db.name ] ) for db in dbs ] ) 
                        * len( model_params.bstrips ) , ) ) # np.zeros( ( len(dbs), 3, 2, 32, 32 ) )
 
+    # print( len( resid ) )
+    
+    # for i
     db_names = [ db.name for db in dbs ]
 
     # keep track of where the 1D residual array has been
@@ -440,6 +469,8 @@ def objective( params, mu_matrices, secant_matrices, actual_energies,
                     resid[ resid_idx : resid_idx + num_bstrips ] = residual.x * weight
                     resid_idx += num_bstrips 
                     
+    # ret = resid.flatten()
+    
     # print( 'objective: %f' % ( time.time() - start_time, ) )
       
     return resid
@@ -455,16 +486,19 @@ def objective( params, mu_matrices, secant_matrices, actual_energies,
 
 # do a fit of the form E = A * mu + b + s * sec(phi) +
 # deadlayer_distance * si_stopping_power * sec(theta)
-# for all data points in the dataset. also offers plotting
-# options.
 
-def deadlayer_regression( dbs, source_indices, model_params,
-                          annotate = 0, cut_high_sectheta = 0,
-                          subtitle = '', view_pixel = None,
-                          reset_angles = None,
-                          residual_scatter_plot = 0,
-                          plot_3d = 0,
-                          savefig_dir = None ) : 
+def linear_calibration_on_each_x_strip( dbs,
+                                        source_indices,
+                                        model_params,
+                                        annotate = 0,
+                                        cut_high_sectheta = 0,
+                                        subtitle = '',
+                                        view_pixel = None,
+                                        reset_angles = None,
+                                        residual_scatter_plot = 0,
+                                        plot_3d = 0,
+                                        savefig_dir = None ) : 
+
 
     
     # next, read the data that will go into the regression. 
@@ -547,24 +581,39 @@ def deadlayer_regression( dbs, source_indices, model_params,
 
                 
     for i in range( len( source_indices ) ) :
-        for j in source_indices[i] :
 
-            source_name = 'source_constant_%d_%d' % (i,j)
+        if model_params.one_source_constant :
+
+            source_name = 'source_constant_%d' % (i,)
+            
             if model_params.fix_source_deadlayers is None :
                 fit_params.add( source_name, value = 6.0 )
+
             else :
                 fit_params.add( source_name, vary = 0,
                                 value = model_params.fix_source_deadlayers[ source_name ] )
+                    
+        else : 
+            for j in source_indices[i] :
+            
+                source_name = 'source_constant_%d_%d' % (i,j)
+                
+                if model_params.fix_source_deadlayers is None :
+                    fit_params.add( source_name, value = 6.0 )
+
+                else :
+                    fit_params.add( source_name, vary = 0,
+                                    value = model_params.fix_source_deadlayers[ source_name ] )
 
                 
-            if set_lower_bound :
-                fit_params[ 'source_constant_%d_%d' % (i,j) ].min = 0
+                if set_lower_bound :
+                    fit_params[ 'source_constant_%d_%d' % (i,j) ].min = 0
             
-            if model_params.quadratic_source :
-                fit_params.add( 'source_constant2_%d_%d' % (i,j), value = 0.0, vary = 1  )
+                if model_params.quadratic_source :
+                    fit_params.add( 'source_constant2_%d_%d' % (i,j), value = 0.0, vary = 1  )
 
-            if model_params.quadratic_det :
-                fit_params.add( 'det_constant2_%d_%d' % (i,j), value = 0.0, vary = 1  )
+                if model_params.quadratic_det :
+                    fit_params.add( 'det_constant2_%d_%d' % (i,j), value = 0.0, vary = 1  )
                 
     
                 
@@ -869,9 +918,6 @@ def plot_results_3d( lmfit_result, secant_matrices, mu_matrices,
                 ax.plot( det_sectheta.x[ mask ] , Efit[ mask ], c = 'r', zorder = 2 ) 
 
 
-    # for i in range( 2 ) :
-    #     axarr[1][i].
-    # plt.colorbar()
     if savefig_dir :
         plt.savefig( savefig_dir + 'calibration' + '.eps',
              format='eps', dpi=2000 )
@@ -906,7 +952,7 @@ def plot_energy_vs_sectheta( lmfit_result, secant_matrices, mu_matrices,
     
     # in this case the angled plots are made in 3d.
     if angled_3d_plot :
-        f, axarr = plt.subplots( 5, 1 )
+        f, axarr = plt.subplots( 3, 2 )
         for i in range(2) :
             axarr[3+i].get_xaxis().set_visible( False )
             axarr[3+i].get_yaxis().set_visible( False )
@@ -927,7 +973,7 @@ def plot_energy_vs_sectheta( lmfit_result, secant_matrices, mu_matrices,
         
             f.suptitle( r'Absolute $ E_\mathrm{det}$ vs. $\sec ( \theta_\mathrm{det} ) $ For Each Peak'
                         + '\n' + subtitle + ', ' + r'$ \tilde{\chi}^2 = '
-                        + '%.2f' % ( lmfit_result.redchi , ) + '$' )
+                        + '%.2f' % ( lmfit_result.redchi , ) + '$', fontsize = 20  )
 
         else :
             f.suptitle( r'Model Residuals vs. $\sec ( \theta_\mathrm{det} ) $ For Each Peak'
@@ -943,15 +989,15 @@ def plot_energy_vs_sectheta( lmfit_result, secant_matrices, mu_matrices,
 
     plt.tick_params(labelcolor='none', top='off', bottom='off', left='off', right='off')
     plt.grid(False)
-    plt.xlabel( r'$sec ( \theta_\mathrm{det} ) $' )
+    plt.xlabel( r'$sec ( \theta_\mathrm{det} ) $', fontsize = 20  )
 
     if view_pixel is None :
         
         if residual_scatter_plot :
-            plt.ylabel( r'$(E - E_\mathrm{cal}) / \Delta( E_\mathrm{cal} )' )
+            plt.ylabel( r'$(E - E_\mathrm{cal}) / \Delta( E_\mathrm{cal} )', fontsize = 20 )
             
         else :
-            plt.ylabel( r'$E_\mathrm{det}$ (keV)' )
+            plt.ylabel( r'$E_\mathrm{det}$ (keV)', fontsize = 20 )
 
     else : 
         plt.ylabel( r'$\mu$ (channels)' )
@@ -968,9 +1014,9 @@ def plot_energy_vs_sectheta( lmfit_result, secant_matrices, mu_matrices,
             # energies = np.empty( ( len(dbs), 32, 32 ) )
             if view_pixel is None :
                 
-                if model_params.vary_det_deadlayer:
-                    det_constant = lmfit_result.params[ 'source_constant_%d_%d' % (i,j) ].value #.item()
-                    print( 'effective dl: ' + str ( det_constant / si_stopping_powers[i][j] ) )
+                # if model_params.vary_det_deadlayer:
+                #     det_constant = lmfit_result.params[ 'source_constant_%d_%d' % (i,j) ].value #.item()
+                    # print( 'effective dl: ' + str ( det_constant / si_stopping_powers[i][j] ) )
 
                 for db in dbs : 
                 # for d in range( len( dbs ) ) :
@@ -983,7 +1029,9 @@ def plot_energy_vs_sectheta( lmfit_result, secant_matrices, mu_matrices,
 
                     # source_constant = lmfit_result.params[ 'source_constant_%d_%d' % (i,j) ].value
 
-                    for row in model_params.fstrips :
+                    for row_num in range( len( model_params.fstrips_requested ) ) :
+                    
+                        row = model_params.fstrips_requested[ row_num ]
 
                         x = secant_matrices[source][0][row][ model_params.bstrips ]
                         y = secant_matrices[source][1][row][ model_params.bstrips ]
@@ -1041,17 +1089,6 @@ def plot_energy_vs_sectheta( lmfit_result, secant_matrices, mu_matrices,
                                 axarr[i,j].plot( x[ mask ].x, Efit[ mask ], c = 'r', zorder = 2 ) 
 
 
-                # # remove outliers (not from fit, just the plot )
-
-                # flattened_energies = energies.flatten()
-                # mask = ~ np.isnan( flattened_energies )            
-                # sorted_energies = sorted( flattened_energies[ mask ] )
-
-                # newmin = sorted_energies[10]
-                # newmax = sorted_energies[ len(sorted_energies) - 5 ]
-
-                # # axarr[i][j].set_ylim( newmin - 10, newmax + 10 )
-
             else :
 
                 db = view_pixel[0]
@@ -1078,8 +1115,6 @@ def plot_energy_vs_sectheta( lmfit_result, secant_matrices, mu_matrices,
                 axarr[i,j].errorbar( x.x, z.x, yerr = z.dx,
                                      color='b', zorder = 1, ls = 'none' ) #, label = 'test' )
 
-                                
-
     if annotate :
         datacursor( formatter = '{label}'.format )
     
@@ -1087,193 +1122,6 @@ def plot_energy_vs_sectheta( lmfit_result, secant_matrices, mu_matrices,
 
     
 
-
-
-
-
-
-
-
-
-# x and y are data for x and y axes. 
-def add_data_to_2d_plot( axarr, db, x, y,
-                         i, j ) :
-    pass
-
-
-
-
-def add_data_to_3d_plot( axarr, x, y, z, 
-                         db, i, j ) :
-    pass
-
-
-
-
-
-    
-
-
-# def ignore_coordinates_predicate( i, j ) :
-#     return i>1 and i<30 and j>1 and j<30
-
-
-    
-  
-
-# dbs = [ dbmgr.angled ]
-# dbs = [ dbmgr.centered, dbmgr.angled, dbmgr.moved, dbmgr.flat ] 
-# dbs = [ dbmgr.flat ]
-# dbs = dbmgr.det3_dbs
-dbs = dbmgr.all_dbs 
-# dbs = [ dbmgr.angled ]
-
-# source_indices = [ [0,1], [0,1], [1] ]
-source_indices = [ [0,1], [0,1], [1] ]
-
-
-
-# subtitle = 'Angled Dataset'
-# subtitle = 'Centered, Angled, Moved'
-subtitle = ''
-
-fstrips = np.arange( 2, 30 )
-
-# a = 2
-# b = 30
-# c = 12
-
-# fstrips = np.empty( b-a - 1, dtype='int' )
-
-# fstrips[ 0 : c-a ] = np.arange( a,c)
-# fstrips[ c-a : b-a-1 ] = np.arange( c+1, b )
-# print( fstrips )
-fix_source_deadlayers = { 'source_constant_0_0' :   13.1292106,
-                          'source_constant_0_1' :   12.5279746,
-                          'source_constant_1_0' :   3.90229562,
-                          'source_constant_1_1' :   2.89311618,
-                          'source_constant_2_1' :   5.11531913 }
-
-
-
-model_params = dead_layer_model_params( vary_det_deadlayer = 0,
-                                        quadratic_source = 0,
-                                        quadratic_det = 0,
-                                        calibrate_each_pixel = 0,
-                                        interp_stopping_power = 1,
-                                        mu = 0,
-                                        average_over_source = 0,
-                                        pulse_height_defect = 0,
-                                        fstrips_requested = fstrips,
-                                        bstrips = np.arange( 2, 30 ),
-                                        different_fstrip_deadlayers = 0,
-                                        different_pixel_deadlayers = 0,
-                                        fix_source_deadlayers = None )
-                                        # ignore_outer_pixels = 0 )
-
-
-
-# f, axarr = plt.subplots( 3, 2 )
-# for i in range(2) :
-#     axarr[2,i].get_xaxis().set_visible( False )
-#     axarr[2,i].get_yaxis().set_visible( False )
-
-# ax1 = f.add_subplot(325, projection='3d' )
-# ax2 = f.add_subplot(326, projection='3d' )
-# axarr2 = [ ax1, ax2 ]
-
-# for i in range(2):
-#     axarr2[i].plot( [1,2,3], [-4,-5,-6] ) 
-#     for j in range(2):
-#         axarr[i,j].plot( [1,2,3], [4,5,6] )
-
-
-# plt.show() 
-
-
-
-# f, axarr = plt.subplots( 5, 1 )
-# for i in range(2) :
-#     axarr[3+i].get_xaxis().set_visible( False )
-#     axarr[3+i].get_yaxis().set_visible( False )
-
-# ax1 = f.add_subplot(514, projection='3d' )
-# ax2 = f.add_subplot(515, projection='3d' )
-# # axarr2 = [ ax1, ax2 ]
-# axarr[3] = ax1
-# axarr[4] = ax2 
-
-# for i in range(2):
-#     axarr[3+i].plot( [1,2,3], [-4,-5,-6] ) 
-
-# for i in range(3):
-#     axarr[i].plot( [1,2,3], [4,5,6] )
-
-# plt.show()
-
-
-
-
-# f = plt.figure()
-
-# axarr = [ f.add_subplot( 3,2, 2*i + 1 ) for i in range(3) ]
-          
-# # for i in range(3) :
-# #     axarr[i,1].get_xaxis().set_visible( False )
-# #     axarr[i,1].get_yaxis().set_visible( False )
-
-# ax1 = f.add_subplot(222, projection='3d' )
-# ax2 = f.add_subplot(224, projection='3d' )
-# axarr_3d = [ ax1, ax2 ]
-
-# for i in range(2):
-#     axarr_3d[i].plot( [1,2,3], [-4,-5,-6] ) 
-
-# for i in range(3):
-#     axarr[i].plot( [1,2,3], [4,5,6] )
-    
-
-# plt.show() 
-
-# print( colorcet.diverging_bkr_55_10_c35 )
-# #  print( plt.get_cmap( 'bwr' ) )
-# print( '' )
-
-# custom_cmap = np.array( colorcet.diverging_bkr_55_10_c35 ).T
-
-# print( custom_cmap[0] )
-
-# custom_cmap = { 'red' : custom_cmap[0],
-#                 'green' : custom_cmap[1], 
-#                 'blue' : custom_cmap[2] }
-                
-# ax = plt.axes()
-# ax.scatter( [0,1,2], [0,1,2], c = [0,1,2],
-#             cmap = colorcet.m_diverging_bkr_55_10_c35 )
-# plt.show()
-
-
-linear_calibration_on_each_x_strip( dbs, source_indices,
-                                    model_params,
-                                    cut_high_sectheta = 0,
-                                    annotate = 0,
-                                    # view_pixel = [ dbmgr.moved, 5 ],
-                                    subtitle = subtitle,
-                                    reset_angles = None,
-                                    residual_scatter_plot = 0,
-                                    plot_3d = 1 ) #  ,
-                                    # savefig_dir = '../../../deadlayer_analysis_paper/images/' )
-
-
-
-# secant_matrices = geom.get_secant_matrices( compute_source_sectheta = 1,
-#                                                 average_over_source = 0 )
-
-# print( secant_matrices[ 'cf_249' ][1].x ) 
-
-# secant_matrices = geom.get_secant_matrices( compute_source_sectheta = 1,
-#                                                 average_over_source = 1 )
-# print( secant_matrices[ 'cf_249' ][1].x ) 
 
 
 
