@@ -18,7 +18,8 @@ warnings.simplefilter("error", OptimizeWarning)
 
 
 # plot a histogram with my usual settings 
-def plot_histo( ax, x, histo_array, plot_bounds=None, xlabel="", ylabel="", title="", logscale=0 ):
+def plot_histo( ax, x, histo_array, plot_bounds=None, xlabel="", ylabel="",
+                title="", logscale=0 ):
     
     # clever
     if plot_bounds is 'minmax':
@@ -29,7 +30,7 @@ def plot_histo( ax, x, histo_array, plot_bounds=None, xlabel="", ylabel="", titl
     x = np.array(x)
     histo_array = np.array(histo_array)
 
-    ax.errorbar( x, histo_array, yerr=np.sqrt(histo_array), errorevery=1)
+    ax.plot( x, histo_array, ls = 'steps', zorder = 1 )
 #    ax.semilogy( range(len(histo_array)), histo_array, yerr=np.sqrt(histo_array), errorevery=1)
     # ax.errorbar ( range(len(histo_array)), histo_array, yerr=np.sqrt(histo_array), fmt='none', errorevery=10)
 

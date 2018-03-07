@@ -33,6 +33,7 @@ import heapq
 from mpldatacursor import datacursor 
 
 from matplotlib.colors import LinearSegmentedColormap
+from matplotlib.colors import SymLogNorm
 import matplotlib.pyplot as plt
 plt.rcParams["font.family"] = "Times New Roman"
 plt.rcParams[ 'mathtext.default' ] = 'regular' 
@@ -48,6 +49,9 @@ import lmfit
 import colorcet
 
 
+
+
+plt.rc('text', usetex=True)
 
 
 
@@ -203,10 +207,10 @@ class dead_layer_model_params( object ) :
         # these are the rows that will be considered when
         # performing the optimization. others will be ignored.
         
-        if fstrips is None:
+        if fstrips_requested is None:
             self.fstrips_requested = np.arange(32)
         else:
-            self.fstrips_requested = fstrips
+            self.fstrips_requested = fstrips_requested
 
         self.fstrips = dict()
             
@@ -644,7 +648,7 @@ def linear_calibration_on_each_x_strip( dbs,
             #     fit_params[ 'a_' + db.name + '_%d' % ( x, ) ].min = 1.85
             #     fit_params[ 'a_' + db.name + '_%d' % ( x, ) ].max = 2.20
             
-            fit_params.add( 'b_' + db.name + '_%d' % ( x, ), value = -50 )    
+            fit_params.add( 'b_' + db.name + '_%d' % ( x, ), value = -260 )    
 
         model_params.fstrips[ db.name ] = model_params.fstrips_requested[ ~ np.in1d( model_params.fstrips_requested,
                                                                                      frontstrips_to_remove ) ]
@@ -731,7 +735,8 @@ def linear_calibration_on_each_x_strip( dbs,
                                  subtitle = subtitle,
                                  view_pixel = view_pixel,
                                  residual_scatter_plot = residual_scatter_plot,
-                                 angled_3d_plot = angled_3d_plot ) 
+                                 angled_3d_plot = angled_3d_plot,
+                                 savefig_dir = savefig_dir ) 
     
 
 
@@ -752,11 +757,19 @@ def plot_results_3d( lmfit_result, secant_matrices, mu_matrices,
 
     
     axarr_2d = [ f.add_subplot( 3,2, 2*i + 1 ) for i in range(3) ]
+    for i in range(2) :
+        axarr_2d[i].set_xticklabels([])
+
+    axarr_2d[0].set_title( 'Absolute Calibration of Coupled Peaks' )
 
     # ax1 = f.add_subplot(222, projection='3d' )
     # ax2 = f.add_subplot(224, projection='3d' )
+
     ax1 = f.add_subplot(222 )
+    ax1.set_xticklabels([])
     ax2 = f.add_subplot(224 )
+
+    ax1.set_title( 'Residuals of Decoupled Peaks' )
     
     axarr_3d = [ ax1, ax2 ]
 
@@ -791,13 +804,17 @@ def plot_results_3d( lmfit_result, secant_matrices, mu_matrices,
     f.text(0.04, 0.5, r'$E_\mathrm{det}$ (keV)',
                 fontsize = 16, va='center', rotation='vertical')
 
-    f.text(0.5, 0.5, r'$sec ( \theta_\mathrm{source} ) $',
+    f.text(0.5, 0.5, r'$ \sec ( \theta_\mathrm{S} ) $',
            fontsize = 16, va='center', ha='center', rotation='vertical')
 
-    f.text( 0.5, 0.05, r'$sec ( \theta_\mathrm{det} ) $',
-            fontsize = 16, va = 'center', ha='center' )
+    # f.text( 0.5, 0.05, r'$ \sec ( \theta_\mathrm{det} ) $',
+    #         fontsize = 16, va = 'center', ha='center' )
 
-    f.subplots_adjust( hspace = 0.4, wspace = 0.4 )
+    f.subplots_adjust( hspace = 0.0, wspace = 0.4 )
+
+    axarr[0][2].set_xlabel( r'$ \sec ( \theta_\mathrm{D} ) $', fontsize = 16 )
+    
+    axarr[1][1].set_xlabel( r'$ \sec ( \theta_\mathrm{D} ) $', fontsize = 16 )
 
     
     # plt.ylabel( r'$(E - E_\mathrm{cal}) / \Delta( E_\mathrm{cal} )' )
@@ -826,7 +843,7 @@ def plot_results_3d( lmfit_result, secant_matrices, mu_matrices,
             
             ax = axarr[ ax_loc1 ][ ax_loc2 ]
 
-            ax.set_title( titles[i] )
+            ax.set_ylabel( titles[i] )
             
 
             if model_params.vary_det_deadlayer:
@@ -876,6 +893,10 @@ def plot_results_3d( lmfit_result, secant_matrices, mu_matrices,
                     source_sectheta[ idx ] = y
 
                     E = a * z + b
+                    if ( 0 in E.dx ) :
+                        print('warning: E.dx == 0' )
+                        print(z)
+                    
                     Edet[ idx ] = E
 
                     calibrated_E = energy_from_mu_lmfit( lmfit_result.params,
@@ -896,15 +917,19 @@ def plot_results_3d( lmfit_result, secant_matrices, mu_matrices,
             Efit = Efit.flatten()
             
             if ax_loc1 == 1 :
-                normalized_residuals = E_residual / Edet.dx
-                vmax = np.nanmax( np.abs( normalized_residuals[ normalized_residuals != np.inf ] ) )
-
-                # print( vmax )
                 
-                # ax.scatter( x.x, y.x, Efit )
+                normalized_residuals = E_residual / Edet.dx
+
+                vmax = np.nanmax( np.abs( normalized_residuals[ ( normalized_residuals < 5 ) ] ) )
+                # linthresh = np.nanmin( np.abs( normalized_residuals ) ) 
+                linthresh = 1.0
+                
                 im = ax.scatter( det_sectheta.x, source_sectheta.x,
                                  c = normalized_residuals,
-                                 s = 5, vmax = vmax, vmin = -vmax,
+                                 s = 5,
+                                 # norm = SymLogNorm( linthresh,
+                                 #                   vmin = -vmax, vmax = vmax ),
+                                 vmax = vmax, vmin = -vmax,
                                  cmap = colorcet.m_diverging_bkr_55_10_c35 )
                 plt.colorbar( im, ax = ax )
 
@@ -919,8 +944,7 @@ def plot_results_3d( lmfit_result, secant_matrices, mu_matrices,
 
 
     if savefig_dir :
-        plt.savefig( savefig_dir + 'calibration' + '.eps',
-             format='eps', dpi=2000 )
+        plt.savefig( savefig_dir, format='eps', dpi=2000 )
     
     plt.show()
 
@@ -947,12 +971,13 @@ def plot_energy_vs_sectheta( lmfit_result, secant_matrices, mu_matrices,
                              subtitle = '',
                              view_pixel = None,
                              residual_scatter_plot = 0,
-                             angled_3d_plot = 0 ) :
+                             angled_3d_plot = 0,
+                             savefig_dir = None ) :
 
     
     # in this case the angled plots are made in 3d.
     if angled_3d_plot :
-        f, axarr = plt.subplots( 3, 2 )
+        f, axarr = plt.subplots( 3, 2, figsize = ( 10, 8 ) )
         for i in range(2) :
             axarr[3+i].get_xaxis().set_visible( False )
             axarr[3+i].get_yaxis().set_visible( False )
@@ -962,7 +987,8 @@ def plot_energy_vs_sectheta( lmfit_result, secant_matrices, mu_matrices,
         
 
     else :
-        f, axarr = plt.subplots( 3, 2 )
+        f, axarr = plt.subplots( 3, 2, figsize = ( 10, 7.5 ) )
+        f.subplots_adjust( hspace = 0.5 ) 
 
 
         
@@ -971,8 +997,7 @@ def plot_energy_vs_sectheta( lmfit_result, secant_matrices, mu_matrices,
 
         if not residual_scatter_plot : 
         
-            f.suptitle( r'Absolute $ E_\mathrm{det}$ vs. $\sec ( \theta_\mathrm{det} ) $ For Each Peak'
-                        + '\n' + subtitle + ', ' + r'$ \tilde{\chi}^2 = '
+            f.suptitle( subtitle + r'$ \tilde{\chi}^2 = '
                         + '%.2f' % ( lmfit_result.redchi , ) + '$', fontsize = 20  )
 
         else :
@@ -989,7 +1014,7 @@ def plot_energy_vs_sectheta( lmfit_result, secant_matrices, mu_matrices,
 
     plt.tick_params(labelcolor='none', top='off', bottom='off', left='off', right='off')
     plt.grid(False)
-    plt.xlabel( r'$sec ( \theta_\mathrm{det} ) $', fontsize = 20  )
+    plt.xlabel( r'$\sec ( \theta_\mathrm{det} ) $', fontsize = 20  )
 
     if view_pixel is None :
         
@@ -997,7 +1022,8 @@ def plot_energy_vs_sectheta( lmfit_result, secant_matrices, mu_matrices,
             plt.ylabel( r'$(E - E_\mathrm{cal}) / \Delta( E_\mathrm{cal} )', fontsize = 20 )
             
         else :
-            plt.ylabel( r'$E_\mathrm{det}$ (keV)', fontsize = 20 )
+            f.text(0.04, 0.5, r'$E_\mathrm{det}$ (keV)',
+                   fontsize = 16, va='center', rotation='vertical')
 
     else : 
         plt.ylabel( r'$\mu$ (channels)' )
@@ -1117,6 +1143,11 @@ def plot_energy_vs_sectheta( lmfit_result, secant_matrices, mu_matrices,
 
     if annotate :
         datacursor( formatter = '{label}'.format )
+
+    
+    if savefig_dir :
+        plt.savefig( savefig_dir, format='eps', dpi=2000 )
+
     
     plt.show()
 

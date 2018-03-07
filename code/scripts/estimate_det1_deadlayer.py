@@ -1,23 +1,17 @@
 import numpy as np
-import deadlayer_delpes.deadlayer_estimator as dl_estimator
-
+import deadlayer_helpers.deadlayer_estimator as dl_estimator
+import deadlayer_helpers.sql_db_manager as dbmgr
 
 
 
     
 
-# dbs = [ dbmgr.angled ]
-# dbs = [ dbmgr.centered, dbmgr.angled, dbmgr.moved, dbmgr.flat ] 
-# dbs = [ dbmgr.flat ]
-# dbs = dbmgr.all_dbs 
+
+dbs = dbmgr.all_dbs 
 # dbs = [ dbmgr.angled ]
 
-# dbs = dbmgr.det3_dbs
-dbs = [ dbmgr.det3_moved ] 
-
-# source_indices = [ [0,1], [0,1], [1] ]
 source_indices = [ [0,1], [0,1], [1] ]
-
+# source_indices = [ [0,1], [0,1], [0,1] ]
 
 
 subtitle = ''
@@ -49,11 +43,11 @@ dl_estimator.linear_calibration_on_each_x_strip( dbs, source_indices,
                                                  cut_high_sectheta = 0,
                                                  annotate = 0,
                                                  # view_pixel = [ dbmgr.moved, 5 ],
-                                                 subtitle = 'Det 3: Source Params Extrapolated from Det 1\n',
+                                                 subtitle = 'Det 1: Absolute Calibration of Entire Detector\n',
                                                  reset_angles = None,
                                                  residual_scatter_plot = 0,
-                                                 plot_3d = 1 ) #  ,
-# savefig_dir = '../../../deadlayer_analysis_paper/images/' )
+                                                 plot_3d = 1,
+                                                 savefig_dir = '../../../deadlayer_analysis_paper/images/det1_calibration.eps' )
 
 
 

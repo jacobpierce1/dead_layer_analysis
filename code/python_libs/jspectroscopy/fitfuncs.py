@@ -7,459 +7,319 @@
 # * option to automatically construct a sum of fitfuncs
 # * * suboption to hold some params constant when doing this
 
+import libjacob.jmath as jmath
+from libjacob.jmath import xcut
 
 import numpy as np
 import scipy.special as special
-from lmfit import Model
+# from lmfit import Model
+
 import libjacob.jmeas as meas
 
 import matplotlib.pyplot as plt
 
 import scipy.optimize
-
-# from functools import partial 
-
-
-# global 'vars' that can be used for rapidly
-# applying fitfuncs.
-
-# alpha_fitfunc = fitfunc( 
-# beta_fitfunc =
-
-# gamma_fitfunc is synonymous with gaussian.
-# gamma_fitfunc = 
+from scipy.stats import chi2
 
 
 
+from enum import Enum
+
+class peak_types( Enum ) :
+    a = 0
+    b = 1 
+    g = 2
+
+
+
+_fitters_num_params = { 'a' : (2,4),
+                         'b' : None,
+                         'g' : None,
+                         'cb' : None } 
+
+     
+# __alpha_num_peak_params = 2
+# __alpha_num_det_params = 4
+
+
+def _resid( f, params, x, y, dy ) :
+    ret = ( f( params, x ) - y ) / dy
+
+    # print( dy ) 
+    # print( ret )
     
-    
-# # class for all the fitfuncs. for maximal efficiency
-# # and compabibility with scipy functions, they all
-# # take array parameters as input. a function can also
-# # be provided to convert the array to a dict
-# # and if this is specified, another func to convert
-# # such a dict to an array for future use. fitfunc
-# # must as its first argument 
-
-# class fitfunc( object ):
-
-#     def __init__( self, fitfunc,
-#                   params_array_to_dict_func = None,
-#                   params_dict_to_array_func = None ):
+    return ret 
 
 
-#         if not callable( fitfunc ):
-#             raise ValueError( 'fitfunc must be a function' )
 
 
-#         # verify that f is a function that accepts 2 params.
-#         if f.__code__.co_argcount != 2:
-#             raise ValueError( 'fitfunc must take 2 parameters: ' +
-#                               '( params_array, input_array )' )
-        
-        
-#         self._fitfunc = fitfunc
 
 
-#         # define the parameter conversion functions:
-#         if params_array_to_dict_func is not None:
+def alpha_fitter( peak_params, det_params, x ) :
+    return alpha_fit( *peak_params, *det_params, x ) 
 
-#             if not callable( params_array_to_dict_func ):
-#                 raise ValueError( 'params_array_to_dict_func must be a function' )
-        
-#             self._array_to_dict_func = params_array_to_dict_func
 
+def beta_fitter( peak_params, det_params, x ) :
+    raise NotImplementedError()
+
+
+def gamma_fitter( peak_params, det_params, x ) :
+    raise NotImplementedError()
+
+
+_available_fits = [ 'a', 'b', 'g' ]
+
+_num_available_fits = len( _available_fits ) 
+
+
+_all_fitters = { 'a' : alpha_fitter,
+                'b' : beta_fitter,
+                'g' : gamma_fitter } 
+
+
+
+class spectrum_fitter( object ) :
+
+
+    def __init__( self, peak_types, constrain_det_params = None ) :
+
+        if constrain_det_params is None :
+            constrain_det_params = { 'a' : 0, 'b' : 0, 'g' : 0 } 
+
+        self.constrain_det_params = constrain_det_params
             
-#         if params_dict_to_array_func is not None:
+        self.peak_types = peak_types
 
-#             if not callable( params_dict_to_array_func ):
-#                 raise ValueError( 'params_dict_to_array_func must be a function' )
-
-#             self._dict_to_array_func = params_dict_to_array_func
-
-
-#     def dict_to_array( self, params_array ):
-#         return self._dict_to_array_func( params_array )
-
-
-#     def array_to_dict( self, params_array ):
-#         return self._array_to_dict_func( params_array )
-    
-
-#     def apply( self, pf, input_array ):
-#         return self._fitfunc( pf, input_array ) 
-
-
-
-
-    
-    
-# # in this case you supply all args as fit params, even the det ones which should be fixed. 
-# def fitfunc_alpha_free_det_params( p, x ): 
-
-#     return alpha_fit( p[0],p[1],p[2],p[3],p[4],p[5], x ) 
-
-# #    return np.array( map( lambda z: alpha_fit( *p, z ), x ) )
-#     #return np.array( map( lambda z: alpha_fit( p[0],p[1],p[2],p[3],p[4],p[5],z ), x ) )
-#     # return alpha_fit( p[0],p[1],p[2],p[3],p[4],p[5] , x )  # expand array as function args 
-    
-
-
-
-# return an inline of fitfunc_n_alpha_peaks given the number of peaks to fit.
-# the first 4 params are the detector params, and the last 2*n are (A1, u1, ... )
-# previously fitfunc_n_alpha_peaks_abstract
-def sum_n_fitfuncs( fitfunc, n ):
-    return lambda x, **params: fitfunc( n, x, **params )
-    # return partial( fitfunc, n )
-
-
-
-
-# # fit n alpha peaks given vector p and array x 
-# # p format: sigma, eta, tau1, tau2, A1, mu1, ..., A_n, mu_n
-# def fitfunc_n_alpha_peaks( n, p, x ):
-
-#     ret = 0
-
-#     for i in range( n ):
-#         ret += alpha_fit( p[4+2*i],p[4+2*i+1],p[0],p[1],p[2],p[3], x )
-
-#     return ret
-
-
-
-
-
-# return an lmfit model constructed from n alpha
-# fit functions. keep sigma, eta, tau1, tau2 the same
-# in all of them.
-
-def fitfunc_n_alpha_peaks( n, x, **params ):
-    
-    ret = 0
-    for i in range( n ):
-        ret += alpha_fit( params[ 'A' + str(i) ], params[ 'mu' + str(i) ],
-                          params[ 'sigma' ], params[ 'eta' ], 
-                          params['tau1'], params['tau2'], x )
-
-    return ret
-
-
-
-
-
-# construct dict for input to fitfunc_n_alpha_peaks.
-
-def construct_n_alpha_peaks_params(
-        sigma, eta, tau1, tau2, A_array, mu_array ):
-
-    n = len( mu_array )
-
-    param_fit_bounds = { 'sigma' : [ 0, None ],
-                         'tau1' : [ 0, None ],
-                         'tau2' : [ 0, None ],
-                         'eta' : [ 0, 1 ] }
-    
-    params =  { 'sigma' : sigma, 'eta' : eta,
-                'tau1' : tau1, 'tau2' : tau2 }
-
-    for i in range( n ):
-
-        # keys for the 2 dicts 
-        mu = 'mu' + str(i)
-        A = 'A' + str(i) 
+        self.num_peaks = len( peak_types )
         
-        params[ mu ] = mu_array[i]
-        params[ A ] = A_array[i]
+        # self.peak_type_indices = {}
 
-        param_fit_bounds[ mu ] = [ 0, None ]
-        param_fit_bounds[ A ] = [ 0, None ] 
-
-    return ( params, param_fit_bounds ) 
-
-
-
-
-
-# port the parameters of the model to a meas.meas
-def get_alpha_params_dict( model ): 
-
-    params = model.params
-
-    npeaks = ( len( params ) - 4 ) // 2  
-
-    ret = { 'sigma' : 0, 'tau1' : 0, 'tau2' : 0, 'eta' : 0 } 
-
-    for key in ret:
-        ret[ key ] = meas.meas( params[key].value, params[key].stderr )
-
-    for key_base in [ 'mu', 'A' ]:
-
-        vals = np.empty( npeaks )
-        deltas = np.empty( npeaks ) 
+        # for t in peak_types  :
+        #     peak_type_indices[t] = [ i for i, x in enumerate( peak_types )
+        #                              if x == t ]
             
-        for i in range( npeaks ):
+        
+        self.fitters = [ _all_fitters[t] for t in peak_types ] 
 
-            param = params[ key_base + str(i) ] 
-            vals[i] = param.value
-            deltas[i] = param.stderr
+        self.params_array_peak_indices = np.empty( ( self.num_peaks, 2 ), dtype='int' ) 
+        self.params_array_det_indices = np.empty( ( self.num_peaks, 2 ), dtype='int' )
 
-        ret[ key_base ] = meas.meas( vals, deltas ) 
+        # set the indices of the relevant params for the flattened array
+
+        peak_idx = 0 
+        det_idx = 0
+
+        constrained_det_param_indices = { 'a' : -1, 'b' : -1, 'g' : -1 }
+        
+        for i in np.arange( self.num_peaks ) :
+
+            peak_type = self.peak_types[i]
+
+            num_peak_params, num_det_params = _fitters_num_params[ peak_type ]
             
+            self.params_array_peak_indices[i] = np.array( [ peak_idx,
+                                                            peak_idx + num_peak_params ] )
+            peak_idx += num_peak_params
 
-        #    print( ret ) 
-    return ret
+            if constrain_det_params[ peak_types[i] ] :
 
-
-
-
-
-# estimate the peak position for each peak if they were isolated.
-
-def estimate_alpha_peakpos( model, num_iterations = 1000, plot=0 ) :
-    
-    params = get_alpha_params_dict( model )
-
-    A = params['A']
-    
-    npeaks = len( A )
-    
-    peakpos_results = meas.meas.empty( npeaks ) 
-
-    for peaknum in range( npeaks ) :
-
-        params_array = meas.meas.from_array( np.array( [ A[peaknum],
-                                                         params['mu'][peaknum],
-                                                         params['sigma'],
-                                                         params['eta'],
-                                                         params['tau1'],
-                                                         params['tau2'] ] ) )
-        
-        # if the starting params_array is invalid, then don't
-        # do the simulation on it.
-        
-        if not alpha_model_valid_params_array_predicate( params_array ) :
-            peakpos_results[peaknum] = meas.nan
-            continue
-
-
-        # otherwise proceed with the simulation.
-        
-        peakpos_arr = np.empty( num_iterations, dtype=np.float64 )
-
-
-        # print( params_array ) 
-    
-        for i in range(num_iterations):
-            
-            # keep picking p until the amplitude is positive
-            while 1:
-
-                # randomize all params but don't bother with A,
-                # since the peak location doesn't depend on A.
+                constrained_det_param_idx = constrained_det_param_indices[ peak_type ]
                 
-                current_params = np.empty( len( params_array ) )
-                current_params[0] = params_array[0].x
-                current_params[1:] = np.random.normal( params_array.x[1:],
-                                                        params_array.dx[1:] )
-                
-                if alpha_model_valid_params_array_predicate( current_params ) :
-                    break
-                
-            current_inverted_f = lambda x_: 0 - alpha_fit_array( current_params, x_ )
-                
-            result = scipy.optimize.fmin( current_inverted_f, current_params[1], disp=0 )
+                if constrained_det_param_idx == -1 :
+
+                    self.params_array_det_indices[i] = np.array( [ det_idx,
+                                                                   det_idx + num_det_params ] )
+
+                    constrained_det_param_indices[ peak_type ] = det_idx
+                    det_idx += num_det_params
+
+                else : 
+                    self.params_array_det_indices[i] = np.array( [ constrained_det_param_idx,
+                                                                   constrained_det_param_idx
+                                                                   + num_det_params ] )
+
+            else : 
+                self.params_array_det_indices[i] = ( det_idx, det_idx + num_det_params )
+                det_idx += num_det_params
             
-            peakpos_arr[i] = result
+    
+        self.params_array_det_indices += peak_idx
+        
+        self.params_array_size = peak_idx + det_idx
+                
+        self.peak_params = [0] * self.num_peaks
+        self.det_params = [0] * self.num_peaks
+        
+        
+
+
+        
+
+    def fit( self, x, y, dy, 
+             peak_params_guess, det_params_guess, xbounds = None,
+             fit_acceptor = None, params_shuffler = None,
+             ax = None, plot_bounds = None, logscale = 1 ) :
+
+        if ax is not None:
+            ax.plot( x, y, ls = 'steps', zorder = 1, c = 'k', linewidth = 0.1 ) 
+
+            if( logscale ):
+                ax.set_yscale('log')
+                ax.set_ylim( bottom = 1 ) 
+            
+            if plot_bounds is not None :
+                ax.set_xlim( * plot_bounds ) 
+            
+        self.fit_acceptor = fit_acceptor
+        self.params_shuffler = params_shuffler 
+        self.ax = ax
+        
+        self.fit_attempted = 1
+        
+        if xbounds is not None :
+            y = xcut( x, y, xbounds )
+            dy = xcut( x, dy, xbounds )
+            x = xcut( x, x, xbounds ) 
+
+        self.x = x
+        
+        for peak_type, det_params in det_params_guess.items() : 
+
+            # convert everything to an array
+            det_params_guess_arr = np.array( det_params )
+            det_params_guess[ peak_type ] = det_params_guess_arr
+            
+            if self.constrain_det_params[ peak_type ] : 
+                det_params_guess[ peak_type ] = det_params_guess_arr
+            
+        for i in np.arange( self.num_peaks ) :
+
+            peak_type = self.peak_types[i]
+            
+            self.peak_params[i] = np.asarray( peak_params_guess[i] )
+
+            if self.constrain_det_params[ peak_type ] : 
+                self.det_params[i] = det_params_guess[ peak_type ]  
+            else :
+                self.det_params[i] = np.copy( det_params_guess[ peak_type ] ) 
+                
+        params_array = self.__construct_params_array()
+
+        print( params_array ) 
+
+        # print( 'det_params: ' + str( self.det_params ) )
+        # print( 'peak_params: ' + str( self.peak_params ) )
+        # print( 'params_array: ' + str( params_array ) ) 
+
+        # # call scipy.curve_fit with appropriate input
+        # params_final, cov = scipy.optimize.curve_fit( self.__fit_eval, x, y,
+        #                                               p0 = params_array,
+        #                                               sigma = dy )
+
+        objective = lambda _params, _x, _y, _dy : _resid( self.__fit_eval, _params,
+                                                          _x, _y, _dy ) 
+
+        # print( objective( x, y, dy ) )
+
+        ret = scipy.optimize.leastsq( objective, params_array, args = (x,y,dy),
+                                      full_output = 1 )
+
+        params_result, cov, info, msg, status = ret
+
+        if fit_acceptor is not None :
+            fit_accept_status = fit_acceptor( x, y, dy, self ) 
+
+        else :
+            fit_accept_status = 1 
+            
+        success = ( status >= 1 and status <= 4
+                    and ( cov is not None )
+                    and fit_accept_status )
+
+        self.success = success
+
+        if success :
+
+            print( 'successful fit' ) 
+
+            print( params_result )
+            # print(cov) 
+
+            self.chisqr = np.sum( info['fvec']**2 )
+            self.nfree = len( x ) - len( params_array ) 
+            self.redchisqr = self.chisqr / self.nfree
+
+            self.params_result_error = np.sqrt( np.diag( cov ) * self.redchisqr )
+
+            print( self.params_result_error ) 
+
+            print( 'redchisqr: ' + str(self.redchisqr) )
+
+            self.pvalue = 1 - chi2.cdf( self.chisqr, self.nfree )
+            print( 'pvalue: ' + str( self.pvalue ) )
+            
+            # print( self.peak_params )
+            # print( self.det_params ) 
+            
+            if ax is not None:
+                ax.plot( x, self.eval( x ), c = 'r', zorder = 2 ) 
+
+        
+
+                
+    def eval( self, x ) :
+
+        ret = 0
+        for i in np.arange( self.num_peaks ) :
+            ret += self.fitters[i]( self.peak_params[i], self.det_params[i], x ) 
+
+        return ret
+
+    
+
+    
+    def __fit_eval( self, params_array, x ) :
+
+        self.__set_params_from_params_array( params_array )
+
+        return self.eval(x)
+
+    
+            
+    def __construct_params_array( self ) :
+
+        p = np.empty( self.params_array_size )
+
+        for i in np.arange( self.num_peaks ) :
+
+            # print( self.params_array_peak_indices[i] )
+            # print( self.peak_params[i] ) 
+
+            p[ slice( * self.params_array_peak_indices[i] ) ] = self.peak_params[i]
+            p[ slice( * ( self.params_array_det_indices[i] ) ) ] = self.det_params[i]
+
+        return p 
+
+
+    
+
+    def __set_params_from_params_array( self, params_array ) :
+
+        for i in np.arange( self.num_peaks ) :
+
+            self.peak_params[i][:] = params_array[ slice( * self.params_array_peak_indices[i] ) ]
+            self.det_params[i][:] = params_array[ slice( * self.params_array_det_indices[i] ) ]
             
 
 
-        
-        sim_result = meas.meas( peakpos_arr.mean(), peakpos_arr.std() )
-
-        # print( sim_result )
-
-        peakpos_results[peaknum] = sim_result
+    def plot( self, ax, c = 'r', **kw_args ) :
+        ax.plot( self.x, self.eval( self.x ), c=c, **kw_args )
 
         
-        if plot :
-            ax = plt.axes() 
-            ax.set_title( 'Estimated Peak Channel Distribution', fontsize = 20 )
-            ax.set_xlabel( 'Peak Channel', fontsize = 18 )
-            ax.set_ylabel( 'Counts', fontsize = 18 )
-            ax = plt.axes()
-            ax.hist( peakpos_arr, bins = 20 ) 
-            plt.show() 
-
-            
-    return peakpos_results
 
 
 
-
-
-
-
-
-# return 1 if the alpha_model has valid parameters and 0 otherwise.
-
-def alpha_model_valid_params_predicate( alpha_params_dict ) :
-
-
-    for mu in alpha_params_dict['mu'] :
-        if mu.x < 0:
-            return 0
-
-    for A in alpha_params_dict['A'] :
-        if A.x < 0 or A.dx > A.x :
-            return 0 
-    
-    for i in range(1,3) :
-        tau = alpha_params_dict['tau' + str(i) ]
-        if tau.x < 0 or tau.dx > tau.x :
-            return 0
-
-    eta = alpha_params_dict['eta']
-    if eta.x < 0 or eta.x > 1 or eta.dx > eta.x :
-        return 0
-
-    sigma = alpha_params_dict['sigma']
-    if sigma.x < 0 or sigma.dx > sigma.x : 
-        return 0
-
-    return 1 
-
-
-
-
-
-
-
-# use for increased efficiency
-
-def alpha_model_valid_params_array_predicate( alpha_params_array ) :
-
-    if meas.ismeas( alpha_params_array ) :
-
-        A, mu, sigma, eta, tau1, tau2 = [ x for x in alpha_params_array ] 
         
-        if A.x < 0 :
-            return 0
-        
-        if mu.x < 0 :
-            return 0
-
-        if sigma.x < 0 or sigma.dx > sigma.x :
-            return 0
-        
-        if eta.x < 0 or eta.x > 1 or eta.dx > eta.x :
-            return 0 
-        
-        if tau1.x < 0 or tau1.dx > tau1.x :
-            return 0
-        
-        if tau2.x < 0 or tau2.dx > tau2.x :
-            return 0
-
-    else:
-    
-        A, mu, sigma, eta, tau1, tau2 = alpha_params_array
-        
-        if A < 0 :
-            return 0
-        
-        if mu < 0 :
-            return 0
-
-        if sigma < 0 :
-            return 0
-        
-        if eta < 0 or eta > 1 :
-            return 0 
-        
-        if tau1 < 0 :
-            return 0
-        
-        if tau2 < 0 :
-            return 0
-        
-    return 1 
-
-    
-
-
-
-
-
-
-# TODO: DO THIS
-
-# # input: a function that takes array of parameters and a scalar
-# # variable x, same as input of optimize.least_sq; pf and pferr,
-# # obtained from jacob_least_squares; peakpos_guess, estimate of the
-# # peak positions; number of iterations to perform.
-
-# # behavior: assume that pferr are standard deviations of a normal
-# # distribution of which pf values are the means; do a monte carlo
-# # simulation in which an array is formed with values from those normal
-# # distributions. then find the maximum of the function and add it to a
-# # list.  return: peakpos (average), peakpos_delta (std of mean),
-# # peakval (function at peakpos), peakval_delta (estimated using 2nd
-# # order taylor expansion of f; first order normally works, but in this
-# # case we know that f'(x) = 0 at the max so it will give 0.
-
-# def estimate_peakpos( spec_model, num_iterations=1000 ):
-
-#     peakpos_arr = np.empty( num_iterations, dtype=np.float64 )
-#     # print( 'p: ' + str(p) ) 
-    
-#     for i in range(num_iterations):
-
-#         # keep picking p until the amplitude is positive
-#         while 1:
-#             current_p = np.random.normal( p, p_delta )
-
-#             # break out of the while if certain entries are
-#             # not physical. TODO: abstract this.
-#             if current_p[4] > 0 and current_p[1] < 1:
-#                 break
-
-#         # now we construct a function from the random p
-#         current_inverted_f = lambda x_: 0 - f( current_p, x_ )  
-#         result = scipy.optimize.fmin( current_inverted_f, peakpos_guess, disp=0 )
-
-#         peakpos_arr[i] = result
-        
-#     return peakpos_arr
-
-
-
-
-# # fit n alpha peaks given vector p and array x 
-# # p format: sigma, tau, A1, mu1, ..., A_n, mu_n
-# def fitfunc_n_alpha_peaks_eta1( n, p, x ):
-
-#     ret = 0
-    
-#     for i in range( n ):
-#         ret += alpha_fit_eta1( p[2+2*i],p[2+2*i+1],p[0],p[1], x )
-
-#     return ret
-
-
-#     # return np.sum( [ map( lambda y: alpha_fit_eta1(p[2+2*i],p[2+2*i+1],p[0],p[1], y), x )  for i in range(n) ], axis=0 )  
-
-
-
-    
-# # same as alpha_fit but with eta fixed at one. this means we are taking only one of the terms. 
-# # experimented with this after noting that the fits seem indep. of eta, which can cause trouble.
-# def alpha_fit_eta1( A, mu, sigma, tau, x ):
-#     logtmp = (x-mu)/tau + sigma**2.0/(2*tau**2.0) + np.log( special.erfc( (x-mu)/sigma + sigma/tau) / np.sqrt(2) ) 
-#     return A/(2.0*tau) * np.exp( logtmp )
-
-
 
 # reference: equation 10 in Bortels 1987  
 # this function is meant to be applied to scalar x, not list
@@ -469,15 +329,205 @@ def alpha_fit( A, mu, sigma, eta, tau1, tau2, x ):
     # prevent overflow by computing logs and then exponentiating, at the expense of some
     # floating pt error. logtmpz is the log of the 2 analagous terms in the integrand.
     tauz = [tau1, tau2]
-    logtmpz = [ (x-mu)/tau + sigma**2.0/(2*tau**2.0) + np.log( special.erfc( (x-mu)/sigma + sigma/tau) / np.sqrt(2) ) for tau in tauz ]
-    return ( A/2.0 )  * ( (1-eta)/tau1 * np.exp(logtmpz[0])
-                            + (eta/tau2) * np.exp(logtmpz[1])   ) 
+
+    logtmpz = [ (x-mu)/tau + sigma**2.0/(2*tau**2.0)
+                + np.log( special.erfc( (x-mu)/sigma + sigma/tau) / np.sqrt(2) )
+                for tau in tauz ]
+
+    return ( A / 2.0 ) * ( (1-eta)/tau1 * np.exp(logtmpz[0])
+                           + (eta/tau2) * np.exp(logtmpz[1])   ) 
 
 
 
 
 
-# wrapper allows for compact abstractions of the different fitfuncs.
 
-def alpha_fit_array( params_array, x ) :
-    return alpha_fit( * params_array, x ) 
+
+
+
+
+
+def fit_spectrum( peak_types, x, y, dy, xbounds,
+                  peak_params_guess, det_params_guess,
+                  constrain_det_params = None,
+                  fit_acceptor = None,
+                  params_shuffler = None,
+                  ax = None, plot_bounds = None, logscale = 1 ) :
+
+    spec_fitter = spectrum_fitter( peak_types, constrain_det_params )
+
+    spec_fitter.fit( x, y, dy, peak_params_guess,
+                     det_params_guess, xbounds,
+                     fit_acceptor, params_shuffler,
+                     ax, plot_bounds, logscale = logscale ) 
+    
+    return spec_fitter
+
+
+
+
+
+
+
+
+
+
+def auto_fit_spectrum( x, y, dy,
+                       group_ranges, peak_locations,
+                       num_peaks_to_detect, primary_peak_detector,
+                       peak_sizes_guesses, det_params_guesses, peak_mu_offset,
+                       peak_position_tolerance = None, db_path = None,
+                       fit_acceptor = None,
+                       params_shuffler = None,
+                       ax = None,
+                       rel_plot_bounds = None,
+                       logscale = 1 ) :
+
+    num_groups = len( group_ranges )
+
+    if len(peak_locations) != num_groups : 
+
+        print( '''error: inconsistent size of group_ranges, peak_structures, or peak_locations.
+        they should all have length equal to group_ranges''' )
+        sys.exit(0)
+
+    peaks_per_group = [ len(peak_locations[i]) for i in range( num_groups ) ]
+    
+    # find main peaks
+    our_peaks = jmath.get_n_peak_positions( num_peaks_to_detect, y )
+
+    print( our_peaks ) 
+    
+    primary_peaks = primary_peak_detector( our_peaks, y )
+
+    if primary_peaks is None :
+        return None 
+    
+    print( primary_peaks )
+    
+    # print( primary_peaks ) 
+    
+    num_peaks_found = len( our_peaks )
+
+
+    # do a check on peak values: energy differenc for the pairs should
+    # be constant. no check necessary on the largest peak since it
+    # always dominates, the only potential problem is really the
+    # smallest peak in the lowest energy pair. this occurs after
+    # plotting so that we can return with the plot alread made.
+    # basically, we are saying that if we cannot determine where the
+    # peak positions are to 0th order, we are not going to bother
+    # fitting them since it will definitely not work if we misidentify
+    # a peak position.
+    
+        
+        
+    # determine which fits to perform, 1 = fit must be attempted. by default if no 
+    # conn is supplied we process all the fits.
+
+    fit_attempts = [ -1 ] * num_groups  # first fit to try, which is the one we left off on.
+
+    fits_to_perform = [ 1 ] * num_groups 
+
+    reduc_chisq_all = [] # store all reduced chisq values.
+    
+
+    fit_bounds = [ np.array( group_ranges[a] ) + primary_peaks[a]
+                   for a in range( num_groups )  ]
+
+    if rel_plot_bounds is not None :
+        plot_bounds = [ fit_bounds[0][0] + rel_plot_bounds[0],
+                        fit_bounds[-1][1] + rel_plot_bounds[1] ] 
+
+    else :
+        plot_bounds = None
+        
+    # list of detected peaks, to be added to DB (not yet implemented) 
+    peak_detect = [ our_peaks[0:2], our_peaks[2:4], our_peaks[4:] ]
+
+    ret = [0] * num_groups 
+    
+    # loop through the fits that were not in the db and add them if successful.
+    for i in range( num_groups ):
+
+        if fits_to_perform[i]:
+
+            # print( fit_bounds[i] )
+            print( primary_peaks[i] ) 
+
+            mu_array_guess = ( primary_peaks[i]
+                               + np.array( peak_locations[i] )
+                               + peak_mu_offset )
+            
+            peak_params_guess = [ [ peak_sizes_guesses[i][d], mu_array_guess[d] ]
+                                  for d in range( peaks_per_group[i] ) ]
+
+
+            print( peak_params_guess )
+
+                        
+            spec_result = fit_spectrum( [ 'a' ] * peaks_per_group[i],
+                                        x, y, dy, fit_bounds[i],
+                                        peak_params_guess, det_params_guesses[i],
+                                        constrain_det_params = { 'a' : 1 },
+                                        params_shuffler = params_shuffler,
+                                        fit_acceptor = fit_acceptor,
+                                        ax = ax,
+                                        plot_bounds = plot_bounds,
+                                        logscale = logscale )
+
+            ret[i] = spec_result 
+        
+    return 1
+
+
+
+
+
+
+        
+        
+
+
+
+def auto_fit_many_spectra() :
+
+    pass
+
+    # # option to pass None as the DB 
+    # if db is not None:
+
+    #     for i in range( num_groups ):
+            
+    #         # extract
+    #         db_data = db.read_fit_data( x, y, i )
+
+    #         successful_fit = db_data[ 'successful_fit' ]
+
+    #         # signal that this fit will have to be re-attempted.
+    #         fits_to_perform[i] = not successful_fit
+
+    #         # last attempt that we left off on 
+    #         fit_attempts[i] = db_data[ 'last_attempt' ]
+            
+    #         if successful_fit:
+    #             # fitfunc = spec.sum_n_fitfuncs( spec.fitfunc_n_alpha_peaks, NUM_PEAKS_PER_FEATURE[i] )
+                
+    #             model = db_data[ 'model' ] 
+    #             jplt.add_fit_to_plot( ax, x, db_data[ 'fit_bounds' ],
+    #                                   jmath.model_func( model ),
+    #                                   logscale = 1 )
+
+    #             # print( model.params ) 
+                
+    #             reduc_chisq_all.append( model.redchi )
+                
+
+    #     # no further processing required if all the fits converged.
+    #     if not any( fits_to_perform ):
+    #         _add_text( ax, x, y, reduc_chisq_all )
+    #         return 1
+                
+         
+
+    pass 
