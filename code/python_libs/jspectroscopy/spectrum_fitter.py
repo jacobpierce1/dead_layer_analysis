@@ -1,646 +1,699 @@
-
-# the purpose of this script is to bulid off of fit_5_peaks to run
-# through all the data. this poses a challenge because it is difficult
-# to verify that all the fits actually worked. the strategy is to
-# display two images of 16 plots (32 total) for each of the 32 pixel
-# rows. alarming chisq values ( > 2 ) are reported, along with
-# instances in which a fit fails to converge. all the pf's are written
-# to a file for later processing.
-
-# the first step is to identify the peaks and use this to make guesses
-# for p0, the parameter guess for the least squares fit.
-
-# date: 9.06.17
-# author: jacob pierce
+# this module contains a class for constructing fitfuncts
+# with conversions between their input array params
+# and dicts for interpretation / data analysis later on.
 
 
-# default config. do not adjust here, make a dedicated function that sets 
-# config parameters in an abnormal situtation (e.g. debugging). any mistake in
-# the db can be very costly in time, either through repairing db which will 
-# probably required a specialized function or through rerunnnig the program.
+# TODO:
+# * option to automatically construct a sum of fitfuncs
+# * * suboption to hold some params constant when doing this
 
-
-
-SHOW_HISTO = 0
-PRINT_PEAK_POSITIONS = 0
-PRINT_PF = 0
-PRINT_PFERR = 0
-PRINT_FIT_STATUS = 0
-PRINT_FILE_NAMES = 0
-BREAK_AFTER_1_PLOT = 0
-SAVE_DATA = 1
-UPDATE_DB = 1
-PRINT_FIT_ATTEMPT = 0
-
-
-
-
-# my files 
 import libjacob.jmath as jmath
-import libjacob.jpyplot as jplt
-import libjacob.jutils as jutils
+from libjacob.jmath import xcut
 
-
-import jspectroscopy as spec
-
-# from peakdetect import peakdetect 
-import deadlayer_helpers.sql_db_manager as dbmgr
-
-
-
-
-
-# from lmfit import Model, Parameters 
-
-
-
-
-## includes 
 import numpy as np
-import matplotlib.pyplot as plt
-plt.rcParams["font.family"] = "Times New Roman"
+import scipy.special as special
+# from lmfit import Model
 
-import time 
-import sys
-import sqlite3
-import os
-from enum import Enum 
+import libjacob.jmeas as meas
+
+import matplotlib.pyplot as plt
+
+import scipy.optimize
 from scipy.stats import chi2
 
+import os 
+
+from libjacob.jutils import estimate_time_left as time_estimator
+
+from libjacob.jpyplot import saveplot_low_quality
+
+import copy
 
 
-
-class spectrum_fitter_inputs( object ) :
-
-    def __init__( self, dimensions, data_fetcher, 
-                  group_ranges, peak_locations,
-                  num_peaks_to_detect, primary_peak_detector,
-                  peak_sizes_guesses, det_params_guesses, peak_mu_offset,
-                  peak_position_tolerance = None, db_path = None,
-                  name = None,
-                  fit_acceptor = None ) :
-
-        self.dimensions = dimensions 
-
-        # for 2D case: a function where the input is (i,j)
-        # and the output is a histogram of counts vs channel
-
-        # if not callable( data_fetcher ) :
-        #     print( '''data_fetcher must be a function that returns a histogram for 
-        #     pixel (i,j), which are the 2 args of this function. currently data_fetcher
-        #     is not callable''' )
-
-        self.data_fetcher = data_fetcher
-
-        self.num_groups = len( group_ranges )
-
-        if len(peak_locations) != self.num_groups : 
-
-            print( '''error: inconsistent size of group_ranges, peak_structures, or peak_locations.
-            they should all have length equal to group_ranges''' )
-            sys.exit(0)
-
-        self.peaks_per_group = [ len(peak_locations[i]) for i in range( self.num_groups ) ]
-            
-        self.group_ranges = group_ranges
-        # self.peak_structures = peak_structures
-        self.peak_locations = peak_locations
-        # self.primary_peak_ids = primary_peak_ids
-
-        self.num_peaks_to_detect = num_peaks_to_detect
-        
-        if callable( primary_peak_detector ) :
-            self.primary_peak_detector = primary_peak_detector 
-        else :
-            sys.exit(0)
-
-
-        self.peak_sizes_guesses = peak_sizes_guesses
-        self.det_params_guesses = det_params_guesses
-        self.peak_mu_offset = peak_mu_offset
-        
-        self.name = name
-        
-        # construct a DB in which to store the data if a name for the db
-        # is supplied. 
-        if db_path is not None :
-            pass
-        else:
-            self.db = None
-
-
-
-            
-
-# NUM_PEAKS_PER_FEATURE = [ 2, 2, 2 ] 
-# NUM_PEAKS = np.sum( NUM_PEAKS_PER_FEATURE )
-# NUM_FEATURES = len( NUM_PEAKS_PER_FEATURE )
+from enum import Enum
 
 
 
 
-def make_model_and_apply_fit( npeaks, params_guess, x, y, dy ):
-    pass
+class peak_types( Enum ) :
+    a = 0
+    b = 1 
+    g = 2
 
 
-# these are the functions that attempt to modify p0_attempt and fit_bounds_attempt.
-def default( p0, p0_attempt, fit_bounds, fit_bounds_attempt, npeaks ):
-    pass 
+
+_fitters_num_params = { 'a' : (2,4),
+                         'b' : None,
+                         'g' : None,
+                         'cb' : None } 
+
+     
+# __alpha_num_peak_params = 2
+# __alpha_num_det_params = 4
+
+
+def _resid( f, params, x, y, dy ) :
+    ret = ( f( params, x ) - y ) / dy
+
+    # print( dy ) 
+    # print( ret )
     
-def increase_left_fit_bound( p0, p0_attempt, fit_bounds, fit_bounds_attempt, npeaks ):
-    fit_bounds_attempt[0] += 10
-    
-def increase_left_fit_bound_more( p0, p0_attempt, fit_bounds, fit_bounds_attempt, npeaks ):
-    fit_bounds_attempt[0] += 20
-    
-def smaller_A( p0, p0_attempt, fit_bounds, fit_bounds_attempt, npeaks ):
-    # print( npeaks ) 
-    for i in range( npeaks ):
-        p0_attempt['A' + str(i)] = 0.4 * p0[ 'A' + str(i) ]
-
-def larger_A( p0, p0_attempt, fit_bounds, fit_bounds_attempt, npeaks ):
-    # fit_bounds_attempt[1] += 5
-    for i in range( npeaks ):
-        p0_attempt[ 'A' + str(i) ] = 3 * p0[ 'A' + str(i) ]
-
-def next_fit( p0, p0_attempt, fit_bounds, fit_bounds_attempt, npeaks ):
-    pass
-
-
-
-class fit_attempt_status( Enum ):
-    SUCCESS = 1
-    FAILURE = 2
-    NO_UPDATE = 3
-
-
-
-# this function creates another guess for p0 in the case of a failed fit based on
-# observations about what is gonig wrong. the particular attempts we use depend on the peak id.
-def next_fit_attempt( p0, p0_attempt, fit_bounds, fit_id,
-                      fit_bounds_attempt, npeaks, attempt ):
-
-    
-    # these will be modified and used later as the initial guess.
-    for key, val in p0.items():
-        p0_attempt[ key ] = val     
-
-    fit_bounds_attempt[:] = fit_bounds[:]    
-
-
-        
-    # array of functions that will be used to modify p0_attempt and fit_bounds_attempt
-    if fit_id == 1:
-        modifier_functions = [ default, increase_left_fit_bound, larger_A, next_fit ]
-
-    else:
-        modifier_functions = [ default, increase_left_fit_bound, 
-                                    increase_left_fit_bound_more, smaller_A ]
-
-        
-    # this covers the case in which we have already used all the functions as recorded in the 
-    # db, so we don't bother to try again. the only way to get out of this is reset the function
-    # number in db or add another function (latter almost certainly what you need).
-    # note that we don't update the db
-    if( attempt >= len(modifier_functions ) ):
-        return fit_attempt_status.NO_UPDATE
-
-    
-    # this checks if we had not previously attempted all functions, but none of them succeeded
-    # on this run. in that case put it in the DB. 
-    if attempt == len(modifier_functions):
-        return fit_attempt_status.FAIL
-
-    
-    # otherwise we call the current attempt function
-    # to generate a new fit parameters attempt.
-    modifier_functions[ attempt ] ( p0, p0_attempt, fit_bounds, fit_bounds_attempt, npeaks )
-    
-    if PRINT_FIT_ATTEMPT:
-        print( 'INFO: testing fit attempt ' + str(attempt) )
-        print( 'p0_attempt = ' + str(p0_attempt) )
-        print( 'fit_bounds_attempt = ' + str(fit_bounds_attempt) )
-        
-    return 1
-    
-
-
-
-
-
-
-
-# if db connection supplied, then we assume that the entry is supposed
-# to be put in, it makes more sense for the check on whether the data
-# is in the db to be performed before calling this function. when
-# called: apply peak fit, make sure it worked, try again if not, put
-# it in db if successful, and then plot. return 1 if successful fit
-# obtained, otherwise 0. last_attempt is the last attempted + 1,
-# i.e. it is the first fit that will be attempted.
-
-def apply_peak_fit( ax, input_params, indices,
-                    group_number,
-                    xvals, yvals,
-                    fit_bounds,
-                    p0, npeaks, last_attempt = -1, 
-                    params_bounds = None, reduc_chisq_all=None,
-                    db=None, peak_detect=None ):
-    
-    
-    fitfunc = spec.sum_n_fitfuncs( spec.fitfunc_n_alpha_peaks_free_det_params, npeaks )
-
-    
-    # these will be populated based on the current attempt number and
-    # the given p0 and fit_bounds, which are used as the first
-    # guesses. they are passed as parameters so they can be used after
-    # without returning them.
-
-    p0_attempt = {}
-    fit_bounds_attempt = []
-
-    
-    # start attempt is the one after the most recently tested attempt.
-    current_attempt = last_attempt + 1
-
-    # keep trying new fit parameters till they are exhausted and all fits
-    # fail, or if we have a convergent fit.
-    
-    while( 1 ):
-
-        status = next_fit_attempt( p0, p0_attempt,
-                                   fit_bounds, group_number, fit_bounds_attempt, 
-                                   npeaks, current_attempt )
-
-        # our fit attempts all failed in this case 
-        if status == fit_attempt_status.FAILURE:
-
-            
-            if PRINT_FIT_STATUS:
-                print( "INFO: fit failed, adding to DB " )
-            
-            if UPDATE_DB and db is not None:
-                db.insert_fit_data( x, y, group_number,
-                                    last_attempt=attempt )
-
-        # in this case, the fits all failed but it was already in DB 
-        if status == fit_attempt_status.NO_UPDATE:
-            
-            if PRINT_FIT_STATUS:
-                print( "INFO: peak failed to converge, already detected in db.." )
-
-            return 0
-
-
-        # if those 2 cases are not reached, then we have a new fit attempt.
-        # try doing least squares. 
-        model = jmath.jleast_squares( xvals, yvals, np.sqrt( yvals ),
-                                      p0_attempt, fitfunc,
-                                      fit_bounds = fit_bounds_attempt,
-                                      reduc_chisq_max = 2,
-                                      params_bounds = params_bounds,
-                                      successful_fit_predicate = successful_alpha_fit_predicate,
-                                      pvalue = 0.05,
-                                      print_results = 0 )
-        
-        # if done, do final checks on the fit. if successful, break out of
-        # loop and proceed to add to DB / create plot
-
-        if model is not None:
-            if PRINT_FIT_STATUS:
-                print( "INFO: success, breaking " )
+    return ret 
 
-            # take the data from the model and apply a peakdetect. make sure that
-            # the peaks are the same. model.best_fit is the model evaluated on the
-            # x data provided, which is xvals.
-        
-            if peak_detect is not None:
 
-                # peaks predicted by model: 
-                model_peaks = jmath.get_n_peak_positions( npeaks, model.best_fit )
 
-                # peaks observed, corrected for the new start channel:
-                original_peaks = np.array( peak_detect ) - fit_bounds_attempt[0]
-
-                # print( 'model_peaks: ' + str( model_peaks ) )
-                # print( 'peak_detect: ' + str( peak_detect ) )
-                # print( 'original_peaks: ' + str( original_peaks ) )
-
-                
-                # try again if wrong number of peaks
-                if len( model_peaks ) != npeaks :
-                    current_attempt += 1
-                    continue
-
-                # now make sure the peaks are the same
-                restart = 0 
-                for a in range( npeaks ) :
-                    if abs( original_peaks[a] - model_peaks[a] ) >= 2 :
-                        restart = 1
-                        break
-
-                if restart :
-                    current_attempt += 1
-                    continue
-
-            # if this is reached, then a fit converged which passed all the tests
-            # now break and add to DB / create plot.
-            break
-
-            
-        # otherwise try new fit params.
-        else:
-            if PRINT_FIT_STATUS:
-                print( "WARNING: Unsuccessful fit, trying new parameters...\n\n" )
-            current_attempt += 1
-            continue
-
-
-    # now we have broken out of the loop after a successful fit. unpack the results.
-    reduc_chisq = model.redchi
-
-    print('')
-    print( model.params ) 
-
-    # model.plot_fit( ax = ax, datafmt = '-r', numpoints = 100 * model.ndata )
-
-    # dof = model.nfree
-    # pf = model.params
-    # pferr = model.         
-
-
-    
-    
-    # write all relevant data to the db
-    if UPDATE_DB and db is not None:
-        db.insert_fit_data( x, y, group_number,
-                            successful_fit = 1,
-                            npeaks = npeaks, 
-                            last_attempt = current_attempt,
-                            params_guess = p0_attempt,
-                            fit_bounds = fit_bounds_attempt, 
-                            peak_guesses = peak_detect,
-                            model = model ) 
-        
-
-    jplt.add_fit_to_plot( ax, xvals, fit_bounds_attempt, jmath.model_func( model ) )
-
-
-    if reduc_chisq_all is not None:
-        if PRINT_FIT_ATTEMPT :
-            print( 'p value: ' + str( 1 - chi2.cdf( model.chisqr, model.nfree ) ) )
-            print( model.params )
-            
-        reduc_chisq_all.append( reduc_chisq )
-
-
-        
-    return 1
-    
-    
-
-
-
-
-
-
-# only allow a successful fit if we have sub-2 channel precision
-# on the mu values.
-
-def successful_alpha_fit_predicate( model ):
-
-    params = model.params
-    
-    i = 0
-    keys = params.keys()
-
-    while( 1 ) :
-
-        mu = 'mu' + str(i)
-        
-        if mu in keys: 
-            if params[ mu ].stderr > 4:
-                return 0
-            i += 1 
-            
-        else:
-            break
-            
+
+
+
+def alpha_fitter( peak_params, det_params, x ) :
+    return alpha_fit( *peak_params, *det_params, x ) 
+
+
+def beta_fitter( peak_params, det_params, x ) :
+    raise NotImplementedError()
+
+
+def gamma_fitter( peak_params, det_params, x ) :
+    raise NotImplementedError()
+
+
+
+# check if params are valid
+
+def alpha_fit_params_checker( peak_params, det_params ) :
+
+    # check mu and A 
+    if np.any( peak_params < 0 ) :
+        return 0
+
+    # check sigma, eta, tau1, tau2
+    if np.any( det_params < 0 ) :
+        return 0
+
+    # check on eta param
+    if det_params[1] > 1 :
+        return 0
+
     return 1 
 
-
-
-
-
-
-
-
-
-# main function, goes through all the data.
-def fit_all_spectra( dbs ):
-
-    # dimesions of detector
-    totalx = 32
-    totaly = 32
-
-    # dimensions of output images: number of plots in each dimension
-    dimx = 4
-    dimy = 4
-
-    a = -1
-
-    for db in dbs :
-
-        # count number of db's we have processed. 
-        a += 1 
-        print( db.name )
-        
-
-        # construct db if not already existing 
-        if not db.exists():
-            db.create()
-
-        db.connect()
-
-       
-        # make dir for output images if it doesn't exist 
-        current_outdir = '../../images/current_fit_images/' + db.name + '/'
-
-        if not os.path.exists( current_outdir ):
-            os.mkdir( current_outdir )
-
-
-        logfile = current_outdir + 'log.txt'
-        
-        
-        # these 2 loops loop over grids of dimx x dimy images. 
-        for x in range( totalx ):
-            
-            # these loops create the 4x4 grids. 2 per strip row.
-            for k in range( totaly // (dimx * dimy ) ):
-                
-                plt.clf()
-                plt.close()
-                f, axarr = plt.subplots( dimx, dimy, figsize=(20,10) )    
-                
-                for i in range(dimx):
-                    for j in range(dimy):
-                        
-                        y = ( i * dimx + j ) + ( k * dimx * dimy )
-                        
-                        print( str( [x,y] ) )    
-                        
-                        # this estimates the time remaining for the program to terminate
-                        jutils.estimate_time_left( x * totaly + y + ( a * totalx * totaly ), 
-                                                   len( dbmgr.all_dbs ) * totalx * totaly,
-                                                   num_updates=100 )
-                        
-                        # current pixel coords
-                        # coords = ( x, y )
-                        
-                        # file containing the data
-                        current_file = db.name + "_%d_%d.bin" % ( x, y )
-                        
-                        if PRINT_FILE_NAMES:
-                            print( "INFO: processing file: " + current_file )
-                            
-                        current_file = ( "../../data/extracted_ttree_data/"
-                                         + db.name + '/' + current_file )
-                        
-                        process_file( axarr[i,j], current_file, x, y,
-                                      db = db, logfile = logfile ) # sql_conn = sql_conn, logfile = logfile)
-                        
-                        if( BREAK_AFTER_1_PLOT ):
-                            plt.show()
-                            return 1
-                        
-                jplt.saveplot_low_quality( current_outdir, db.name + '_x=%d.%d' % (x, k) )
-                            
-            
-        db.disconnect()
-                        # plt.setp([a.get_xticklabels() for a in axarr[0, :]], visible=False)
-                            # plt.setp([a.get_yticklabels() for a in axarr[:, 1]], visible=False)
-                            
-                            
-
-
-
-                            
-
-# dimensions, data_fetcher, 
-#                   group_ranges, peak_locations,
-#                   peak_position_tolerance = None, db_path = None ) :
-
-                  
     
-# this function is to be used for debugging the fits. once you have found a fit that 
-# does not converge, add a new fit and 
-def auto_fit_spectrum( histo, group_ranges, peak_locations,
+def beta_fit_params_checker( peak_params, det_params, x ) :
+    raise NotImplementedError()
+
+
+def gamma_fit_params_checker( peak_params, det_params, x ) :
+    raise NotImplementedError()
+
+
+
+_available_fits = [ 'a', 'b', 'g' ]
+
+_num_available_fits = len( _available_fits ) 
+
+
+_all_fitters = { 'a' : alpha_fitter,
+                 'b' : beta_fitter,
+                 'g' : gamma_fitter } 
+
+
+_all_fit_params_checkers = { 'a' : alpha_fit_params_checker,
+                             'b' : beta_fit_params_checker,
+                             'g' : gamma_fit_params_checker } 
+
+
+class spectrum_fitter( object ) :
+
+
+    def __init__( self, peak_types, constrain_det_params = None ) :
+
+        if constrain_det_params is None :
+            constrain_det_params = { 'a' : 0, 'b' : 0, 'g' : 0 } 
+
+        self.constrain_det_params = copy.deepcopy( constrain_det_params )
+            
+        self.peak_types = copy.deepcopy( peak_types ) 
+
+        self.num_peaks = len( peak_types )
+        
+        # self.peak_type_indices = {}
+
+        # for t in peak_types  :
+        #     peak_type_indices[t] = [ i for i, x in enumerate( peak_types )
+        #                              if x == t ]
+            
+        
+        self.fitters = [ _all_fitters[t] for t in peak_types ] 
+
+        self.params_array_peak_indices = np.empty( ( self.num_peaks, 2 ), dtype='int' ) 
+        self.params_array_det_indices = np.empty( ( self.num_peaks, 2 ), dtype='int' )
+
+        # set the indices of the relevant params for the flattened array
+
+        peak_idx = 0 
+        det_idx = 0
+
+        constrained_det_param_indices = { 'a' : -1, 'b' : -1, 'g' : -1 }
+
+        
+        self.peak_params = [0] * self.num_peaks
+        self.det_params = [0] * self.num_peaks
+        self.peak_params_errors = [0] * self.num_peaks
+        self.det_params_errors = [0] * self.num_peaks
+
+        
+        for i in np.arange( self.num_peaks ) :
+
+            peak_type = self.peak_types[i]
+
+            num_peak_params, num_det_params = _fitters_num_params[ peak_type ]
+
+            # set these defaults 
+            self.peak_params[i] = np.zeros( num_peak_params )
+            self.det_params[i] = np.zeros( num_det_params )
+            self.peak_params_errors[i] = np.zeros( num_peak_params )
+            self.det_params_errors[i] = np.zeros( num_det_params ) 
+            
+            self.params_array_peak_indices[i] = np.array( [ peak_idx,
+                                                            peak_idx + num_peak_params ] )
+            peak_idx += num_peak_params
+
+            if constrain_det_params[ peak_types[i] ] :
+
+                constrained_det_param_idx = constrained_det_param_indices[ peak_type ]
+                
+                if constrained_det_param_idx == -1 :
+
+                    self.params_array_det_indices[i] = np.array( [ det_idx,
+                                                                   det_idx + num_det_params ] )
+
+                    constrained_det_param_indices[ peak_type ] = det_idx
+                    det_idx += num_det_params
+
+                else : 
+                    self.params_array_det_indices[i] = np.array( [ constrained_det_param_idx,
+                                                                   constrained_det_param_idx
+                                                                   + num_det_params ] )
+
+            else : 
+                self.params_array_det_indices[i] = ( det_idx, det_idx + num_det_params )
+                det_idx += num_det_params
+            
+    
+        self.params_array_det_indices += peak_idx
+        self.params_array_size = peak_idx + det_idx
+             
+
+        # defaults 
+        self.params_result = None
+        self.params_result_errors = None
+        self.redchisqr = -1
+
+
+
+        
+
+    def fit( self, x, y, dy, 
+             peak_params_guess, det_params_guess, xbounds = None,
+             fit_acceptor = None, params_shuffler = None,
+             ax = None, plot_bounds = None, logscale = 1 ) :
+
+        # self.peak_params_guess = copy.deepcopy( peak_params_guess )
+        # self.det_params_guess = copy.deepcopy( det_params_guess )
+        # self.xbounds = copy.copy( xbounds )
+        # self.plot_bounds = copy.copy( plot_bounds ) 
+        
+        if ax is not None:
+            ax.plot( x, y, ls = 'steps', zorder = 1, c = 'k', linewidth = 0.1 ) 
+
+            if( logscale ):
+                ax.set_yscale('log')
+                ax.set_ylim( bottom = 1 ) 
+            
+            if plot_bounds is not None :
+                ax.set_xlim( * plot_bounds ) 
+            
+        self.fit_acceptor = fit_acceptor
+        self.params_shuffler = params_shuffler 
+        self.ax = ax
+        
+        self.fit_attempted = 1
+        
+        if xbounds is not None :
+            y = xcut( x, y, xbounds )
+            dy = xcut( x, dy, xbounds )
+            x = xcut( x, x, xbounds ) 
+
+        self.fit_bounds = xbounds
+        # self.x = x
+        
+        for peak_type, det_params in det_params_guess.items() : 
+
+            # convert everything to an array
+            det_params_guess_arr = np.asarray( det_params )
+            det_params_guess[ peak_type ] = det_params_guess_arr
+            
+            # if self.constrain_det_params[ peak_type ] : 
+            #     det_params_guess[ peak_type ] = det_params_guess_arr
+
+            
+        for i in np.arange( self.num_peaks ) :
+
+            peak_type = self.peak_types[i]
+            self.peak_params[i] = np.asarray( peak_params_guess[i] )
+            self.det_params[i] = np.copy( det_params_guess[ peak_type ] )
+            self.peak_params_errors[i] = np.zeros_like( self.peak_params[i] )  
+            self.det_params_errors[i] = np.zeros_like( self.det_params[i] )  
+            
+
+        
+            # if self.constrain_det_params[ peak_type ] : 
+            #     self.det_params[i] = det_params_guess[ peak_type ]  
+            # else :
+            #     self.det_params[i] = np.copy( det_params_guess[ peak_type ] ) 
+                
+        params_array = self.__construct_params_array()
+
+        # print( params_array ) 
+
+        # print( 'det_params: ' + str( self.det_params ) )
+        # print( 'peak_params: ' + str( self.peak_params ) )
+        # print( 'params_array: ' + str( params_array ) ) 
+
+        # # call scipy.curve_fit with appropriate input
+        # params_final, cov = scipy.optimize.curve_fit( self.__fit_eval, x, y,
+        #                                               p0 = params_array,
+        #                                               sigma = dy )
+
+        objective = lambda _params, _x, _y, _dy : _resid( self.__fit_eval, _params,
+                                                          _x, _y, _dy ) 
+
+        # print( objective( x, y, dy ) )
+
+        ret = scipy.optimize.leastsq( objective, params_array, args = (x,y,dy),
+                                      full_output = 1 )
+
+        params_result, cov, info, msg, status = ret
+            
+        success = ( status >= 1 and status <= 4
+                    and ( cov is not None ) )
+
+        self.success = success
+
+        # we think that the fit converged. now compute the chisqr, pvalue and
+        # check anything else that could be fishy about the fit in an
+        # external function
+
+        if success :
+
+            if not self.check_valid_fit_params() :
+                self.success = 0
+                return self 
+            
+            
+            self.chisqr = np.sum( info['fvec']**2 )
+            self.nfree = len( x ) - len( params_array ) 
+            self.redchisqr = self.chisqr / self.nfree
+
+            params_result_errors = np.sqrt( np.diag( cov ) * self.redchisqr )
+
+            self.set_params_from_params_array( params_result_errors, 1 )
+            
+            self.pvalue = 1 - chi2.cdf( self.chisqr, self.nfree )
+
+            
+            if fit_acceptor is not None :
+                if not fit_acceptor( x, y, dy, self ) :
+                    self.success = 0
+                    return self
+
+            self.params_result = params_result
+            self.params_result_errors = params_result_errors
+
+                
+            print( 'success' ) 
+            print( params_result )
+            print( params_result_errors )
+            print( 'redchisqr: ' + str(self.redchisqr) )
+            print( 'pvalue: ' + str( self.pvalue ) )
+
+            # print(cov) 
+                
+            if self.success and ax is not None :
+                ax.plot( x, self.eval( x ), c = 'r', zorder = 2 ) 
+
+        return self
+        
+
+                
+    def eval( self, x ) :
+
+        ret = 0
+        for i in np.arange( self.num_peaks ) :
+            ret += self.fitters[i]( self.peak_params[i], self.det_params[i], x ) 
+
+        return ret
+
+    
+
+    
+    def __fit_eval( self, params_array, x ) :
+
+        self.set_params_from_params_array( params_array, 0 )
+
+        return self.eval(x)
+
+    
+            
+    def __construct_params_array( self ) :
+
+        p = np.empty( self.params_array_size )
+
+        for i in np.arange( self.num_peaks ) :
+
+            # print( self.params_array_peak_indices[i] )
+            # print( self.peak_params[i] ) 
+
+            p[ slice( * self.params_array_peak_indices[i] ) ] = self.peak_params[i]
+            p[ slice( * ( self.params_array_det_indices[i] ) ) ] = self.det_params[i]
+
+        return p 
+
+
+    
+
+    def set_params_from_params_array( self, params_array, errors = 0 ) :
+
+        if not errors : 
+            peak_array = self.peak_params
+            det_array = self.det_params
+
+        else :
+            peak_array = self.peak_params_errors
+            det_array = self.det_params_errors
+        
+        for i in np.arange( self.num_peaks ) :
+
+            peak_array[i][:] = params_array[ slice( * self.params_array_peak_indices[i] ) ]
+            det_array[i][:] = params_array[ slice( * self.params_array_det_indices[i] ) ]
+            
+        
+            
+
+    def check_valid_fit_params( self ) :
+        
+        for i in range( self.num_peaks ) :
+            if not _all_fit_params_checkers[ self.peak_types[i] ]( self.peak_params[i],
+                                                                   self.det_params[i] ) :
+                return 0
+        
+        return 1
+        
+
+    def plot( self, ax, c = 'r', **kw_args ) :
+        ax.plot( self.x, self.eval( self.x ), c=c, **kw_args )
+
+        
+
+
+
+        
+
+# reference: equation 10 in Bortels 1987  
+# this function is meant to be applied to scalar x, not list
+
+def alpha_fit( A, mu, sigma, eta, tau1, tau2, x ):
+            
+    # prevent overflow by computing logs and then exponentiating, at the expense of some
+    # floating pt error. logtmpz is the log of the 2 analagous terms in the integrand.
+    tauz = [tau1, tau2]
+
+    logtmpz = [ (x-mu)/tau + sigma**2.0/(2*tau**2.0)
+                + np.log( special.erfc( (x-mu)/sigma + sigma/tau) / np.sqrt(2) )
+                for tau in tauz ]
+
+    return ( A / 2.0 ) * ( (1-eta)/tau1 * np.exp(logtmpz[0])
+                           + (eta/tau2) * np.exp(logtmpz[1])   ) 
+
+
+
+
+
+
+
+
+
+
+
+def fit_spectrum( peak_types, x, y, dy, xbounds,
+                  peak_params_guess, det_params_guess,
+                  constrain_det_params = None,
+                  fit_acceptor = None,
+                  params_shuffler = None,
+                  ax = None, plot_bounds = None, logscale = 1 ) :
+
+    spec_fitter = spectrum_fitter( peak_types, constrain_det_params )
+
+    spec_fitter.fit( x, y, dy, peak_params_guess,
+                     det_params_guess, xbounds,
+                     fit_acceptor, params_shuffler,
+                     ax, plot_bounds, logscale = logscale ) 
+    
+    return spec_fitter
+
+
+
+
+
+
+
+
+
+
+def auto_fit_spectrum( x, y, dy,
+                       group_ranges, peak_locations,
                        num_peaks_to_detect, primary_peak_detector,
                        peak_sizes_guesses, det_params_guesses, peak_mu_offset,
-                       peak_position_tolerance = None, db_path = None,
-                       fit_acceptor = None, ax = None ) :
-    
-    # data_fetcher = lambda x: histo
+                       fit_acceptor = None,
+                       params_shuffler = None,
+                       ax = None,
+                       rel_plot_bounds = None,
+                       logscale = 1 ) :
 
-    inputs = spectrum_fitter_inputs( None, None,
-                                     group_ranges, peak_locations,
-                                     num_peaks_to_detect, primary_peak_detector,
-                                     peak_sizes_guesses, det_params_guesses, peak_mu_offset,
-                                     peak_position_tolerance, db_path,
-                                     fit_acceptor = None )
+    num_groups = len( group_ranges )
 
-    # inputs = spectrum_fitter_inputs( None, data_fetcher, group_ranges ) 
+    if len(peak_locations) != num_groups : 
 
-    plt.figure(figsize=(10,12))
-    
-    ax = plt.axes() 
-    
-    process_spectrum( inputs, None, ax, histo ) 
+        print( '''error: inconsistent size of group_ranges, peak_structures, or peak_locations.
+        they should all have length equal to group_ranges''' )
+        sys.exit(0)
 
-    plt.show() 
+    peaks_per_group = [ len(peak_locations[i]) for i in range( num_groups ) ]
+    
+    # find main peaks
+    our_peaks = jmath.get_n_peak_positions( num_peaks_to_detect, y )
+
+    # print( our_peaks ) 
+    
+    primary_peaks = primary_peak_detector( our_peaks, y )
+
+    if primary_peaks is None :
+        return None 
+    
+    # print( primary_peaks )
+    
+    # print( primary_peaks ) 
+    
+    num_peaks_found = len( our_peaks )
 
 
+    # do a check on peak values: energy differenc for the pairs should
+    # be constant. no check necessary on the largest peak since it
+    # always dominates, the only potential problem is really the
+    # smallest peak in the lowest energy pair. this occurs after
+    # plotting so that we can return with the plot alread made.
+    # basically, we are saying that if we cannot determine where the
+    # peak positions are to 0th order, we are not going to bother
+    # fitting them since it will definitely not work if we misidentify
+    # a peak position.
     
-    # if db not in dbmgr.all_dbs :
-    #     print( 'ERROR: db_id given is not in the list of db ids. ' )
-    #     return 0
-    
-    # set_globals_for_debugging( test_db )
-    
-    # current_file = db.name +  "_%d_%d.bin" % (x,y)
-    
-    # if PRINT_FILE_NAMES:
-    #     print( "INFO: processing file: " + current_file )
-    
-    # current_file = ( "../../data/extracted_ttree_data/"
-    #                  + db.name + '/'  + current_file )
         
-    # ax = plt.axes()
+        
+    # determine which fits to perform, 1 = fit must be attempted. by default if no 
+    # conn is supplied we process all the fits.
+
+    fit_attempts = [ -1 ] * num_groups  # first fit to try, which is the one we left off on.
+
+    fits_to_perform = [ 1 ] * num_groups 
+
+    reduc_chisq_all = [] # store all reduced chisq values.
     
 
-    # if test_db:
+    fit_bounds = [ np.array( group_ranges[a] ) + primary_peaks[a]
+                   for a in range( num_groups )  ]
 
-    #     # construct db if not already existing 
-    #     if not db.exists():
-    #         db.create()
+    if rel_plot_bounds is not None :
+        plot_bounds = [ fit_bounds[0][0] + rel_plot_bounds[0],
+                        fit_bounds[-1][1] + rel_plot_bounds[1] ] 
 
-    #     db.connect()
-    #     process_file( ax, current_file, x, y, db = db )
-    #     db.disconnect()
+    else :
+        plot_bounds = None
+        
+    # list of detected peaks, to be added to DB (not yet implemented) 
+    # peak_detect = [ our_peaks[0:2], our_peaks[2:4], our_peaks[4:] ]
 
-    # else:
-    #     process_file( ax, current_file, x, y, nice_format = 1 ) 
+    ret = [0] * num_groups 
+    
+    # loop through the fits that were not in the db and add them if successful.
+    for i in range( num_groups ):
+
+        if fits_to_perform[i]:
+
+            # print( fit_bounds[i] )
+            # print( primary_peaks[i] ) 
+
+            mu_array_guess = ( primary_peaks[i]
+                               + np.array( peak_locations[i] )
+                               + peak_mu_offset )
+            
+            peak_params_guess = [ [ peak_sizes_guesses[i][d], mu_array_guess[d] ]
+                                  for d in range( peaks_per_group[i] ) ]
+
+
+            # print( peak_params_guesses )
+            # print( det_params_guess )
+
+                        
+            spec_result = fit_spectrum( [ 'a' ] * peaks_per_group[i],
+                                        x, y, dy, fit_bounds[i],
+                                        peak_params_guess, det_params_guesses[i],
+                                        constrain_det_params = { 'a' : 1 },
+                                        params_shuffler = params_shuffler,
+                                        fit_acceptor = fit_acceptor,
+                                        ax = ax,
+                                        plot_bounds = plot_bounds,
+                                        logscale = logscale )
+
+            ret[i] = spec_result 
+        
+    return ret
+
+
+
+
+
 
         
-    # plt.show()
-
-    # return 1
-    
-    
-       
-
-
-
-
-# print message to the console and write it to a log file.
-def log_message( logfile, msg ):
-    
-    if log_message.first_msg or not os.path.exists( logfile ):
-        log_message.first_msg = 0
-        mode = 'w'
-    else:
-        mode = 'a'
         
-    with open( logfile, mode ) as log:
-        log.write( msg + '\n' )
+
+
+
+def auto_fit_many_spectra( spec_db, data_retriever,
+                           image_path, image_dimensions, 
+                           group_ranges, peak_locations,
+                           num_peaks_to_detect, primary_peak_detector,
+                           peak_sizes_guesses, det_params_guesses, peak_mu_offset,
+                           fit_acceptor = None,
+                           params_shuffler = None,
+                           rel_plot_bounds = None,
+                           logscale = 1,
+                           estimate_time_left = 1 ) :
     
-log_message.first_msg = 1
+    # dimensions of output images: number of plots in each dimension
 
-
-
-
-
-# set debug globals, called by make_one_plot()
-def set_globals_for_debugging( test_db = 0 ):
-
-    if not test_db:
-        global UPDATE_DB
-        UPDATE_DB = 0
+    xdim = spec_db.xdim
+    ydim = spec_db.ydim
     
-    global PRINT_PEAK_POSITIONS
-    PRINT_PEAK_POSITIONS = 1
+    im_xdim = image_dimensions[0]
+    im_ydim = image_dimensions[1]
+
+    num_groups = len( group_ranges ) 
     
-    global PRINT_FIT_ATTEMPT
-    PRINT_FIT_ATTEMPT = 1
-    
-    global PRINT_FIT_STATUS
-    PRINT_FIT_STATUS = 1
+    if not os.path.exists( image_path ):
+        os.mkdir( image_path )
+        
+    # these 2 loops loop over grids of dimx x dimy images. 
+    for x in range( xdim ):
+        
+        # these loops create the 4x4 grids. 2 per strip row.
+        for k in range( ydim // (im_xdim * im_ydim) ) :
+        
+            plt.clf()
+            plt.close()
+            f, axarr = plt.subplots( im_xdim, im_ydim, figsize=(20,10) )    
+            
+            for i in range( im_xdim ):
+                for j in range( im_ydim ):
+                        
+                    y = ( i * im_xdim + j ) + ( k * im_xdim * im_ydim )
+                        
+                    print( str( [x,y] ) )    
+                        
+                    # this estimates the time remaining for the program to terminate
+                    if estimate_time_left : 
+                        time_estimator( x * ydim + y, xdim * ydim, num_updates = 100 )
+                        
+                    xdata, ydata, dydata = data_retriever( x, y )
+                            
+                    spec_fits = auto_fit_spectrum( xdata, ydata, dydata,
+                                                   group_ranges, peak_locations,
+                                                   num_peaks_to_detect, primary_peak_detector,
+                                                   peak_sizes_guesses, det_params_guesses, peak_mu_offset,
+                                                   fit_acceptor, params_shuffler,
+                                                   axarr[i,j], rel_plot_bounds, logscale )
 
-    global SHOW_HISTO
-    SHOW_HISTO = 0
-     
-       
-# make_one_plot( dbmgr.angled, 24, 30, test_db = 0 )
-# fit_all_peaks( dbmgr.all_dbs )
+                    for l in range( num_groups ) :
+                        if spec_fits is not None : 
+                            spec_db.insert_fit_data( x, y, l, spec_fits[l] ) 
+                            
+                        else :
+                            spec_db.insert_fit_data( x, y, l, None ) 
+            
+            plt.savefig( image_path + ( 'x=%d.%d' % (x,k) ) + '.png', format='png')
+                            
+            
+    spec_db.disconnect()
+
+    return 1 
+
+    # plt.setp([a.get_xticklabels() for a in axarr[0, :]], visible=False)
+                            # plt.setp([a.get_yticklabels() for a in axarr[:, 1]], visible=False)
+                            
 
 
+    # # option to pass None as the DB 
+    # if db is not None:
+
+    #     for i in range( num_groups ):
+            
+    #         # extract
+    #         db_data = db.read_fit_data( x, y, i )
+
+    #         successful_fit = db_data[ 'successful_fit' ]
+
+    #         # signal that this fit will have to be re-attempted.
+    #         fits_to_perform[i] = not successful_fit
+
+    #         # last attempt that we left off on 
+    #         fit_attempts[i] = db_data[ 'last_attempt' ]
+            
+    #         if successful_fit:
+    #             # fitfunc = spec.sum_n_fitfuncs( spec.fitfunc_n_alpha_peaks, NUM_PEAKS_PER_FEATURE[i] )
+                
+    #             model = db_data[ 'model' ] 
+    #             jplt.add_fit_to_plot( ax, x, db_data[ 'fit_bounds' ],
+    #                                   jmath.model_func( model ),
+    #                                   logscale = 1 )
+
+    #             # print( model.params ) 
+                
+    #             reduc_chisq_all.append( model.redchi )
+                
+
+    #     # no further processing required if all the fits converged.
+    #     if not any( fits_to_perform ):
+    #         _add_text( ax, x, y, reduc_chisq_all )
+    #         return 1
+                
+         
+
+    pass 

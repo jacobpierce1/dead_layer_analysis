@@ -3,7 +3,7 @@
 # schema, and 
 # 
 # source: https://pymotw.com/3/sqlite3/
-
+import copy 
 import os
 import sqlite3
 import json
@@ -16,6 +16,8 @@ import jspectroscopy as spec
 import datetime
 
 import dill # allow lambda function pickle
+
+import libjacob.jmeas as meas 
 
 
 
@@ -50,7 +52,8 @@ schema_cols = [ 'x', 'y', 'fit_id', 'successful_fit',
 class spectrum_db( object ):
 
     
-    def __init__( self, path, peak_types = None, dimensions = None ) :
+    def __init__( self, path, dimensions = None,
+                  peak_types = None, constrain_det_params = None ) :
 
         create_new_db = ( peak_types is not None ) and ( dimensions is not None )
         
@@ -60,7 +63,7 @@ class spectrum_db( object ):
         if not os.path.exists( path ) :
             if create_new_db :
                 self.is_empty = 1 
-                self.create( peak_types, dimensions )
+                self.create( dimensions, peak_types, constrain_det_params )
             else :
                 print( 'ERROR: attempted to load db, but the path does not exist' ) 
 
@@ -68,15 +71,20 @@ class spectrum_db( object ):
             self.is_empty = 0
             self.connect()
             self.read_metadata()
-            
-        
+
+        # TODO remove this to fix bug
         
         return
 
     
         
-    def create( self, peak_types, dimensions ):
-        
+    def create( self, dimensions, peak_types, constrain_det_params ):
+
+        if constrain_det_params is None :
+            constrain_det_params = { 'a' : 0, 'b' : 0, 'g' : 0 } 
+
+        self.constrain_det_params = copy.deepcopy( constrain_det_params )  
+            
         self.peak_types = peak_types
         self.dimensions = dimensions
 
@@ -126,7 +134,7 @@ class spectrum_db( object ):
             for x in range( self.xdim ):
                 for y in range( self.ydim ):
                     for i in range( self.num_groups ):
-                        self.insert_fit_data( x, y, i ) 
+                        self.insert_fit_data( x, y, i, None ) 
 
 
 
@@ -140,9 +148,8 @@ class spectrum_db( object ):
             self.conn.cursor().execute( 'INSERT INTO metadata VALUES ( ?, ?, ?, ?, ? ) ',
                                         ( self.xdim, self.ydim,
                                           _to_bin( self.peak_types ),
-                                          _to_bin( None ),
+                                          _to_bin( self.constrain_det_params ),
                                           time ) )
-
             self.conn.commit() 
 
             
@@ -156,10 +163,13 @@ class spectrum_db( object ):
         metadata  = dict( cursor.fetchone() )
                 
         self.xdim = metadata[ 'xdim' ] 
-        self.ydim = metadata[ 'ydim' ] 
-        self.peak_types = metadata[ 'peak_types' ]
-        self.yield_data = metadata[ 'yield_data' ]
+        self.ydim = metadata[ 'ydim' ]
+        self.peak_types = _from_bin( metadata[ 'peak_types' ] ) 
+        self.constrain_det_params = _from_bin( metadata[ 'constrain_det_params' ] )
         self.timestamp = metadata[ 'timestamp' ]
+
+        self.num_groups = len( self.peak_types ) 
+        self.num_peaks_per_group = [ len(x) for x in self.peak_types ] 
 
         
 
@@ -194,6 +204,7 @@ class spectrum_db( object ):
 
         return 1
 
+
     
 
     
@@ -218,71 +229,73 @@ class spectrum_db( object ):
     
 
 
-    # TODO: remove
-    def flatten( self ):
-        return _meas_no_checks( self.x.flatten, self.dx.flatten() )
-        
-
     
 
-    # this function shall only write the fit parametetrs and things
-    # that can be obtained only from the histograms, especially the
-    # fits. the fwhms etc. can be extracted later much more rapidly by
-    # reconstructing the fit function.  p0 and fit_bounds also saved
-    # because they could be used to reconstruct the fit.  the default
-    # behavior is to overwrite data, this is to keep the function as
-    # efficient as possible. there several instances i can think of in
-    # which you would want to put data in without bothering to check
-    # the current state of the DB. as such you have to do such a query
-    # beforehand if necessary.
-    
-    def insert_fit_data( self, x, y, fit_id,
-                         successful_fit = 0,
-                         npeaks = -1,
-                         last_attempt = -1, 
-                         params_guess = None,
-                         fit_bounds=None,
-                         peak_guesses = None,
-                         model = None ):        
+    def insert_fit_data( self, x, y, group_num, spectrum_fit ):        
 
-        
         if self.conn is None:
             raise ValueError( 'Cannot insert data, sqlite3 connection is not open. Call db.connect().' )
 
-        
-        # if db is empty, then we are doing an insert.
         if self.is_empty :
+            query = 'INSERT INTO fits VALUES ( ?, ?, ?, ?, ?, ?, ?, ? )'
+            self.conn.cursor().execute( query, ( x, y, group_num, -1,
+                                                 None, None, None, -1 ) )
             
-            query = ( 'insert into ' + _tablename + ' ('   
-                      + ', '.join(schema_cols)    
-                      + ') values ('         
-                      + ':' + ', :'.join(schema_cols) 
-                      + ');'
-            )
-            
-        # otherwise we are doing an update.
         else:
-            query = ( 'update ' + _tablename   
-                      + ' set ' + ', '.join( [ col + '=:' + col
-                                               for col in schema_cols[3:] ] )   
-                      + ' where ' + ' and '.join( [ col + '=:' + col
-                                                    for col in schema_cols[:3] ] ) )  
+            if spectrum_fit is None :
+                query = ( 'UPDATE fits SET success=? '
+                          + 'WHERE x=? and y=? and group_num=?' )
                 
-        query_dict =  {
-            'x' : x,
-            'y' : y,
-            'fit_id' : fit_id,
-            'successful_fit' : successful_fit, 
-            'npeaks' : npeaks,
-            'last_attempt' : last_attempt,
-            'params_guess' : _to_bin( params_guess ),
-            'fit_bounds' : _to_bin( fit_bounds ),
-            'peak_guesses' : _to_bin( peak_guesses ),
-            'model' : _to_bin( model )
-        }
+                self.conn.cursor().execute( query, ( 0, x, y, group_num ) ) 
+            
+            else :
+                query = ( 'UPDATE fits SET success=?, '
+                          + 'params_result=?, params_result_errors=?, '
+                          + 'fit_bounds=?, redchisqr=? '
+                          + 'WHERE x=? and y=? and group_num=?' )
+
+                self.conn.cursor().execute( query, ( spectrum_fit.success,
+                                                     _to_bin( spectrum_fit.params_result ),
+                                                     _to_bin( spectrum_fit.params_result_errors),
+                                                     _to_bin( spectrum_fit.fit_bounds ),
+                                                     spectrum_fit.redchisqr,
+                                                     x, y, group_num ) )
+
+            self.conn.commit()
         
-        self.conn.cursor().execute( query, query_dict )
-        self.conn.commit()
+        # # if db is empty, then we are doing an insert.
+        # if self.is_empty :
+            
+        #     query = ( 'insert into ' + _tablename + ' ('   
+        #               + ', '.join(schema_cols)    
+        #               + ') values ('         
+        #               + ':' + ', :'.join(schema_cols) 
+        #               + ');'
+        #     )
+            
+        # # otherwise we are doing an update.
+        # else:
+        #     query = ( 'update ' + _tablename   
+        #               + ' set ' + ', '.join( [ col + '=:' + col
+        #                                        for col in schema_cols[3:] ] )   
+        #               + ' where ' + ' and '.join( [ col + '=:' + col
+        #                                             for col in schema_cols[:3] ] ) )  
+                
+        # query_dict =  {
+        #     'x' : x,
+        #     'y' : y,
+        #     'fit_id' : fit_id,
+        #     'successful_fit' : successful_fit, 
+        #     'npeaks' : npeaks,
+        #     'last_attempt' : last_attempt,
+        #     'params_guess' : _to_bin( params_guess ),
+        #     'fit_bounds' : _to_bin( fit_bounds ),
+        #     'peak_guesses' : _to_bin( peak_guesses ),
+        #     'model' : _to_bin( model )
+        # }
+        
+        # self.conn.cursor().execute( query, query_dict )
+        # self.conn.commit()
 
 
         
@@ -294,38 +307,46 @@ class spectrum_db( object ):
 
         if self.conn is None:
             raise ValueError( 'Cannot read db, sqlite3 connection is not open. Call db.connect().' )
-                
-        query = ( 'select ' + ', '.join( schema_cols[3:] )   
-                  + ' from ' + _tablename    
-                  + ' where ' + ' and '.join( [ col + '=:' + col
-                                                for col in schema_cols[:3] ] ) )
-            
-        query_dict = {
-            'x' : x,
-            'y' : y,
-            'fit_id' : fit_id
-        }
+
+        query = 'SELECT * FROM fits WHERE x=? and y=? and fit_id=?'
 
         cursor = self.conn.cursor()
-
-        cursor.execute( query, query_dict )
-        
+        cursor.execute( query, ( x, y, fit_id ) )
         result = dict( cursor.fetchone() )
+        
+        spec_result = _from_bin( result[ 'spectrum_fit' ] )
 
-        # unpickle the pickled objects 
-        for key in [ 'params_guess', 'fit_bounds', 'peak_guesses', 'model' ]:
-            result[ key ] = _from_bin( result[ key ] )
+        print( spec_result ) 
 
-        # print( 'result: ' + str( result ) )
+        return spec_result 
+        
+        
+        # query = ( 'select ' + ', '.join( schema_cols[3:] )   
+        #           + ' from ' + _tablename    
+        #           + ' where ' + ' and '.join( [ col + '=:' + col
+        #                                         for col in schema_cols[:3] ] ) )
+            
+        # query_dict = {
+        #     'x' : x,
+        #     'y' : y,
+        #     'fit_id' : fit_id
+        # }
+
+        # cursor = self.conn.cursor()
+
+        # cursor.execute( query, query_dict )
+        
+        # result = dict( cursor.fetchone() )
+
+        # # unpickle the pickled objects 
+        # for key in [ 'params_guess', 'fit_bounds', 'peak_guesses', 'model' ]:
+        #     result[ key ] = _from_bin( result[ key ] )
+
+        # # print( 'result: ' + str( result ) )
 
         return result
 
     
-
-
-
-                        
-
 
 
 
@@ -349,7 +370,79 @@ class spectrum_db( object ):
     
 
 
+    
+    def write_mu_values( self, path ) :
 
+        # init the data structure storing the mu values
+        
+        mu_values = [ [ 0 ] * self.num_peaks_per_group[i]
+                      for i in range( self.num_groups ) ] 
+
+        for i in range( self.num_groups ) :
+            for j in range( self.num_peaks_per_group[i] ) : 
+                mu_values[i][j] = meas.meas.empty(( self.xdim, self.ydim ))
+                            
+            
+        cursor = self.conn.cursor()
+        cursor.execute( 'SELECT * FROM ' + _tablename )
+
+        spec_fitters = [ spec.spectrum_fitter( self.peak_types[i],
+                                               constrain_det_params = { 'a' : 1 } )
+                         for i in range( self.num_groups ) ]
+        
+        for row in cursor:
+
+            x = row['x']
+            y = row['y'] 
+            group_num = row[ 'group_num' ]
+            success = row[ 'success' ]
+            
+            if success :
+                params_result = _from_bin( row[ 'params_result' ] )
+                params_result_errors = _from_bin( row[ 'params_result_errors' ] )
+                
+                spectrum = spec_fitters[ group_num ] 
+
+                spectrum.set_params_from_params_array( params_result, errors = 0)
+                spectrum.set_params_from_params_array( params_result_errors, errors = 1)
+
+                # print( spectrum.peak_params[0][1] )
+                # print( spectrum.peak_params[1][1] )
+                # print( '' ) 
+                    
+                
+                for j in range( self.num_peaks_per_group[ group_num ] ) :
+                    mu_values[ group_num ][j][x,y] = meas.meas( spectrum.peak_params[j][1],
+                                                                spectrum.peak_params_errors[j][1] ) 
+                    
+            else :  
+                for j in range( self.num_peaks_per_group[ group_num ] ) :
+                    mu_values[ group_num ][j][x,y] = meas.nan 
+                        
+        with open( path, 'wb' ) as f :
+            dill.dump( mu_values, f )
+
+
+            
+
+            
+    def read_mu_values( self, path ) :
+
+        if not os.path.exists( path ) :
+            print( 'ERROR: path not found' ) 
+            sys.exit(0) 
+
+        with open( path, 'rb' ) as f :
+            mu_values = dill.load( f )
+
+        return mu_values 
+
+
+
+    
+    # todo                 
+    def gen_csv( self, path ) :
+        pass 
 
 
 
@@ -567,13 +660,6 @@ class spectrum_db( object ):
                 for i in range( self.num_peaks_per_feature[ feature ]  ):
                     peak_grids[ feature ][ i ][ x,y ] = meas.nan
                 continue
-
-            # do check on chi2. TODO: this should be removed and incorporated
-            # in the fit itself.
-            if 1 - chi2.cdf( model.chisqr, model.nfree ) < 0.05 :
-                for i in range( self.num_peaks_per_feature[ feature ]  ):
-                    peak_grids[ feature ][ i ][ x,y ] = meas.nan
-                continue
                 
             # do a monte carlo simulation for each peak in this feature.
                 
@@ -607,8 +693,7 @@ class spectrum_db( object ):
                     
                     peak_grids[i][j].x.tofile(  peak_paths[i][j][0] )
                     peak_grids[i][j].dx.tofile( peak_paths[i][j][1] )
-                    
-        
+                            
         return peak_grids    
     
 

@@ -22,8 +22,8 @@ peak_locations = [ [ -50, -20, 0 ], [ -57, -20, 0 ], [ -50, -30, 0, 22, 46, 64 ]
 peak_types = [ ['a'] * len(x) for x in peak_locations ]
 
 peak_sizes_guesses = [ [ 2000, 30000.0, 90000.0 ],
-                     [ 3000, 50000.0, 100000. ],
-                     [ 5000.0, 10000.0, 100000.0, 100.0, 500.0, 500.0 ] ]
+                       [ 3000, 50000.0, 100000. ],
+                       [ 5000.0, 10000.0, 100000.0, 100.0, 500.0, 500.0 ] ]
 
 det_params_guesses = [ { 'a' : [ 5.0, 0.97, 35.0, 1.5 ] } ] * 3 
 
@@ -40,34 +40,24 @@ num_peaks_to_detect = 6
                    
 
 # create and populate the histogram array 
-def data_fetcher( name, indices ) :
+def data_fetcher( name, x, y ) :
 
     xaxis = np.arange( 5000 )
         
-    x, y = indices 
-
     infile = ( '../../data/extracted_ttree_data/'
-               + name + '/%s_%d_%d.bin' % ( name, x,y ) )
+               + name + '/%s_%d_%d.bin' % ( name, x, y ) )
 
-    print( infile ) 
+    # print( infile ) 
     
     efront_histo = np.zeros( xaxis.size )
 
     if not data.construct_histo_array( infile, efront_histo ) :
         print( 'error: couldnt open file' ) 
 
-        # msg = "ERROR: unable to open file: " + infile 
-
-        # print( msg )
+    dy = np.sqrt( efront_histo )
+    dy[ dy==0 ] = 1 
         
-        # if log_enabled:
-        #     log_message( logfile, msg )
-
-        # sys.exit(0)
-
-    # print( max( efront_histo )  ) 
-        
-    return ( xaxis, efront_histo ) 
+    return ( xaxis, efront_histo, dy ) 
 
 
 
@@ -77,7 +67,10 @@ def data_fetcher( name, indices ) :
 
 def primary_peak_detector( peaks_detected, histo ) :
 
-    # shifts = np.zeros( 5 ) 
+    # shifts = np.zeros( 5 )
+    
+    if len( peaks_detected ) < 6 :
+        return None
     
     ret = np.empty( 3 )
 
@@ -111,25 +104,23 @@ def params_shuffler() :
 
 def fit_acceptor( x, y, dy, spec_fitter_result ) :
 
+    if spec_fitter_result.pvalue < 0.05 :
+        return 0 
+    
     return 1
 
 
 
-x, y = data_fetcher( 'angled', (20,16) ) 
 
 
-dy = np.sqrt( y )
-dy[ ( dy == 0 ) ] = 1 
+# x, y, dy = data_fetcher( 'angled', 20, 16 ) 
 
 
-plt.figure(figsize=(10,12))
-ax = plt.axes() 
+# dy = np.sqrt( y )
+# dy[ ( dy == 0 ) ] = 1 
 
-
-
-test_db = spec.spectrum_db( '../../storage/databases/test_db', peak_types, (32,32) ) 
-
-    
+# plt.figure(figsize=(10,12))
+# ax = plt.axes()     
 
 # spec.auto_fit_spectrum( x, y, dy,
 #                         group_ranges, peak_locations,
@@ -141,23 +132,48 @@ test_db = spec.spectrum_db( '../../storage/databases/test_db', peak_types, (32,3
 #                         rel_plot_bounds = rel_plot_bounds )
 
 
-spec.auto_fit_many_spectra( test_db, '../../images/current_fit_images/det1_angled_test',
-                            group_ranges, peak_locations,
-                            num_peaks_to_detect, primary_peak_detector,
-                            peak_sizes_guesses, det_params_guesses, peak_mu_offset,
-                            fit_acceptor = fit_acceptor,
-                            params_shuffler = params_shuffler,
-                            ax = ax,
-                            rel_plot_bounds = rel_plot_bounds )
+# plt.show()
 
 
 
-plt.show()
+db_names = [ 'moved', 'centered', 'flat', 'det3_cent', 'det3_moved' ]
+
+constrain_det_params = { 'a' : 1 }
+
+
+for name in db_names : 
+
+    db = spec.spectrum_db( '../../storage/databases/' + name, (32,32),
+                           peak_types, constrain_det_params )
+
+
+    data_retriever = lambda x, y : data_fetcher( name, x, y ) 
+
+    spec.auto_fit_many_spectra( db, data_retriever,
+                                '../../images/current_fit_images/' + name + '/', (4,4),
+                                group_ranges, peak_locations,
+                                num_peaks_to_detect, primary_peak_detector,
+                                peak_sizes_guesses, det_params_guesses, peak_mu_offset,
+                                fit_acceptor = fit_acceptor,
+                                params_shuffler = params_shuffler,
+                                rel_plot_bounds = rel_plot_bounds,
+                                logscale = 1 )
 
 
 
 
-    # # plot the histogram without fit yet 
+
+
+
+
+
+
+
+
+
+
+
+# # plot the histogram without fit yet 
     # if nice_format : 
     #     jplt.plot_histo( ax, xaxis, efront_histo,
     #                      plot_bounds = None, logscale = 1,
@@ -175,7 +191,7 @@ plt.show()
 
     #         # l.draggable()
             
-    # else :
+    # else :s
     #     jplt.plot_histo( ax, xaxis, efront_histo,
     #                      plot_bounds = None, logscale = 1,
     #                      title = "", xlabel = "",

@@ -1,6 +1,6 @@
 # import all modules to be used for spectroscopy.
 
-from .fitfuncs import * 
+from .spectrum_fitter import spectrum_fitter, fit_spectrum, auto_fit_spectrum, auto_fit_many_spectra
 
 from .db_manager import spectrum_db
 
