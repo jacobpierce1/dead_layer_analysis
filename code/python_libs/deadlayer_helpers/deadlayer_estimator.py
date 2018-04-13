@@ -6,6 +6,7 @@
 # we make estimates of both the source dead layer depths and
 # the pixel dead layer depth.
 
+import os 
 import sys 
 import time
 
@@ -13,15 +14,14 @@ import libjacob.jpyplot as jplt
 import libjacob.jmeas as meas
 import libjacob.jutils as jutils
 import libjacob.jmath as jmath
-import libjacob.jstats as jstats
+# import libjacob.jstats as jstats
 
 
 # import deadlayer_helpers.stopping_power_interpolation as stop
-import deadlayer_helpers.stopping_power_interpolation as stop
-import deadlayer_helpers.geometry as geom
-import deadlayer_helpers.sql_db_manager as dbmgr
-import deadlayer_helpers.analysis as anal
-import deadlayer_helpers.data_handler as data
+# import deadlayer_helpers.stopping_power_interpolation as stop
+# import deadlayer_helpers.sql_db_manager as dbmgr
+# import deadlayer_helpers.analysis as anal
+# import deadlayer_helpers.data_handler as data
 
 import jspectroscopy as spec
 
@@ -35,15 +35,14 @@ from mpldatacursor import datacursor
 from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.colors import SymLogNorm
 import matplotlib.pyplot as plt
+
 plt.rcParams["font.family"] = "Times New Roman"
 plt.rcParams[ 'mathtext.default' ] = 'regular' 
 
-import pandas as pd
 import numpy as np
 import scipy.optimize
 from scipy.stats import chi2
 
-from sklearn import linear_model
 import lmfit
 
 import colorcet
@@ -61,85 +60,23 @@ epsilon_0 = 3.67 / 1000  # keV / electron-hole pair
 
 
 
-peak_energies = np.array( [ [ 5123.68, 5168.17 ],
-                            [ 5456.3, 5499.03 ],
-                            [ 5759.5, 5813.10,  ] ] )   # all in keV
+# peak_energies = np.array( [ [ 5123.68, 5168.17 ],
+#                             [ 5456.3, 5499.03 ],
+#                             [ 5759.5, 5813.10,  ] ] )   # all in keV
 
-flattened_peak_calibration_energies = peak_energies.flatten()
-
-
-
-# these are the stopping powers at the above peak energies.
-
-si_stopping_powers = np.array( [ [ 6.080E+02, 6.046E+02 ],
-                                 [ 5.832E+02, 5.802E+02 ],
-                                 [ 5.626E+02, 5.591E+02 ] ] )
-
-si_dioxide_stopping_powers = np.array( [ [ 6.489E+02, 6.452E+02 ],
-                                         [ 6.222E+02, 6.190E+02 ],
-                                         [ 6.001E+02, 5.963E+02   ] ] )
+# flattened_peak_calibration_energies = peak_energies.flatten()
 
 
 
-# more data for an interpolation.
+# # these are the stopping powers at the above peak energies.
 
-si_interp_energies = np.array( [ 5.050E+00, 5.090E+00, 5.130E+00, 5.170E+00,
-                                 5.210E+00, 5.250E+00, 5.290E+00, 5.330E+00,
-                                 5.370E+00, 5.410E+00, 5.450E+00, 5.490E+00,
-                                 5.530E+00, 5.570E+00, 5.610E+00, 5.650E+00,
-                                 5.690E+00, 5.730E+00, 5.770E+00, 5.810E+00,
-                                 5.81310,] )
+# si_stopping_powers = np.array( [ [ 6.080E+02, 6.046E+02 ],
+#                                  [ 5.832E+02, 5.802E+02 ],
+#                                  [ 5.626E+02, 5.591E+02 ] ] )
 
-si_interp_stopping_powers = np.array( [ 6.138E+02, 6.107E+02, 6.075E+02, 6.044E+02,
-                                        6.014E+02, 5.983E+02, 5.953E+02, 5.924E+02,
-                                        5.894E+02, 5.866E+02, 5.837E+02, 5.809E+02,
-                                        5.781E+02, 5.753E+02, 5.726E+02, 5.699E+02,
-                                        5.672E+02, 5.645E+02, 5.619E+02, 5.593E+02,
-                                        5.591E+02 ] ) 
-
-
-# big_si_interp_energies = np.linspace( 0.1, 6.0, 60 )
-
-# big_si_interp_stopping_powers = np.array( [ 9.107E+02, 1.232E+03, 1.364E+03, 1.412E+03,
-#                                             1.420E+03, 1.408E+03, 1.386E+03, 1.358E+03,
-#                                             1.328E+03, 1.296E+03, 1.265E+03, 1.234E+03,
-#                                             1.204E+03, 1.175E+03, 1.148E+03, 1.121E+03,
-#                                             1.095E+03, 1.070E+03, 1.046E+03, 1.024E+03,
-#                                             1.002E+03, 9.815E+02, 9.618E+02, 9.429E+02,
-#                                             9.248E+02, 9.073E+02, 8.904E+02, 8.742E+02,
-#                                             8.584E+02, 8.432E+02, 8.284E+02, 8.141E+02,
-#                                             8.003E+02, 7.868E+02, 7.738E+02, 7.611E+02,
-#                                             7.487E+02, 7.367E+02, 7.251E+02, 7.137E+02,
-#                                             7.027E+02, 6.919E+02, 6.815E+02, 6.715E+02,
-#                                             6.618E+02, 6.524E+02, 6.433E+02, 6.346E+02,
-#                                             6.261E+02, 6.179E+02, 6.099E+02, 6.021E+02,
-#                                             5.946E+02, 5.873E+02, 5.802E+02, 5.732E+02,
-#                                             5.665E+02, 5.600E+02, 5.536E+02, 5.474E+02 ] )
-
-
-
-
-density_si = 2.328 # g / cm^2
-density_si_dioxide = 2.65
-
-si_stopping_powers *= density_si * 1000 * 100 / 1e9   # convert to keV / nm from mev / cm
-si_dioxide_stopping_powers *= density_si_dioxide * 1000 * 100 / 1e9
-si_interp_stopping_powers *= density_si * 1000 * 100 / 1e9 
-
-
-si_interp_energies *= 1000   # keV / MeV
-
-
-
-
-# stopping power for the 5456.3 and 5499.03 keV peaks alphas
-# https://physics.nist.gov/cgi-bin/Star/ap_table-t.pl
-# stopping_power_energies = np.array( [ 5.802E+02 , 5.802E+02 ] )  # MeV cm^2 / g 
-
-
-
-
-# constants, need density of each deadlayer id
+# si_dioxide_stopping_powers = np.array( [ [ 6.489E+02, 6.452E+02 ],
+#                                          [ 6.222E+02, 6.190E+02 ],
+#                                          [ 6.001E+02, 5.963E+02   ] ] )
 
 
 
@@ -159,24 +96,25 @@ def nth_largest(n, iter):
 # being used to describe the relationship between energy entering
 # detector and the secant of penetration angle
 
-class dead_layer_model_params( object ) :
+class deadlayer_model_params( object ) :
 
     def __init__( self,
                   vary_det_deadlayer = 0,
                   quadratic_source = 0,
                   quadratic_det = 0,
                   calibrate_each_pixel = 0,
-                  interp_stopping_power = 1,
-                  mu = 1,
+                  interp_det_stopping_power = 1,
+                  interp_source_stopping_powers = 0,
                   average_over_source = 1,
                   pulse_height_defect = 0,
                   # ignore_outer_pixels = 0,
                   fstrips_requested = None,
                   bstrips = None,
                   different_fstrip_deadlayers = 0,
-                  different_pixel_deadlayers = 1,
+                  different_pixel_deadlayers = 0,
                   fix_source_deadlayers = None,
-                  one_source_constant = 0 ) :
+                  one_source_constant = 0,
+                  det_thickness = None ) :
 
         # various options that change the model the data is fit
         # to. see energy_from_mu_lmfit() for what they do.
@@ -190,17 +128,11 @@ class dead_layer_model_params( object ) :
         # it is not that much extra computation to use this
         # instead of the less complex approximation, so
         # i recommend using it. 
-        self.interp_stopping_power = interp_stopping_power
+        self.interp_det_stopping_power = interp_det_stopping_power
+        self.interp_source_stopping_powers = interp_source_stopping_powers
 
-        # bool: 1 to use mu values of each peak, 0 to use
-        # peak values for each peak. i recommend using mu values.
-        self.mu = mu
-
-        # use a modified version of secant of penetration angle
-        # for the sources
-        self.average_over_source = average_over_source
         
-        self.si_stopping_power_interpolation = None
+        self.det_stopping_power_interp = None
 
         # self.ignore_outer_pixels = ignore_outer_pixels
 
@@ -212,7 +144,7 @@ class dead_layer_model_params( object ) :
         else:
             self.fstrips_requested = fstrips_requested
 
-        self.fstrips = dict()
+        self.fstrips = None # to be set later
             
         if bstrips is None:
             self.bstrips = np.arange(32)
@@ -228,75 +160,36 @@ class dead_layer_model_params( object ) :
         self.fix_source_deadlayers = fix_source_deadlayers 
 
         self.one_source_constant = one_source_constant
+
+        self.account_for_det = 0
+        self.det_thickness = det_thickness
         
         return None
 
         
 
-    
-
-    
-
-
 
 
     
 
-# interpolate stopping power of alphas in Si using data
-# in the range emin, emax. data is from astar program of NIST.
-# uses scipy.interpolate.interp1d. if from_0_keV is 1, then
-# interpolate over a lot of data to obtain large interpolation
-# and set the 
 
-def construct_si_stopping_power_interpolation( from_0_keV = 0, plot = 0 ) :
+class source_geom_data( object ) :
 
-    data = np.loadtxt( '../../data/stopping_power_data/alpha_stopping_power_si.txt',
-                       skiprows = 10, unpack = 1 )
+    def __init__( self, det_sectheta, source_sectheta, is_angled,
+                  det_sectheta_errors = None, source_sectheta_errors = None ) :
 
-    emax = peak_energies.max()
-
-    energy = data[0] * 1000
-    
-    energy = energy[ energy <= emax ] 
-    
-    stopping_power = data[3][ 0 : len( energy ) ]
-    stopping_power *= density_si * 1000 * 100 / 1e9
+        self.det_sectheta = det_sectheta
+        self.source_sectheta = source_sectheta
+        self.is_angled = is_angled
+        self.det_sectheta_errors = det_sectheta_errors
+        self.source_sectheta_errors = source_sectheta_errors
 
 
-    # add particular data points of interest to the interpolation
-
-    energy = np.append( energy, si_interp_energies )
-    stopping_power = np.append( stopping_power, si_interp_stopping_powers )
-    
-    interp = scipy.interpolate.interp1d( energy, stopping_power, kind = 'cubic' )
-
-    
-    if plot :
-
-        ax = plt.axes()
-
-        interp_axis = np.linspace( min( energy ),
-                                   max( energy ),
-                                   100 )
-        
-        ax.scatter( energy, stopping_power, color='r' )
-
-        ax.plot( interp_axis,
-                 interp( interp_axis ),
-                 color = 'b' )
-        
-        plt.show()
-
-        return 1
         
 
-    return interp
+
+
     
-
-
-
-
-
 
 
 
@@ -311,16 +204,15 @@ def construct_si_stopping_power_interpolation( from_0_keV = 0, plot = 0 ) :
 # model_params are constant parameters saying what type of fit we are
 # using (e.g. with a quadratic term in sec theta )
 
-def energy_from_mu_lmfit( params,
-                          mu, det_sectheta, source_sectheta,
-                          db_name, x, i, j,
-                          model_params,
+def energy_from_mu_lmfit( params, model_params,
+                          channels, det_sectheta, source_sectheta, actual_energies,
+                          db_num, x, i, j,
                           compute_weight = 0 ) :
 
     # print( 'test' ) 
 
-    a = params[ 'a_' + db_name + '_%d' % ( x, ) ].value.item()
-    b = params[ 'b_' + db_name + '_%d' % ( x, ) ].value.item()
+    a = params[ 'a_%d_%d' % ( db_num, x ) ].value.item()
+    b = params[ 'b_%d_%d' % ( db_num, x ) ].value.item()
 
     if model_params.one_source_constant : 
         source_constant = params[ 'source_constant_%d' % (i) ].value
@@ -328,7 +220,7 @@ def energy_from_mu_lmfit( params,
     else :
         source_constant = params[ 'source_constant_%d_%d' % (i,j) ].value
     
-    energy_det = a * mu + b 
+    energy_det = a * channels + b 
 
     # in this case, we are using the actual depth of the
     # detector dead layer as a parameter.
@@ -345,12 +237,14 @@ def energy_from_mu_lmfit( params,
         else :
             det_deadlayer = params[ 'det_deadlayer' ].value #.item()
             
-        if model_params.si_stopping_power_interpolation is not None :
+        if model_params.interp_det_stopping_power is not None :
 
-            # print( source_constant ) 
+            # print( source_sectheta.x ) 
+            # print( source_constant )
+            # print( actual_energies[i][j] )
             
-            S = model_params.si_stopping_power_interpolation( peak_energies[i][j]
-                                                 - source_constant * source_sectheta.x )
+            S = model_params.det_stopping_power_interp( actual_energies[i][j]
+                                                        - source_constant * source_sectheta.x )
             
             det_constant = det_deadlayer * S 
             
@@ -361,6 +255,22 @@ def energy_from_mu_lmfit( params,
         det_constant = 0
 
 
+    if model_params.det_thickness :
+        
+        # det_thickness = params[ 'det_thickness' ].value
+        det_thickness = fit_params[ 'det_thickness' ]
+        E1 = actual_energies[i][j] - source_constant * source_sectheta.x
+        E2 = E1 - det_deadlayer * det_sectheta.x * model_params.det_stopping_power_interp( E1 )
+        Edet = det_thickness * det_sectheta.x * model_params.det_stopping_power_interp( E2 )
+        resid = Edet - ( a * channels.x + b ) 
+
+        if compute_weight : 
+            weight = 1 / ( a * channels.dx )
+            return ( resid, weight )
+
+        return Edet
+
+        
         
     # compute how much energy was lost in the source and det deadlayers.
        
@@ -391,17 +301,17 @@ def energy_from_mu_lmfit( params,
     else:
         k = params['k'].value.item()
 
-        energy = np.empty( len( mu ) )
+        energy = np.empty( len( channels ) )
 
         integrand = lambda E : 1 / ( epsilon_0 - k * si_stopping_power_interpolation( E ) )
                 
-        for k in range( len( mu ) ) :
+        for k in range( len( channels ) ) :
 
             # print( combined_deadlayer_losses ) 
             
             energy[k] = scipy.integrate.quad( integrand,
                                               model_params.si_stopping_power_interpolation_emin,
-                                              peak_energies[i,j] - combined_deadlayer_loss )[0]
+                                              actual_energies[i][j] - combined_deadlayer_loss )[0]
 
         energy *= epsilon_0 
 
@@ -411,7 +321,7 @@ def energy_from_mu_lmfit( params,
     # by the uncertainty in mu.
         
     if compute_weight : 
-        weight = 1 / ( a * mu.dx )
+        weight = 1 / ( a * channels.dx )
         return ( energy, weight ) 
 
     return energy 
@@ -425,52 +335,49 @@ def energy_from_mu_lmfit( params,
 
 
 
-def objective( params, mu_matrices, secant_matrices, actual_energies,
-               dbs, source_indices, model_params ):
+def objective( params, model_params, channels, source_geometries, actual_energies ) :
 
     # start_time = time.time()
     
-    resid = np.empty( ( # len(dbs)
-                       len( jutils.flatten_list( source_indices) )
-                       * sum( [ len( model_params.fstrips[ db.name ] ) for db in dbs ] ) 
-                       * len( model_params.bstrips ) , ) ) # np.zeros( ( len(dbs), 3, 2, 32, 32 ) )
-
-    # print( len( resid ) )
-    
-    # for i
-    db_names = [ db.name for db in dbs ]
+    resid = np.empty( model_params.num_data_points ) 
 
     # keep track of where the 1D residual array has been
     # filled up to.
     resid_idx = 0
-    num_bstrips = len( model_params.bstrips )
+    num_bstrips = model_params.num_bstrips 
 
-    for db in dbs :
-
-        det_sectheta, source_sectheta = [ [ secant_matrices[ source ][k] 
-                                            for source in db.sources ]
-                                          for k in range(2) ]
+    for db_num in range( model_params.num_dbs ) :
         
-        for i in range( len( source_indices ) ) :
-            for j in source_indices[i] :
-                for x in model_params.fstrips[ db.name ] :
+        for i in range( model_params.num_sources ) :
+
+            det_sectheta = source_geometries[ db_num ][i].det_sectheta
+            source_sectheta = source_geometries[ db_num ][i].source_sectheta
+
+            for j in range( model_params.num_peaks_per_source[i] ) :
+                
+                for x in model_params.fstrips[ db_num ] :
 
                     computed_energy, weight = energy_from_mu_lmfit(
-                        params,
-                        mu_matrices[ db.name ][i][j][x][ model_params.bstrips ],
-                        det_sectheta[i][x][ model_params.bstrips ],
-                        source_sectheta[i][x][ model_params.bstrips ],
-                        db.name, x, i, j,
-                        model_params,
-                        compute_weight = 1 ) 
+                        params, model_params,
+                        channels[ db_num ][i][j][x][ model_params.bstrips ],
+                        det_sectheta[x][ model_params.bstrips ],
+                        source_sectheta[x][ model_params.bstrips ],
+                        actual_energies,
+                        db_num, x, i, j, compute_weight = 1  )
 
-                    # strange bug: when adding meas and scalar, scalar
-                    # must be on the right. must fix asap.
+                    
+                    if not model_params.det_thickness : 
 
-                    residual = - computed_energy + actual_energies[i,j]
+                        # strange bug: when adding meas and scalar, scalar
+                        # must be on the right. must fix asap.
+                        residual = - computed_energy + actual_energies[i][j]
 
+                    else :
+                        residual = computed_energy
+                    
+                        
                     # resid[ db_num, i, j, x ] = residual.x * weight
-                    resid[ resid_idx : resid_idx + num_bstrips ] = residual.x * weight
+                    resid[ resid_idx : resid_idx + num_bstrips ] = residual * weight
                     resid_idx += num_bstrips 
                     
     # ret = resid.flatten()
@@ -491,76 +398,105 @@ def objective( params, mu_matrices, secant_matrices, actual_energies,
 # do a fit of the form E = A * mu + b + s * sec(phi) +
 # deadlayer_distance * si_stopping_power * sec(theta)
 
-def linear_calibration_on_each_x_strip( dbs,
-                                        source_indices,
-                                        model_params,
-                                        annotate = 0,
-                                        cut_high_sectheta = 0,
-                                        subtitle = '',
-                                        view_pixel = None,
-                                        reset_angles = None,
-                                        residual_scatter_plot = 0,
-                                        plot_3d = 0,
-                                        savefig_dir = None ) : 
+def estimate_deadlayers( model_params, channels, actual_energies,
+                         source_geometries, source_stopping_power_interps, source_deadlayer_guesses,
+                         det_stopping_power_interp, det_deadlayer_guess,
+                         calibration_coefs_guess,
+                         gen_plots = 0, annotate = 0,
+                         strip_coords = None,
+                         names = None ) :
 
+    num_dbs = len( channels )
+    num_sources = len( channels[0] ) 
+    num_peaks_per_source = [ len( channels[0][i] ) for i in range( num_sources ) ]
+    total_num_peaks = np.sum( num_peaks_per_source )
 
+    model_params.num_dbs = num_dbs
+    model_params.num_sources = num_sources
+    model_params.num_peaks_per_source  = num_peaks_per_source
+    model_params.total_num_peaks = total_num_peaks 
+
+    # print( channels[0][0] ) 
     
-    # next, read the data that will go into the regression. 
-    if model_params.mu : 
-        mu_matrices = { db.name : db.get_all_mu_grids( 1 )
-                        for db in dbs }
-
-        peak_matrices = mu_matrices
-
-    else:
-        peak_matrices = { db.name : db.get_all_peak_grids( 1 )
-                          for db in dbs }
-
-    # filter out bad data 
-    for db_name in [ db.name for db in dbs ] :
-        for i in range(3) :
-            for j in range( 2 ) :
-                mask = ( ( peak_matrices[db_name][i][j].dx > 2 ) | 
-                        ( peak_matrices[db_name][i][j].dx < 0.01 ) )
-                peak_matrices[db_name][i][j][ mask ] = meas.nan
-                
-    if reset_angles is None :
-        reset_angles = not model_params.average_over_source
-                
-    secant_matrices = geom.get_secant_matrices( compute_source_sectheta = 1,
-                                                average_over_source = model_params.average_over_source,
-                                                reset = reset_angles )
-
+    print( 'num_dbs: ' + str( num_dbs ) )
+    print( 'num_sources: ' + str( num_sources ) )
+    print( 'num_peaks_per_source: ' + str( num_peaks_per_source ) ) 
     
-    # cut out large sec theta 
-    if cut_high_sectheta : 
-        for key, val in secant_matrices.items() :
-            mask = ( val[0].x >= 1.45 )
-            secant_matrices[key][0][mask] = meas.nan
-
+    if strip_coords is not None :
         
-    if view_pixel is not None :
-        plot_energy_vs_sectheta( None, secant_matrices, peak_matrices,
-                                 dbs, source_indices, model_params,
-                                 subtitle = subtitle,
-                                 view_pixel = view_pixel )
+        if strip_coords == 'all' :
+            for db_num in range( num_dbs ) : 
+                for i in model_params.fstrips_requested :
+
+                    print( i )
+                    
+                    ax = plot_one_strip( model_params, channels, source_geometries, [db_num,i] )
+
+                    figpath = '../../images/current_mu_vs_sectheta/'
+
+                    if names is not None :
+                        figpath += names[ db_num ] + '/' 
+
+                    if not os.path.exists( figpath ) :
+                        os.mkdir( figpath ) 
+
+                    if names is not None :
+                        figpath += names[ db_num ]
+                        
+                    figpath += str(i)
+                    
+                    plt.savefig( figpath )
+                    plt.clf()
+                    plt.close()
+                
+        else :
+
+            db_num, x = strip_coords
+
+            for i in range( num_sources ) :
+                for j in range( num_peaks_per_source[i] ) :
+            
+                    print( (i,j) )
+
+                    # print( source_geometries[ db_num ][i].det_sectheta[x,0] )
+                    
+                    for k in np.arange( len( channels[0][0][0][0].x ) ) :
+                        print( '%d \t %.1f +- %.1f \t %.2f'
+                               % ( k, channels[ db_num ][i][j][x,k].x,
+                                   channels[ db_num ][i][j][x,k].dx,
+                                   source_geometries[ db_num ][i].det_sectheta[x,k].x  ) )
+                    print( '\n\n' )                        
+
+            ax = plot_one_strip( model_params, channels, source_geometries, strip_coords )
+            plt.show() 
+        
+        # plot_energy_vs_sectheta( None, secant_matrices, peak_matrices,
+        #                          dbs, source_indices, model_params,
+        #                          subtitle = subtitle,
+        #                          view_pixel = view_pixel )
         return 1
 
     
         
     if model_params.pulse_height_defect :
-        interp_stopping_power = 1
+        raise NotImplemented() 
 
     
-    # prepare a giant lmfit.Parameters() for the fit
-    
+    # prepare a giant lmfit.Parameters() for the fit    
     fit_params = lmfit.Parameters()
 
+    
     # this says whether we will put a lower bound on the following fit
     # parameters.
 
     # set_lower_bound = model_params.quadratic_source or model_params.quadratic_det
-    set_lower_bound = 0 
+    set_lower_bound = 1
+
+    # if model_params.det_thickness is not None :
+    #     fit_params.add( 'det_thickness', value = 1000 )
+
+    if model_params.det_thickness : 
+        fit_params.add( 'det_thickness', value = 1000, min = 0 ) 
 
     if not model_params.vary_det_deadlayer :
 
@@ -579,31 +515,33 @@ def linear_calibration_on_each_x_strip( dbs,
                 
         # final option: just one thickness for the entire grid.
         else :
-            fit_params.add( 'det_deadlayer', value = 100, vary = 1 ) #, min=0 ) #, min = 0.0 )
+            fit_params.add( 'det_deadlayer', value = 100, vary = 1, min=0, max=200 ) #, min = 0.0 )
             if set_lower_bound :
                 fit_params[ 'det_deadlayer' ].min = 0
 
+
                 
-    for i in range( len( source_indices ) ) :
+    for i in range( num_sources ) :
 
         if model_params.one_source_constant :
 
             source_name = 'source_constant_%d' % (i,)
             
             if model_params.fix_source_deadlayers is None :
-                fit_params.add( source_name, value = 6.0 )
+                fit_params.add( source_name, value = source_deadlayer_guesses[i] )
 
             else :
                 fit_params.add( source_name, vary = 0,
                                 value = model_params.fix_source_deadlayers[ source_name ] )
                     
         else : 
-            for j in source_indices[i] :
+            for j in range( num_peaks_per_source[i] ) :
             
                 source_name = 'source_constant_%d_%d' % (i,j)
                 
                 if model_params.fix_source_deadlayers is None :
-                    fit_params.add( source_name, value = 6.0 )
+                    fit_params.add( source_name, value = source_deadlayer_guesses[i][j],
+                                    min = 0, max = 30 )
 
                 else :
                     fit_params.add( source_name, vary = 0,
@@ -620,83 +558,59 @@ def linear_calibration_on_each_x_strip( dbs,
                     fit_params.add( 'det_constant2_%d_%d' % (i,j), value = 0.0, vary = 1  )
                 
     
-                
-    for db in dbs :
-        print( db.name )
+
+    model_params.fstrips = [0] * num_dbs
+    model_params.num_bstrips = len( model_params.bstrips ) 
+                    
+    for i in range( num_dbs ) :
 
         frontstrips_to_remove = []
 
         for x in model_params.fstrips_requested :
-                        
-            # check if no fits converged for this strip.
-            # print(x)
-            # print( np.array( [ peak_matrices[ db.name ][t][v][x][ model_params.bstrips ].x
-            #                                  for t in range( len( source_indices ) )
-            #                                  for v in source_indices[t] ] ) )
-            
-            num_data = np.count_nonzero( ~ np.isnan( np.array( [ peak_matrices[ db.name ][t][v][x][ model_params.bstrips ].x
-                                                                 for t in range( len( source_indices ) )
-                                                                 for v in source_indices[t] ] ) ) )
+                              
+            num_data = np.count_nonzero( ~ np.isnan( np.array( [ channels[i][t][v][x][ model_params.bstrips ].x
+                                                                 for t in range( num_sources )
+                                                                 for v in range( num_peaks_per_source[t] ) ] ) ) )
 
-            if num_data < len( jutils.flatten_list( source_indices ) ) + 1 + 2 :
+            if num_data < total_num_peaks + 1 + 2 :
                 frontstrips_to_remove.append( x )
                 # print( frontstrips_to_remove ) 
                 continue
             
-            fit_params.add( 'a_' + db.name + '_%d' % ( x, ), value = 1.99 )
-            # if model_params.different_fstrip_deadlayers :
-            #     fit_params[ 'a_' + db.name + '_%d' % ( x, ) ].min = 1.85
-            #     fit_params[ 'a_' + db.name + '_%d' % ( x, ) ].max = 2.20
+            fit_params.add( 'a_' + str(i) + '_%d' % ( x, ), value = 1.99 )
             
-            fit_params.add( 'b_' + db.name + '_%d' % ( x, ), value = -260 )    
+            fit_params.add( 'b_' + str(i) + '_%d' % ( x, ), value = -260 )    
 
-        model_params.fstrips[ db.name ] = model_params.fstrips_requested[ ~ np.in1d( model_params.fstrips_requested,
+        model_params.fstrips[ i ] = model_params.fstrips_requested[ ~ np.in1d( model_params.fstrips_requested,
                                                                                      frontstrips_to_remove ) ]
 
         print( 'INFO: removed frontstrips: ' + str( frontstrips_to_remove ) )
         # print( model_params.fstrips[ db.name ] )
 
-        
+    model_params.num_data_points = ( total_num_peaks
+                                     * sum( [ len( model_params.fstrips[i] ) for i in range( num_dbs ) ] ) 
+                                     * len( model_params.bstrips ) )
+
+
+
+    if model_params.interp_det_stopping_power :
+        model_params.det_stopping_power_interp  = det_stopping_power_interp 
+    
     # this is the k parameter of the lennard model. rather
     # than assuming their value for alphas, we let it be a free
     # parameter and will compare to theirs.
     
     if model_params.pulse_height_defect :
         fit_params.add( 'k', value = 0 )
-
-
-
-    
-    # construct an interpolation if required.
-    
-    if model_params.interp_stopping_power :
-        interp = construct_si_stopping_power_interpolation( 1, 0 )
-        emin = min( interp.x ) 
-
-        model_params.si_stopping_power_interpolation = interp 
-        model_params.si_stopping_power_interpolation_emin = emin
-            
-    else:
-        model_params.si_stopping_power_interpolation = None
-
-
+        
         
     mini = lmfit.Minimizer( objective,
                             fit_params,
                             nan_policy = 'omit',
-                            fcn_args = ( peak_matrices, secant_matrices, peak_energies,
-                                         dbs, source_indices, model_params ) )
+                            fcn_args = ( model_params, channels, source_geometries, actual_energies ) )
 
     result = mini.minimize()
                             
-        
-        
-    # result = lmfit.minimize( objective,
-    #                          fit_params,
-    #                          args = ( peak_matrices, secant_matrices, peak_energies,
-    #                                   dbs, source_indices, model_params ),
-    #                          nan_policy = 'omit' )
-
     
     lmfit.report_fit( result.params, show_correl = 0 )
 
@@ -743,9 +657,35 @@ def linear_calibration_on_each_x_strip( dbs,
 
 
 
+
+def plot_one_strip( model_params, channels, source_geometries, coords ) :
+
+
+    
+    db_num, x = coords
+
+    maxpeaks = max( model_params.num_peaks_per_source ) 
+
+    f, axarr = plt.subplots( model_params.num_sources, maxpeaks, figsize = (10,8) ) 
+
+    for i in range( model_params.num_sources ) :
+        for j in range( model_params.num_peaks_per_source[i] ) :
+
+            axarr[i,j].errorbar( source_geometries[ db_num ][i].source_sectheta.x[x],
+                                 channels[ db_num ][i][j][x].x,
+                                 yerr = channels[ db_num ][i][j][x].dx,
+                                 ls = 'none' )
+
+    # plt.show() 
+    return axarr
+
         
 
 
+
+
+
+    
 
 def plot_results_3d( lmfit_result, secant_matrices, mu_matrices,
                      dbs, source_indices,
@@ -964,192 +904,192 @@ def plot_results_3d( lmfit_result, secant_matrices, mu_matrices,
     
     
 
-def plot_energy_vs_sectheta( lmfit_result, secant_matrices, mu_matrices,
-                             dbs, source_indices,
-                             model_params,
-                             annotate = 0,
-                             subtitle = '',
-                             view_pixel = None,
-                             residual_scatter_plot = 0,
-                             angled_3d_plot = 0,
-                             savefig_dir = None ) :
+# def plot_energy_vs_sectheta( lmfit_result, secant_matrices, mu_matrices,
+#                              dbs, source_indices,
+#                              model_params,
+#                              annotate = 0,
+#                              subtitle = '',
+#                              view_pixel = None,
+#                              residual_scatter_plot = 0,
+#                              angled_3d_plot = 0,
+#                              savefig_dir = None ) :
 
     
-    # in this case the angled plots are made in 3d.
-    if angled_3d_plot :
-        f, axarr = plt.subplots( 3, 2, figsize = ( 10, 8 ) )
-        for i in range(2) :
-            axarr[3+i].get_xaxis().set_visible( False )
-            axarr[3+i].get_yaxis().set_visible( False )
+#     # in this case the angled plots are made in 3d.
+#     if angled_3d_plot :
+#         f, axarr = plt.subplots( 3, 2, figsize = ( 10, 8 ) )
+#         for i in range(2) :
+#             axarr[3+i].get_xaxis().set_visible( False )
+#             axarr[3+i].get_yaxis().set_visible( False )
 
-        axarr[3] = f.add_subplot(514, projection='3d' )
-        axarr[4] = f.add_subplot(515, projection='3d' )
+#         axarr[3] = f.add_subplot(514, projection='3d' )
+#         axarr[4] = f.add_subplot(515, projection='3d' )
         
 
-    else :
-        f, axarr = plt.subplots( 3, 2, figsize = ( 10, 7.5 ) )
-        f.subplots_adjust( hspace = 0.5 ) 
+#     else :
+#         f, axarr = plt.subplots( 3, 2, figsize = ( 10, 7.5 ) )
+#         f.subplots_adjust( hspace = 0.5 ) 
 
 
         
-    # \mathrm instead of \text
-    if view_pixel is None :
+#     # \mathrm instead of \text
+#     if view_pixel is None :
 
-        if not residual_scatter_plot : 
+#         if not residual_scatter_plot : 
         
-            f.suptitle( subtitle + r'$ \tilde{\chi}^2 = '
-                        + '%.2f' % ( lmfit_result.redchi , ) + '$', fontsize = 20  )
+#             f.suptitle( subtitle + r'$ \tilde{\chi}^2 = '
+#                         + '%.2f' % ( lmfit_result.redchi , ) + '$', fontsize = 20  )
 
-        else :
-            f.suptitle( r'Model Residuals vs. $\sec ( \theta_\mathrm{det} ) $ For Each Peak'
-                        + '\n' + subtitle + ', ' + r'$ \tilde{\chi}^2 = '
-                        + '%.2f' % ( lmfit_result.redchi , ) + '$' )
+#         else :
+#             f.suptitle( r'Model Residuals vs. $\sec ( \theta_\mathrm{det} ) $ For Each Peak'
+#                         + '\n' + subtitle + ', ' + r'$ \tilde{\chi}^2 = '
+#                         + '%.2f' % ( lmfit_result.redchi , ) + '$' )
             
     
-    # create common x and y axis labels
+#     # create common x and y axis labels
     
-    f.add_subplot(111, frameon=False)
+#     f.add_subplot(111, frameon=False)
 
-    # hide tick and tick label of the big axes
+#     # hide tick and tick label of the big axes
 
-    plt.tick_params(labelcolor='none', top='off', bottom='off', left='off', right='off')
-    plt.grid(False)
-    plt.xlabel( r'$\sec ( \theta_\mathrm{det} ) $', fontsize = 20  )
+#     plt.tick_params(labelcolor='none', top='off', bottom='off', left='off', right='off')
+#     plt.grid(False)
+#     plt.xlabel( r'$\sec ( \theta_\mathrm{det} ) $', fontsize = 20  )
 
-    if view_pixel is None :
+#     if view_pixel is None :
         
-        if residual_scatter_plot :
-            plt.ylabel( r'$(E - E_\mathrm{cal}) / \Delta( E_\mathrm{cal} )', fontsize = 20 )
+#         if residual_scatter_plot :
+#             plt.ylabel( r'$(E - E_\mathrm{cal}) / \Delta( E_\mathrm{cal} )', fontsize = 20 )
             
-        else :
-            f.text(0.04, 0.5, r'$E_\mathrm{det}$ (keV)',
-                   fontsize = 16, va='center', rotation='vertical')
+#         else :
+#             f.text(0.04, 0.5, r'$E_\mathrm{det}$ (keV)',
+#                    fontsize = 16, va='center', rotation='vertical')
 
-    else : 
-        plt.ylabel( r'$\mu$ (channels)' )
+#     else : 
+#         plt.ylabel( r'$\mu$ (channels)' )
 
         
-    titles = [ 'Pu 240', 'Pu 238', 'Cf 249' ]
+#     titles = [ 'Pu 240', 'Pu 238', 'Cf 249' ]
     
-    for i in range(len( source_indices ) ) :
+#     for i in range(len( source_indices ) ) :
 
-        for j in source_indices[i] :
+#         for j in source_indices[i] :
             
-            axarr[i,j].set_title( titles[i] )
+#             axarr[i,j].set_title( titles[i] )
             
-            # energies = np.empty( ( len(dbs), 32, 32 ) )
-            if view_pixel is None :
+#             # energies = np.empty( ( len(dbs), 32, 32 ) )
+#             if view_pixel is None :
                 
-                # if model_params.vary_det_deadlayer:
-                #     det_constant = lmfit_result.params[ 'source_constant_%d_%d' % (i,j) ].value #.item()
-                    # print( 'effective dl: ' + str ( det_constant / si_stopping_powers[i][j] ) )
+#                 # if model_params.vary_det_deadlayer:
+#                 #     det_constant = lmfit_result.params[ 'source_constant_%d_%d' % (i,j) ].value #.item()
+#                     # print( 'effective dl: ' + str ( det_constant / si_stopping_powers[i][j] ) )
 
-                for db in dbs : 
-                # for d in range( len( dbs ) ) :
+#                 for db in dbs : 
+#                 # for d in range( len( dbs ) ) :
 
-                    source = db.sources[i]
+#                     source = db.sources[i]
 
-                    # else:
-                    #     dl = lmfit_result.params[ 'det_deadlayer' ].value.item()
-                    #     det_constant = dl * si_stopping_powers[i][j]
+#                     # else:
+#                     #     dl = lmfit_result.params[ 'det_deadlayer' ].value.item()
+#                     #     det_constant = dl * si_stopping_powers[i][j]
 
-                    # source_constant = lmfit_result.params[ 'source_constant_%d_%d' % (i,j) ].value
+#                     # source_constant = lmfit_result.params[ 'source_constant_%d_%d' % (i,j) ].value
 
-                    for row_num in range( len( model_params.fstrips_requested ) ) :
+#                     for row_num in range( len( model_params.fstrips_requested ) ) :
                     
-                        row = model_params.fstrips_requested[ row_num ]
+#                         row = model_params.fstrips_requested[ row_num ]
 
-                        x = secant_matrices[source][0][row][ model_params.bstrips ]
-                        y = secant_matrices[source][1][row][ model_params.bstrips ]
-                        z = mu_matrices[ db.name ][i][j][row][ model_params.bstrips ]
+#                         x = secant_matrices[source][0][row][ model_params.bstrips ]
+#                         y = secant_matrices[source][1][row][ model_params.bstrips ]
+#                         z = mu_matrices[ db.name ][i][j][row][ model_params.bstrips ]
 
-                        test_id = '_' + db.name + '_%d' % ( row, )
+#                         test_id = '_' + db.name + '_%d' % ( row, )
 
-                        a = lmfit_result.params[ 'a' + test_id ].value.item()
-                        b = lmfit_result.params[ 'b' + test_id ].value.item()
+#                         a = lmfit_result.params[ 'a' + test_id ].value.item()
+#                         b = lmfit_result.params[ 'b' + test_id ].value.item()
 
-                        E = a * z + b
+#                         E = a * z + b
 
-                        # energies[ d, row, : ] = E.x
+#                         # energies[ d, row, : ] = E.x
                             
-                        calibrated_E = energy_from_mu_lmfit( lmfit_result.params,
-                                                             z, x, y,
-                                                             db.name, row, i, j,
-                                                             model_params )
+#                         calibrated_E = energy_from_mu_lmfit( lmfit_result.params,
+#                                                              z, x, y,
+#                                                              db.name, row, i, j,
+#                                                              model_params )
 
-                        E_residual = peak_energies[i][j] - calibrated_E.x
-                        Efit = peak_energies[i][j] - ( calibrated_E.x - E.x )
+#                         E_residual = peak_energies[i][j] - calibrated_E.x
+#                         Efit = peak_energies[i][j] - ( calibrated_E.x - E.x )
 
-                        if angled_3d_plot :
-                            # add_data_for_angled_3d_plot( 
-                            pass
+#                         if angled_3d_plot :
+#                             # add_data_for_angled_3d_plot( 
+#                             pass
                         
-                        else :
+#                         else :
                         
-                            if not annotate:                                                                 
+#                             if not annotate:                                                                 
 
-                                # else do a regular 2D plot, either scatter or errorbar.
-                                if residual_scatter_plot :
-                                    axarr[i,j].scatter( x.x, E_residual / E.dx, color='b' )
+#                                 # else do a regular 2D plot, either scatter or errorbar.
+#                                 if residual_scatter_plot :
+#                                     axarr[i,j].scatter( x.x, E_residual / E.dx, color='b' )
 
-                                else :
-                                    axarr[i,j].errorbar( x.x, E.x, xerr = x.dx, yerr = E.dx,
-                                                         color='b', zorder = 1,
-                                                         ls = 'none' )
+#                                 else :
+#                                     axarr[i,j].errorbar( x.x, E.x, xerr = x.dx, yerr = E.dx,
+#                                                          color='b', zorder = 1,
+#                                                          ls = 'none' )
 
-                            else:
-                                for a in range( len( model_params.bstrips ) ) :
+#                             else:
+#                                 for a in range( len( model_params.bstrips ) ) :
 
-                                    if not meas.isnan( z[a] ) :
+#                                     if not meas.isnan( z[a] ) :
 
-                                        label = '(%s,%d,%d,%.1f)' % (db.name, row, model_params.bstrips[a],
-                                                                   z[a].x ) 
+#                                         label = '(%s,%d,%d,%.1f)' % (db.name, row, model_params.bstrips[a],
+#                                                                    z[a].x ) 
 
-                                        axarr[i,j].scatter( [ x.x[a] ] , [ E.x[a] ], color='b',
-                                                            zorder = 1, label = label )
-
-
-                            mask = ~ meas.isnan( z )
-
-                            if not residual_scatter_plot : 
-                                axarr[i,j].plot( x[ mask ].x, Efit[ mask ], c = 'r', zorder = 2 ) 
+#                                         axarr[i,j].scatter( [ x.x[a] ] , [ E.x[a] ], color='b',
+#                                                             zorder = 1, label = label )
 
 
-            else :
+#                             mask = ~ meas.isnan( z )
 
-                db = view_pixel[0]
-                row = view_pixel[1]
+#                             if not residual_scatter_plot : 
+#                                 axarr[i,j].plot( x[ mask ].x, Efit[ mask ], c = 'r', zorder = 2 ) 
 
-                if i == 0 :
-                    source = 'pu_240'
 
-                elif i == 1 :
-                    source = 'pu_238_' + db.name
+#             else :
+
+#                 db = view_pixel[0]
+#                 row = view_pixel[1]
+
+#                 if i == 0 :
+#                     source = 'pu_240'
+
+#                 elif i == 1 :
+#                     source = 'pu_238_' + db.name
                         
-                elif i == 2 :
-                    source = 'cf_249'
+#                 elif i == 2 :
+#                     source = 'cf_249'
                 
-                x = secant_matrices[source][0][row][ model_params.bstrips ]
-                y = secant_matrices[source][1][row][ model_params.bstrips ]
-                z = mu_matrices[ db.name ][i][j][row][ model_params.bstrips ]
+#                 x = secant_matrices[source][0][row][ model_params.bstrips ]
+#                 y = secant_matrices[source][1][row][ model_params.bstrips ]
+#                 z = mu_matrices[ db.name ][i][j][row][ model_params.bstrips ]
 
-                print( (i,j) )
-                print( 'mu / peak values: ' )
-                print( z )
-                print('\n' )
+#                 print( (i,j) )
+#                 print( 'mu / peak values: ' )
+#                 print( z )
+#                 print('\n' )
                 
-                axarr[i,j].errorbar( x.x, z.x, yerr = z.dx,
-                                     color='b', zorder = 1, ls = 'none' ) #, label = 'test' )
+#                 axarr[i,j].errorbar( x.x, z.x, yerr = z.dx,
+#                                      color='b', zorder = 1, ls = 'none' ) #, label = 'test' )
 
-    if annotate :
-        datacursor( formatter = '{label}'.format )
+#     if annotate :
+#         datacursor( formatter = '{label}'.format )
 
     
-    if savefig_dir :
-        plt.savefig( savefig_dir, format='eps', dpi=2000 )
+#     if savefig_dir :
+#         plt.savefig( savefig_dir, format='eps', dpi=2000 )
 
     
-    plt.show()
+#     plt.show()
 
     
 

@@ -31,5 +31,6 @@ create table metadata (
     ydim INTEGER NOT NULL,
     peak_types BLOB,
     constrain_det_params BLOB,
-    timestamp TEXT
+    timestamp TEXT,
+    name TEXT
 );

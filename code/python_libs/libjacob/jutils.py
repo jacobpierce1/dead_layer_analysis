@@ -8,40 +8,39 @@ def isint( x ):
     return isinstance( x, (int, np.integer ) )
 
 
+class time_estimator( object ) :
 
+    def __init__( self, num_iterations, num_updates ) :
+        self.iteration = 0 
+        self.counter = 1
+        self.num_updates = 0
+        self.num_iterations = num_iterations
+        self.start_time = time.time()
 
-# this function estimates the remaining time for a for loop in which the 
-# output is expected to take roughly the same amount of time per run.
-# thiis is the equivaletn of a static variable in c 
-# currently implemented to only be used once per script, could be changed by adding bool reset.
-def estimate_time_left( current_iteration, total_iterations, num_updates=10, reset=0 ):
-
-    # reset if called
-    
-    if reset == 1 : 
-        estimate_time_left.counter = 0
-        return
         
-        
-    # set the start time if it's the first call to this function.
-    
-    if estimate_time_left.start_time == 0 :
-        estimate_time_left.start_time += 1
-        estimate_time_left.start_time = time.time()
-        return 
-        
-    if( current_iteration * 1.0 / total_iterations >= estimate_time_left.counter * 1.0 / num_updates ): 
-        current_time = time.time()
-        estimate_time_left.counter += 1
-        print( "%d/%d complete, %f mins remaining" \
-               % ( estimate_time_left.counter, num_updates,
-                   (current_time - estimate_time_left.start_time) / 60.0
-                   * (num_updates - estimate_time_left.counter )
-                   / estimate_time_left.counter ) )
+    def update() :
+        self.iteration += 1
 
-estimate_time_left.counter = 0
-estimate_time_left.start_time = 0
+        if( 1. * self.iteration / self.num_iterations 
+            >= 1. * self.counter / self.num_updates ): 
 
+            current_time = time.time()
+            self.counter += 1
+            print( "%d/%d complete, %f mins remaining" \
+                   % ( self.counter, self.num_updates,
+                       (current_time - self.start_time) / 60.0
+                       * ( self.num_updates - self.counter )
+                       / self.counter ) )
+
+            
+    def reset( num_updates = None ) :
+        self.iteration = 0 
+        self.counter = 1
+        self.start_time = time.time()
+        if num_updates is not None :
+            self.num_updates = num_updates 
+        
+      
 
 
 

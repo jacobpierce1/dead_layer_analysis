@@ -23,7 +23,7 @@ from scipy.stats import chi2
 
 import os 
 
-from libjacob.jutils import estimate_time_left as time_estimator
+from libjacob.jutils import time_estimator
 
 from libjacob.jpyplot import saveplot_low_quality
 
@@ -42,7 +42,7 @@ class peak_types( Enum ) :
 
 
 
-_fitters_num_params = { 'a' : (2,4),
+_fitters_num_params = { 'a' : (3,3),
                          'b' : None,
                          'g' : None,
                          'cb' : None } 
@@ -91,7 +91,7 @@ def alpha_fit_params_checker( peak_params, det_params ) :
         return 0
 
     # check on eta param
-    if det_params[1] > 1 :
+    if det_params[0] > 1 :
         return 0
 
     return 1 
@@ -124,7 +124,7 @@ _all_fit_params_checkers = { 'a' : alpha_fit_params_checker,
 class spectrum_fitter( object ) :
 
 
-    def __init__( self, peak_types, constrain_det_params = None ) :
+    def __init__( self, peak_types, constrain_det_params = None, group_num = None ) :
 
         if constrain_det_params is None :
             constrain_det_params = { 'a' : 0, 'b' : 0, 'g' : 0 } 
@@ -134,6 +134,8 @@ class spectrum_fitter( object ) :
         self.peak_types = copy.deepcopy( peak_types ) 
 
         self.num_peaks = len( peak_types )
+
+        self.group_num = group_num
         
         # self.peak_type_indices = {}
 
@@ -215,13 +217,14 @@ class spectrum_fitter( object ) :
     def fit( self, x, y, dy, 
              peak_params_guess, det_params_guess, xbounds = None,
              fit_acceptor = None, params_shuffler = None,
-             ax = None, plot_bounds = None, logscale = 1 ) :
+             ax = None, plot_bounds = None, logscale = 1,
+             print_output = 0 ) :
 
-        # self.peak_params_guess = copy.deepcopy( peak_params_guess )
-        # self.det_params_guess = copy.deepcopy( det_params_guess )
-        # self.xbounds = copy.copy( xbounds )
-        # self.plot_bounds = copy.copy( plot_bounds ) 
-        
+        self.peak_params_guess = copy.deepcopy( peak_params_guess )
+        self.det_params_guess = copy.deepcopy( det_params_guess )
+        self.xbounds = copy.copy( xbounds )
+        self.plot_bounds = copy.copy( plot_bounds ) 
+
         if ax is not None:
             ax.plot( x, y, ls = 'steps', zorder = 1, c = 'k', linewidth = 0.1 ) 
 
@@ -234,7 +237,8 @@ class spectrum_fitter( object ) :
             
         self.fit_acceptor = fit_acceptor
         self.params_shuffler = params_shuffler 
-        self.ax = ax
+    
+        #self.ax = ax
         
         self.fit_attempted = 1
         
@@ -272,7 +276,7 @@ class spectrum_fitter( object ) :
             #     self.det_params[i] = np.copy( det_params_guess[ peak_type ] ) 
                 
         params_array = self.__construct_params_array()
-
+       
         # print( params_array ) 
 
         # print( 'det_params: ' + str( self.det_params ) )
@@ -289,11 +293,12 @@ class spectrum_fitter( object ) :
 
         # print( objective( x, y, dy ) )
 
+        
         ret = scipy.optimize.leastsq( objective, params_array, args = (x,y,dy),
                                       full_output = 1 )
 
         params_result, cov, info, msg, status = ret
-            
+        
         success = ( status >= 1 and status <= 4
                     and ( cov is not None ) )
 
@@ -304,11 +309,16 @@ class spectrum_fitter( object ) :
         # external function
 
         if success :
+            
+            if print_output :
+                print( '' ) 
+                print( 'fit converged!' ) 
 
             if not self.check_valid_fit_params() :
                 self.success = 0
+                if print_output : 
+                    print( 'invalid fit params' ) 
                 return self 
-            
             
             self.chisqr = np.sum( info['fvec']**2 )
             self.nfree = len( x ) - len( params_array ) 
@@ -320,27 +330,37 @@ class spectrum_fitter( object ) :
             
             self.pvalue = 1 - chi2.cdf( self.chisqr, self.nfree )
 
+            if print_output : 
+                print( params_array ) 
+                print( params_result )
+                print( params_result_errors )
+                print( 'redchisqr: ' + str(self.redchisqr) )
+                print( 'pvalue: ' + str( self.pvalue ) )
+
             
             if fit_acceptor is not None :
                 if not fit_acceptor( x, y, dy, self ) :
+                    if print_output :
+                        print( 'fit acceptor failed!' ) 
                     self.success = 0
                     return self
 
             self.params_result = params_result
             self.params_result_errors = params_result_errors
 
-                
-            print( 'success' ) 
-            print( params_result )
-            print( params_result_errors )
-            print( 'redchisqr: ' + str(self.redchisqr) )
-            print( 'pvalue: ' + str( self.pvalue ) )
+
 
             # print(cov) 
                 
             if self.success and ax is not None :
                 ax.plot( x, self.eval( x ), c = 'r', zorder = 2 ) 
 
+
+        else :
+            if print_output :
+                print( '' ) 
+                print( 'fit failed to converge' ) 
+                
         return self
         
 
@@ -393,6 +413,14 @@ class spectrum_fitter( object ) :
         
         for i in np.arange( self.num_peaks ) :
 
+            # print( ''  )
+            # print( 'num_peaks: ' + str( self.num_peaks ) ) 
+            # print( params_array ) 
+            # print( slice( * self.params_array_peak_indices[i] ) )
+            # print( slice( * self.params_array_det_indices[i] ) )
+            # print( peak_array[i] )
+            # print( det_array[i] )
+ 
             peak_array[i][:] = params_array[ slice( * self.params_array_peak_indices[i] ) ]
             det_array[i][:] = params_array[ slice( * self.params_array_det_indices[i] ) ]
             
@@ -422,7 +450,15 @@ class spectrum_fitter( object ) :
 # this function is meant to be applied to scalar x, not list
 
 def alpha_fit( A, mu, sigma, eta, tau1, tau2, x ):
-            
+
+    # print( 'A: ' + str( A ) )
+    # print( 'mu: ' + str( mu ) ) 
+    # print( 'sigma: ' + str( sigma ) )
+    # print( 'eta: ' + str( eta ) ) 
+    # print( 'tau1: ' + str( tau1 ) )
+    # print( 'tau2: ' + str( tau2 ) ) 
+
+    
     # prevent overflow by computing logs and then exponentiating, at the expense of some
     # floating pt error. logtmpz is the log of the 2 analagous terms in the integrand.
     tauz = [tau1, tau2]
@@ -447,16 +483,17 @@ def alpha_fit( A, mu, sigma, eta, tau1, tau2, x ):
 def fit_spectrum( peak_types, x, y, dy, xbounds,
                   peak_params_guess, det_params_guess,
                   constrain_det_params = None,
-                  fit_acceptor = None,
-                  params_shuffler = None,
-                  ax = None, plot_bounds = None, logscale = 1 ) :
+                  fit_acceptor = None, params_shuffler = None,
+                  ax = None, plot_bounds = None, logscale = 1,
+                  group_num = None, print_output = 0 ) :
 
-    spec_fitter = spectrum_fitter( peak_types, constrain_det_params )
+    spec_fitter = spectrum_fitter( peak_types, constrain_det_params, group_num )
 
     spec_fitter.fit( x, y, dy, peak_params_guess,
                      det_params_guess, xbounds,
                      fit_acceptor, params_shuffler,
-                     ax, plot_bounds, logscale = logscale ) 
+                     ax, plot_bounds, logscale = logscale,
+                     print_output = print_output ) 
     
     return spec_fitter
 
@@ -472,12 +509,13 @@ def fit_spectrum( peak_types, x, y, dy, xbounds,
 def auto_fit_spectrum( x, y, dy,
                        group_ranges, peak_locations,
                        num_peaks_to_detect, primary_peak_detector,
-                       peak_sizes_guesses, det_params_guesses, peak_mu_offset,
+                       peak_sizes_guesses, peak_width_guesses,
+                       det_params_guesses, peak_mu_offset,
                        fit_acceptor = None,
                        params_shuffler = None,
                        ax = None,
                        rel_plot_bounds = None,
-                       logscale = 1 ) :
+                       logscale = 1, print_output = 0 ) :
 
     num_groups = len( group_ranges )
 
@@ -490,12 +528,14 @@ def auto_fit_spectrum( x, y, dy,
     peaks_per_group = [ len(peak_locations[i]) for i in range( num_groups ) ]
     
     # find main peaks
-    our_peaks = jmath.get_n_peak_positions( num_peaks_to_detect, y )
+    our_peaks = np.asarray( jmath.get_n_peak_positions( num_peaks_to_detect, y ) )
 
     # print( our_peaks ) 
     
     primary_peaks = primary_peak_detector( our_peaks, y )
 
+    # self.primary_peaks = primary_peaks 
+    
     if primary_peaks is None :
         return None 
     
@@ -555,7 +595,8 @@ def auto_fit_spectrum( x, y, dy,
                                + np.array( peak_locations[i] )
                                + peak_mu_offset )
             
-            peak_params_guess = [ [ peak_sizes_guesses[i][d], mu_array_guess[d] ]
+            peak_params_guess = [ [ peak_sizes_guesses[i][d], mu_array_guess[d],
+                                    peak_width_guesses[i][d] ]
                                   for d in range( peaks_per_group[i] ) ]
 
 
@@ -571,10 +612,12 @@ def auto_fit_spectrum( x, y, dy,
                                         fit_acceptor = fit_acceptor,
                                         ax = ax,
                                         plot_bounds = plot_bounds,
-                                        logscale = logscale )
+                                        logscale = logscale,
+                                        group_num = i,
+                                        print_output = print_output )
 
             ret[i] = spec_result 
-        
+
     return ret
 
 
@@ -591,12 +634,14 @@ def auto_fit_many_spectra( spec_db, data_retriever,
                            image_path, image_dimensions, 
                            group_ranges, peak_locations,
                            num_peaks_to_detect, primary_peak_detector,
-                           peak_sizes_guesses, det_params_guesses, peak_mu_offset,
+                           peak_sizes_guesses, peak_width_guesses, det_params_guesses,
+                           peak_mu_offset,
                            fit_acceptor = None,
                            params_shuffler = None,
                            rel_plot_bounds = None,
                            logscale = 1,
-                           estimate_time_left = 1 ) :
+                           time_estimator = None,
+                           print_output = 0 ) :
     
     # dimensions of output images: number of plots in each dimension
 
@@ -617,8 +662,6 @@ def auto_fit_many_spectra( spec_db, data_retriever,
         # these loops create the 4x4 grids. 2 per strip row.
         for k in range( ydim // (im_xdim * im_ydim) ) :
         
-            plt.clf()
-            plt.close()
             f, axarr = plt.subplots( im_xdim, im_ydim, figsize=(20,10) )    
             
             for i in range( im_xdim ):
@@ -626,20 +669,23 @@ def auto_fit_many_spectra( spec_db, data_retriever,
                         
                     y = ( i * im_xdim + j ) + ( k * im_xdim * im_ydim )
                         
-                    print( str( [x,y] ) )    
+                    # print( str( [x,y] ) )    
                         
                     # this estimates the time remaining for the program to terminate
-                    if estimate_time_left : 
-                        time_estimator( x * ydim + y, xdim * ydim, num_updates = 100 )
+                    if time_estimator : 
+                        time_estimator.update() 
                         
                     xdata, ydata, dydata = data_retriever( x, y )
                             
                     spec_fits = auto_fit_spectrum( xdata, ydata, dydata,
                                                    group_ranges, peak_locations,
                                                    num_peaks_to_detect, primary_peak_detector,
-                                                   peak_sizes_guesses, det_params_guesses, peak_mu_offset,
+                                                   peak_sizes_guesses, peak_width_guesses,
+                                                   det_params_guesses,
+                                                   peak_mu_offset,
                                                    fit_acceptor, params_shuffler,
-                                                   axarr[i,j], rel_plot_bounds, logscale )
+                                                   axarr[i,j], rel_plot_bounds, logscale,
+                                                   print_output )
 
                     for l in range( num_groups ) :
                         if spec_fits is not None : 
@@ -649,9 +695,11 @@ def auto_fit_many_spectra( spec_db, data_retriever,
                             spec_db.insert_fit_data( x, y, l, None ) 
             
             plt.savefig( image_path + ( 'x=%d.%d' % (x,k) ) + '.png', format='png')
+            plt.clf()
+            plt.close()
                             
             
-    spec_db.disconnect()
+    # spec_db.disconnect()
 
     return 1 
 

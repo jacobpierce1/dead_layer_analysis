@@ -73,7 +73,6 @@ class meas( object ):
         self.dx = dx
         return None                    
 
-
     
     @classmethod
     def empty( cls, tup ):
@@ -484,6 +483,8 @@ def log( _meas ):
     return _meas.apply( np.log,
                         lambda x: 1 / x )
 
+def transpose( _meas ) :
+    return meas( _meas.x.T, _meas.dx.T ) 
 
 # sum and mean are overloaded with the class instance methods. the
 # difference is those methods act on the entries of a single

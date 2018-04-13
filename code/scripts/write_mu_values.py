@@ -2,8 +2,8 @@ import jspectroscopy as spec
 
 
 
-
-db_names = [ 'angled', 'moved', 'centered', 'flat', 'det3_cent', 'det3_moved' ]
+db_names = [ 'moved' ]
+# db_names = [ 'angled', 'moved', 'centered', 'flat', 'det3_cent', 'det3_moved' ]
 
 for name in db_names :
 

@@ -9,7 +9,7 @@ import sqlite3
 import json
 import numpy as np
 
-from libjacob.jutils import isint, estimate_time_left
+from libjacob.jutils import isint, time_estimator
 import sys
 import jspectroscopy as spec 
 
@@ -53,13 +53,15 @@ class spectrum_db( object ):
 
     
     def __init__( self, path, dimensions = None,
-                  peak_types = None, constrain_det_params = None ) :
+                  peak_types = None, constrain_det_params = None,
+                  name = None ) :
 
         create_new_db = ( peak_types is not None ) and ( dimensions is not None )
         
         self.path = path
-        self.conn = None 
-
+        self.conn = None
+        self.name = name
+        
         if not os.path.exists( path ) :
             if create_new_db :
                 self.is_empty = 1 
@@ -78,13 +80,18 @@ class spectrum_db( object ):
 
     
         
-    def create( self, dimensions, peak_types, constrain_det_params ):
-
+    def create( self, dimensions, peak_types, constrain_det_params ) :
+        
         if constrain_det_params is None :
             constrain_det_params = { 'a' : 0, 'b' : 0, 'g' : 0 } 
 
         self.constrain_det_params = copy.deepcopy( constrain_det_params )  
-            
+
+        if self.name is None :
+            name = ''
+
+        self.name = name
+        
         self.peak_types = peak_types
         self.dimensions = dimensions
 
@@ -145,11 +152,11 @@ class spectrum_db( object ):
         time = str( datetime.datetime.now() )
 
         if self.is_empty :
-            self.conn.cursor().execute( 'INSERT INTO metadata VALUES ( ?, ?, ?, ?, ? ) ',
+            self.conn.cursor().execute( 'INSERT INTO metadata VALUES ( ?, ?, ?, ?, ?, ? ) ',
                                         ( self.xdim, self.ydim,
                                           _to_bin( self.peak_types ),
                                           _to_bin( self.constrain_det_params ),
-                                          time ) )
+                                          time, self.name ) )
             self.conn.commit() 
 
             
@@ -167,6 +174,7 @@ class spectrum_db( object ):
         self.peak_types = _from_bin( metadata[ 'peak_types' ] ) 
         self.constrain_det_params = _from_bin( metadata[ 'constrain_det_params' ] )
         self.timestamp = metadata[ 'timestamp' ]
+        self.name = metadata[ 'name' ]
 
         self.num_groups = len( self.peak_types ) 
         self.num_peaks_per_group = [ len(x) for x in self.peak_types ] 
@@ -263,39 +271,7 @@ class spectrum_db( object ):
 
             self.conn.commit()
         
-        # # if db is empty, then we are doing an insert.
-        # if self.is_empty :
-            
-        #     query = ( 'insert into ' + _tablename + ' ('   
-        #               + ', '.join(schema_cols)    
-        #               + ') values ('         
-        #               + ':' + ', :'.join(schema_cols) 
-        #               + ');'
-        #     )
-            
-        # # otherwise we are doing an update.
-        # else:
-        #     query = ( 'update ' + _tablename   
-        #               + ' set ' + ', '.join( [ col + '=:' + col
-        #                                        for col in schema_cols[3:] ] )   
-        #               + ' where ' + ' and '.join( [ col + '=:' + col
-        #                                             for col in schema_cols[:3] ] ) )  
-                
-        # query_dict =  {
-        #     'x' : x,
-        #     'y' : y,
-        #     'fit_id' : fit_id,
-        #     'successful_fit' : successful_fit, 
-        #     'npeaks' : npeaks,
-        #     'last_attempt' : last_attempt,
-        #     'params_guess' : _to_bin( params_guess ),
-        #     'fit_bounds' : _to_bin( fit_bounds ),
-        #     'peak_guesses' : _to_bin( peak_guesses ),
-        #     'model' : _to_bin( model )
-        # }
-        
-        # self.conn.cursor().execute( query, query_dict )
-        # self.conn.commit()
+        return None
 
 
         
@@ -316,35 +292,11 @@ class spectrum_db( object ):
         
         spec_result = _from_bin( result[ 'spectrum_fit' ] )
 
-        print( spec_result ) 
+        # print( spec_result ) 
 
         return spec_result 
-        
-        
-        # query = ( 'select ' + ', '.join( schema_cols[3:] )   
-        #           + ' from ' + _tablename    
-        #           + ' where ' + ' and '.join( [ col + '=:' + col
-        #                                         for col in schema_cols[:3] ] ) )
-            
-        # query_dict = {
-        #     'x' : x,
-        #     'y' : y,
-        #     'fit_id' : fit_id
-        # }
 
-        # cursor = self.conn.cursor()
 
-        # cursor.execute( query, query_dict )
-        
-        # result = dict( cursor.fetchone() )
-
-        # # unpickle the pickled objects 
-        # for key in [ 'params_guess', 'fit_bounds', 'peak_guesses', 'model' ]:
-        #     result[ key ] = _from_bin( result[ key ] )
-
-        # # print( 'result: ' + str( result ) )
-
-        return result
 
     
 
@@ -423,19 +375,75 @@ class spectrum_db( object ):
             dill.dump( mu_values, f )
 
 
-            
+
 
             
-    def read_mu_values( self, path ) :
+    def write_peak_values( self, path ) :
+
+        # init the data structure storing the mu values
+        
+        peak_values = [ [ 0 ] * self.num_peaks_per_group[i]
+                      for i in range( self.num_groups ) ] 
+
+        for i in range( self.num_groups ) :
+            for j in range( self.num_peaks_per_group[i] ) : 
+                peak_values[i][j] = meas.meas.empty(( self.xdim, self.ydim ))
+                            
+            
+        cursor = self.conn.cursor()
+        cursor.execute( 'SELECT * FROM ' + _tablename )
+
+        spec_fitters = [ spec.spectrum_fitter( self.peak_types[i],
+                                               constrain_det_params = { 'a' : 1 } )
+                         for i in range( self.num_groups ) ]
+        
+        for row in cursor:
+
+            x = row['x']
+            y = row['y'] 
+            group_num = row[ 'group_num' ]
+            success = row[ 'success' ]
+            
+            if success :
+                params_result = _from_bin( row[ 'params_result' ] )
+                params_result_errors = _from_bin( row[ 'params_result_errors' ] )
+                
+                spectrum = spec_fitters[ group_num ] 
+
+                spectrum.set_params_from_params_array( params_result, errors = 0)
+                spectrum.set_params_from_params_array( params_result_errors, errors = 1)
+
+                # print( spectrum.peak_params[0][1] )
+                # print( spectrum.peak_params[1][1] )
+                # print( '' ) 
+                    
+                
+                for j in range( self.num_peaks_per_group[ group_num ] ) :
+                    peak_values[ group_num ][j][x,y] = meas.meas( spectrum.peak_params[j][1],
+                                                                spectrum.peak_params_errors[j][1] ) 
+                    
+            else :  
+                for j in range( self.num_peaks_per_group[ group_num ] ) :
+                    peak_values[ group_num ][j][x,y] = meas.nan 
+                        
+        with open( path, 'wb' ) as f :
+            dill.dump( peak_values, f )
+
+
+            
+        
+
+            
+    def read_values( self, path ) :
 
         if not os.path.exists( path ) :
             print( 'ERROR: path not found' ) 
             sys.exit(0) 
 
         with open( path, 'rb' ) as f :
-            mu_values = dill.load( f )
+            values = dill.load( f )
 
-        return mu_values 
+        return values 
 
 
 

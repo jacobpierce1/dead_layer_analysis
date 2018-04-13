@@ -164,7 +164,8 @@ int write_all_files( const char *rootfile, const char *dirname )
 	while (1)
 	{
 	    outfile.open( tmp_file_name, ios::out | ios::binary | ios::app );
-	    if ( outfile.good() )  break;
+	    if ( outfile.good() )
+		break;
 	    printf( "WARNING: failed to open %s, trying again...\n", tmp_file_name ); 
 	    outfile.close();
 	}
