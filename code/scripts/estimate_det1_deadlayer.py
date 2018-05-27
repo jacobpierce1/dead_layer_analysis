@@ -1,3 +1,4 @@
+import sys
 import numpy as np
 
 import deadlayer_helpers.deadlayer_estimator as dl_estimator
@@ -10,7 +11,26 @@ import libjacob.jmeas as meas
 import scipy.interpolate
 
 
+# CONFIG 
+
 filter_channels = 1 
+
+filter_above_sectheta = 1.3 
+
+peak_indices = [ [1,2], [1,2], [1,3,4] ]
+# peak_indices = [ [2], [2], [1] ]
+
+# db_names = [ 'angled' ] # , 'flat' ] # , 'flat', 'centered' ] 
+
+
+
+db_names = [ 'det3_cent', 'det3_moved' ]
+pu238_geoms = [ 'centered', 'flat' ] 
+
+
+strip_coords = 'all'
+# strip_coords = None
+
 
 
 # si_interp_energies = np.array( [ 5.050E+00, 5.090E+00, 5.130E+00, 5.170E+00,
@@ -33,24 +53,6 @@ actual_energies = [ np.array( [ 5123.68, 5168.17 ] ),
                     np.array( [ 5759.5, 5813.3, 5903.2, 5946.0 ] ) ]
 
 
-# 5.12368
-# 5.16817
-# 5.4563
-# 5.49903
-# 5.7595
-# 5.8133
-# 5.9032
-# 5.9460
-# 5.0
-# 5.1
-# 5.2
-# 5.3
-# 5.4
-# 5.5
-# 5.6
-# 5.7
-# 5.8
-# 5.9
 
 
 density_si = 2.328 # g / cm^2
@@ -115,60 +117,9 @@ def construct_si_stopping_power_interpolation( plot = 0 ) :
     return interp
     
 
-
-
-    
-
-
-# dbs = dbmgr.all_dbs 
-# # dbs = [ dbmgr.angled ]
-
-# source_indices = [ [0,1], [0,1], [1] ]
-# # source_indices = [ [0,1], [0,1], [0,1] ]
-
-
-# subtitle = ''
-
-# fstrips = np.arange( 2, 30 )
-
-
-
-
-#  # next, read the data that will go into the regression. 
-# if model_params.mu : 
-#     mu_matrices = { db.name : db.get_all_mu_grids( 1 )
-#                      for db in dbs }
-     
-#     peak_matrices = mu_matrices
-     
-# else:
-#     peak_matrices = { db.name : db.get_all_peak_grids( 1 )
-#                           for db in dbs }
-     
-# # filter out bad data 
-# for db_name in [ db.name for db in dbs ] :
-#     for i in range(3) :
-#         for j in range( 2 ) :
-#             mask = ( ( peak_matrices[db_name][i][j].dx > 2 ) | 
-#                      ( peak_matrices[db_name][i][j].dx < 0.01 ) )
-#             peak_matrices[db_name][i][j][ mask ] = meas.nan
             
-# if reset_angles is None :
-#     reset_angles = not model_params.average_over_source
-                
-# secant_matrices = geom.get_secant_matrices( compute_source_sectheta = 1,
-#                                             average_over_source = model_params.average_over_source,
-#                                             reset = reset_angles )
-
-    
-#     # cut out large sec theta 
-#     if cut_high_sectheta : 
-#         for key, val in secant_matrices.items() :
-#             mask = ( val[0].x >= 1.45 )
-#             secant_matrices[key][0][mask] = meas.nan
 
 
-            
 
 
 
@@ -179,9 +130,8 @@ model_params = dl_estimator.deadlayer_model_params( vary_det_deadlayer = 0,
                                                     bstrips = np.arange( 2, 30 ),
                                                     fix_source_deadlayers = None,
                                                     one_source_constant = 0,
-                                                    det_thickness = 1 )
+                                                    det_thickness = 0 )
 
-db_names = [ 'moved', 'angled' ] 
 # db_names = [ 'angled' ] # , 'flat' ]
 # db_names = [ 'angled', 'moved' ]
 
@@ -190,16 +140,37 @@ num_dbs = len( db_names )
 db_path = '../../storage/databases/'
 dbs = [ spec.spectrum_db( db_path + db_names[i] ) for i in range( len( db_names ) ) ]
 
-channels = [ dbs[i].read_mu_values( '../../storage/mu_values/'
+channels = [ dbs[i].read_values( '../../storage/peak_values/'
                                     + db_names[i]
-                                    + '_mu_values.bin' )
-             for i in range( len( db_names ) ) ] 
+                                    + '_peak_values.bin' )
+             for i in range( len( db_names ) ) ]
+
+
+# channels = [ dbs[i].read_mu_values( '../../storage/peak_values/'
+#                                     + db_names[i]
+#                                     + '_mu_values.bin' )
+#              for i in range( len( db_names ) ) ] 
+
 
 
 num_sources = len( channels[0] ) 
 
-peak_indices = [ [1,2], [1,2], [1,3,4] ]
-# peak_indices = [ [1,2], [1,2], [2] ]
+
+
+# REMOVE UNNECSSARY PEAKS
+
+
+
+print( len( channels ) )
+print( len( channels[0] ) )
+print( len( channels[0][0] ) ) 
+print( channels[0][0][0].shape() ) 
+# print( len( channels[0][0][0] ) ) 
+# print( len( channels[0][0][0][0] ) ) 
+# print( channels[0][0].shape )
+
+
+# sys.exit(0) 
 
 if peak_indices is not None :
     for i in range( num_dbs ) : 
@@ -207,13 +178,35 @@ if peak_indices is not None :
 
             channels[i][j] = [ channels[i][j][x]  for x in peak_indices[j] ]
 
-            if filter_channels : 
-                for x in range( len( peak_indices[j] ) ) :
-                    mask = channels[i][j][x].dx > 1
-                    channels[i][j][x][mask] = meas.nan
 
 
+# peak_indices = [ [1,2], [1,2], [2] ]
+
+
+
+
+
+
+
+
+
+# READ IN THE ANGLES AND DO SOME FILTERING 
+
+cut_sectheta = 1.3 
+                    
 secant_matrices = geom.get_secant_matrices( compute_source_sectheta = 1, reset = 1 )
+
+
+
+    
+# print( secant_matrices ) 
+
+
+
+
+
+
+# REFORMAT THE ANGLES FOR PROCESSING 
 
 pu_240_sources = [ dl_estimator.source_geom_data( secant_matrices['pu_240'][0],
                                                   secant_matrices['pu_240'][1], 0 ) ] * len( peak_indices[0] )
@@ -227,31 +220,78 @@ cf_249_sources = [ dl_estimator.source_geom_data( secant_matrices['cf_249'][0],
 
 source_geometries = [ [0] * num_sources  for i in range( num_dbs ) ] 
 
-for i in range( num_dbs ) :
+for d in range( num_dbs ) :
 
-    sources = [ 'pu_240', 'pu_238_' + db_names[i], 'cf_249' ]
-    is_angled = [ 0, db_names[i] == 'angled', 0 ] 
+    sources = [ 'pu_240', 'pu_238_' + db_names[d], 'cf_249' ]
+    is_angled = [ 0, db_names[d] == 'angled', 0 ] 
     
-    for j in range( num_sources ) : 
-   
-        source_geometries[i][j] = dl_estimator.source_geom_data( secant_matrices[ sources[j] ][0],
-                                                                 secant_matrices[ sources[j] ][1],
+    for j in range( num_sources ) :
+            
+        source_geometries[d][j] = dl_estimator.source_geom_data( secant_matrices[ sources[j] ][0].x,
+                                                                 secant_matrices[ sources[j] ][1].x,
                                                                  is_angled[j] )
 
 
-source_stopping_power_interps = [ None ] * 3 
+# FILTERING       
 
-source_deadlayer_guesses = [ [ 6., 6.], [3.,3.], [15.,15.,15.,15.] ] 
+# FILTER OUT LARGE ANGLES 
+
+
+# print( len( channels ) )
+# print( len( channels[0] ) )
+# print( len( channels[0][0][0] ) ) 
+# print( len( channels[0][0][0][0] ) ) 
+# # print( channels[0][0].shape ) 
+
+if filter_above_sectheta : 
+    for d in range( num_dbs ) :
+        for i in range( len( source_geometries[d] ) ):
+
+            mask = ( ( source_geometries[d][j].det_sectheta > filter_above_sectheta ) )
+            # | ( source_geometries[d][i].source_sectheta > filter_above_sectheta ) )
+
+            for j in range( len( channels[d][i] ) ) :
+                channels[d][i][j][ mask ] = meas.nan
+
+
+                
+# FILTER OUT HIGH UNCERTAINTY CHANNELS
+
+
+
+if filter_channels :
+    
+    for d in range( num_dbs ) :
+        for i in range( len( source_geometries[d] ) ):
+            for j in range( len( channels[d][i] ) ) :
+            
+                mask = ( channels[d][i][j].dx > 1 )
+                channels[d][i][j][ mask] = meas.nan
+                    
+
+
+                    
+        
+# CONSTRUCT STOPPING POWER INTERPOLATION 
 
 det_stopping_power_interp = construct_si_stopping_power_interpolation()
 
-det_deadlayer_guess = 100.0
 
+
+
+# INITIAL FIT PARAMETERS 
+
+source_deadlayer_guesses = [ [ 6., 6.], [3.,3.], [15.,15.,15.,15.] ] 
+source_stopping_power_interps = [ None ] * 3 
+det_deadlayer_guess = 100.0
 calibration_coefs_guess = [ 2.0, -260.0 ]
 
 
-strip_coords = 'all' 
-# strip_coords = None
+
+
+
+
+# strip_coords = 'all' 
 # strip_coords = [0,2]
 
 dl_estimator.estimate_deadlayers( model_params, channels, actual_energies,

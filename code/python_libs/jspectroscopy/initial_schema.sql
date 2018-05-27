@@ -1,13 +1,15 @@
 create table fits (
+    detnum INTEGER NOT NULL,
     x    INTEGER NOT NULL,
     y    INTEGER NOT NULL,
     group_num INTEGER NOT NULL,
     success INTEGER NOT NULL,
     params_result BLOB,
     params_result_errors BLOB,
+    cov BLOB,
     fit_bounds BLOB,
     redchisqr REAL NOT NULL,
-    PRIMARY KEY( x, y, group_num )
+    PRIMARY KEY( detnum, x, y, group_num )
 );
 
 -- create table fits (
@@ -26,7 +28,8 @@ create table fits (
 
 
 
-create table metadata ( 
+create table metadata (
+    dets_used STRING NOT NULL,
     xdim INTEGER NOT NULL,
     ydim INTEGER NOT NULL,
     peak_types BLOB,

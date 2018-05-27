@@ -4,7 +4,9 @@ import jspectroscopy as spec
 import numpy as np
 import deadlayer_helpers.data_handler as data
 import matplotlib.pyplot as plt 
+import libjacob.jutils as jutils
 
+import bpt
 
 
 # inputs = spectrum_fitter_inputs( (32,32), data_fetcher )
@@ -48,26 +50,6 @@ num_peaks_to_detect = 6
 
 
                    
-
-# create and populate the histogram array 
-def data_fetcher( name, x, y ) :
-
-    xaxis = np.arange( 5000 )
-        
-    infile = ( '../../data/extracted_ttree_data/'
-               + name + '/%s_%d_%d.bin' % ( name, x, y ) )
-
-    # print( infile ) 
-    
-    efront_histo = np.zeros( xaxis.size )
-
-    if not data.construct_histo_array( infile, efront_histo ) :
-        print( 'error: couldnt open file' ) 
-
-    dy = np.sqrt( efront_histo )
-    dy[ dy==0 ] = 1 
-        
-    return ( xaxis, efront_histo, dy ) 
 
 
 
@@ -208,6 +190,7 @@ def all_spectra( db_names ) :
 
     constrain_det_params = { 'a' : 1 }
 
+    time_estimator = jutils.time_estimator( len(db_names) * 32 * 32, 20 )
 
     for name in db_names : 
         
@@ -226,7 +209,8 @@ def all_spectra( db_names ) :
                                     fit_acceptor = fit_acceptor,
                                     params_shuffler = params_shuffler,
                                     rel_plot_bounds = rel_plot_bounds,
-                                    logscale = 1, print_output = 0 )
+                                    logscale = 1, time_estimator = time_estimator,
+                                    print_output = 0 )
 
         mu_path = '../../storage/mu_values/' + name + '_mu_values.bin'
 
@@ -238,11 +222,13 @@ def all_spectra( db_names ) :
  
 # one_spectrum( (20,19) ) 
 
-all_spectra( [ 'centered', 'flat' ] ) #  [ 'moved', 'angled', 'centered', 'flat', 'det3_cent', 'det3_moved' ] )  
+# all_spectra( [ 'moved', 'angled', 'centered', 'flat' ] ) #  [ 'moved', 'angled', 'centered', 'flat', 'det3_cent', 'det3_moved' ] )  
+
+# all_spectra( [ 'alpharun20-30', 'alpharun11-19'
 
 
 
-
+all_spectra( [ 'det3_cent', 'det3_moved' ] )
 
 
 # # plot the histogram without fit yet 

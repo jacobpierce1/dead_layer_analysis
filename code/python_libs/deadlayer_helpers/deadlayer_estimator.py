@@ -89,6 +89,10 @@ def nth_largest(n, iter):
 
 
 
+# def data_container( object ) :
+
+#     pass 
+
     
 
 
@@ -116,6 +120,9 @@ class deadlayer_model_params( object ) :
                   one_source_constant = 0,
                   det_thickness = None ) :
 
+        self.dimx = 32
+        self.dimy = 32 
+        
         # various options that change the model the data is fit
         # to. see energy_from_mu_lmfit() for what they do.
         self.vary_det_deadlayer = vary_det_deadlayer
@@ -186,10 +193,70 @@ class source_geom_data( object ) :
 
 
         
+def create_empty_data_container( model_params ) :
 
+    ret = [ [ 0 for j in range( model_params.num_peaks_per_source[i] )
+              for i in range( model_params.num_peaks ) ]
+            for d in range( model_params.num_dbs ) ]
+    
+    for d in range( model_params.num_dbs ) :
+        
+        for i in range( model_params.num_sources ) :
+            
+            for j in range( model_params.num_peaks_per_source[i] ) :
+
+                tmp = meas.meas.empty( ( model_params.dimx, model_params.dimy ) )
+                tmp[:] = meas.nan
+                ret[d][i][j] = tmp
+                
+    return ret 
+                                
+        
 
 
     
+def compute_all_energies( params, model_params, channels,
+                          source_geometries, actual_energies ) :
+
+    e = create_empty_data_container()
+    edet = create_empty_data_container()
+    loss = create_empty_data_container()
+    resid = create_empty_data_container() 
+    
+    for d in range( model_params.num_dbs ) :
+        
+        for i in range( model_params.num_sources ) :
+
+            det_sectheta = source_geometries[ d ][ i ].det_sectheta
+            source_sectheta = source_geometries[ d ][ i ].source_sectheta
+            
+            for j in range( model_params.num_peaks_per_source[i] ) :
+                
+                for x in model_params.fstrips[ d ] :
+
+                    e_, edet_, loss_, weight_ = energy_from_mu_lmfit(
+                        params, model_params,
+                        channels[ db_num ][i][j][x][ model_params.bstrips ],
+                        det_sectheta[x][ model_params.bstrips ],
+                        source_sectheta[x][ model_params.bstrips ],
+                        actual_energies,
+                        db_num, x, i, j, compute_weight = 1  )
+
+                    e[d][i][j][x] = e_
+                    edet[d][i][j][x] = e_
+                    loss[d][i][j][x] = e_
+                    resid[d][i][j][x] = ( actual_energies[i][j] - e ) * weight 
+
+    return e, edet, loss, resid 
+
+
+
+# def compute_residuals( params, model_params, channels,
+#                        source_geometries, actual_energies ) :
+
+#     pass
+
+
 
 
 
@@ -207,7 +274,7 @@ class source_geom_data( object ) :
 def energy_from_mu_lmfit( params, model_params,
                           channels, det_sectheta, source_sectheta, actual_energies,
                           db_num, x, i, j,
-                          compute_weight = 0 ) :
+                          compute_weight = 0 ) : 
 
     # print( 'test' ) 
 
@@ -244,7 +311,7 @@ def energy_from_mu_lmfit( params, model_params,
             # print( actual_energies[i][j] )
             
             S = model_params.det_stopping_power_interp( actual_energies[i][j]
-                                                        - source_constant * source_sectheta.x )
+                                                        - source_constant * source_sectheta )
             
             det_constant = det_deadlayer * S 
             
@@ -255,27 +322,27 @@ def energy_from_mu_lmfit( params, model_params,
         det_constant = 0
 
 
-    if model_params.det_thickness :
+    # if model_params.det_thickness :
         
-        # det_thickness = params[ 'det_thickness' ].value
-        det_thickness = fit_params[ 'det_thickness' ]
-        E1 = actual_energies[i][j] - source_constant * source_sectheta.x
-        E2 = E1 - det_deadlayer * det_sectheta.x * model_params.det_stopping_power_interp( E1 )
-        Edet = det_thickness * det_sectheta.x * model_params.det_stopping_power_interp( E2 )
-        resid = Edet - ( a * channels.x + b ) 
+    #     # det_thickness = params[ 'det_thickness' ].value
+    #     det_thickness = params[ 'det_thickness' ]
+    #     E1 = actual_energies[i][j] - source_constant * source_sectheta.x
+    #     E2 = E1 - det_deadlayer * det_sectheta.x * model_params.det_stopping_power_interp( E1 )
+    #     Edet = det_thickness * det_sectheta.x * model_params.det_stopping_power_interp( E2 )
+    #     resid = Edet - ( a * channels.x + b ) 
 
-        if compute_weight : 
-            weight = 1 / ( a * channels.dx )
-            return ( resid, weight )
+    #     if compute_weight : 
+    #         weight = 1 / ( a * channels.dx )
+    #         return ( resid, weight )
 
-        return Edet
+    #     return Edet
 
         
         
     # compute how much energy was lost in the source and det deadlayers.
        
-    combined_deadlayer_losses =  ( det_constant * det_sectheta.x
-                                   + source_constant * source_sectheta.x )
+    combined_deadlayer_losses =  ( det_constant * det_sectheta
+                                   + source_constant * source_sectheta )
 
     if model_params.quadratic_source :
         source_constant2 = params[ 'source_constant2_%d_%d' % (i,j) ].value.item()
@@ -322,11 +389,9 @@ def energy_from_mu_lmfit( params, model_params,
         
     if compute_weight : 
         weight = 1 / ( a * channels.dx )
-        return ( energy, weight ) 
+        return ( energy, energy_det, combined_deadlayer_losses, weight ) 
 
-    return energy 
-
-
+    return ( energy, energy_det, combined_deadlayer_losses ) 
 
 
 
@@ -337,54 +402,76 @@ def energy_from_mu_lmfit( params, model_params,
 
 def objective( params, model_params, channels, source_geometries, actual_energies ) :
 
-    # start_time = time.time()
+    e, edet, loss, resid = compute_all_energies( params, model_params,
+                                                 channels, source_geometries, actual_energies )
+
+    print( 'flattening' ) 
+    flattened = [ a for a in resid[d][j][i][x][y]
+                  for d in model_params.num_dbs
+                  for i in model_params.num_sources
+                  for j in model_params.num_peaks_per_source[i] 
+                  for x in model_params.dimx
+                  for y in model_params.dimy ] 
+
+    print( 'done ' ) 
+    return flattened 
+
+
+
+# def objective( params, model_params, channels, source_geometries, actual_energies ) :
+
+#     # start_time = time.time()
     
-    resid = np.empty( model_params.num_data_points ) 
+#     resid = np.empty( model_params.num_data_points ) 
 
-    # keep track of where the 1D residual array has been
-    # filled up to.
-    resid_idx = 0
-    num_bstrips = model_params.num_bstrips 
+#     # keep track of where the 1D residual array has been
+#     # filled up to.
+#     resid_idx = 0
+#     num_bstrips = model_params.num_bstrips 
 
-    for db_num in range( model_params.num_dbs ) :
+#     for db_num in range( model_params.num_dbs ) :
         
-        for i in range( model_params.num_sources ) :
+#         for i in range( model_params.num_sources ) :
 
-            det_sectheta = source_geometries[ db_num ][i].det_sectheta
-            source_sectheta = source_geometries[ db_num ][i].source_sectheta
+#             det_sectheta = source_geometries[ db_num ][i].det_sectheta
+#             source_sectheta = source_geometries[ db_num ][i].source_sectheta
 
-            for j in range( model_params.num_peaks_per_source[i] ) :
+#             for j in range( model_params.num_peaks_per_source[i] ) :
                 
-                for x in model_params.fstrips[ db_num ] :
+#                 for x in model_params.fstrips[ db_num ] :
 
-                    computed_energy, weight = energy_from_mu_lmfit(
-                        params, model_params,
-                        channels[ db_num ][i][j][x][ model_params.bstrips ],
-                        det_sectheta[x][ model_params.bstrips ],
-                        source_sectheta[x][ model_params.bstrips ],
-                        actual_energies,
-                        db_num, x, i, j, compute_weight = 1  )
+#                     computed_energy, weight = energy_from_mu_lmfit(
+#                         params, model_params,
+#                         channels[ db_num ][i][j][x][ model_params.bstrips ],
+#                         det_sectheta[x][ model_params.bstrips ],
+#                         source_sectheta[x][ model_params.bstrips ],
+#                         actual_energies,
+#                         db_num, x, i, j, compute_weight = 1  )
 
                     
-                    if not model_params.det_thickness : 
+#                     if not model_params.det_thickness : 
 
-                        # strange bug: when adding meas and scalar, scalar
-                        # must be on the right. must fix asap.
-                        residual = - computed_energy + actual_energies[i][j]
+#                         # strange bug: when adding meas and scalar, scalar
+#                         # must be on the right. must fix asap.
+#                         residual = - computed_energy.x + actual_energies[i][j]
 
-                    else :
-                        residual = computed_energy
+#                     else :
+#                         residual = computed_energy
                     
                         
-                    # resid[ db_num, i, j, x ] = residual.x * weight
-                    resid[ resid_idx : resid_idx + num_bstrips ] = residual * weight
-                    resid_idx += num_bstrips 
+#                     # resid[ db_num, i, j, x ] = residual.x * weight
+
+#                     # print( residual )
+#                     # print( weight ) 
                     
-    # ret = resid.flatten()
+#                     resid[ resid_idx : resid_idx + num_bstrips ] = residual * weight
+#                     resid_idx += num_bstrips 
+                    
+#     # ret = resid.flatten()
     
-    # print( 'objective: %f' % ( time.time() - start_time, ) )
+#     # print( 'objective: %f' % ( time.time() - start_time, ) )
       
-    return resid
+#     return resid
 
 
 
@@ -399,7 +486,8 @@ def objective( params, model_params, channels, source_geometries, actual_energie
 # deadlayer_distance * si_stopping_power * sec(theta)
 
 def estimate_deadlayers( model_params, channels, actual_energies,
-                         source_geometries, source_stopping_power_interps, source_deadlayer_guesses,
+                         source_geometries, source_stopping_power_interps,
+                         source_deadlayer_guesses,
                          det_stopping_power_interp, det_deadlayer_guess,
                          calibration_coefs_guess,
                          gen_plots = 0, annotate = 0,
@@ -416,6 +504,12 @@ def estimate_deadlayers( model_params, channels, actual_energies,
     model_params.num_peaks_per_source  = num_peaks_per_source
     model_params.total_num_peaks = total_num_peaks 
 
+    angled_3d_plot = np.any( [  source_geometries[d][i].is_angled
+                                for d in range( num_dbs )
+                                for i in range( num_sources ) ] ) 
+
+    # print( angled_3d_plot ) 
+            
     # print( channels[0][0] ) 
     
     print( 'num_dbs: ' + str( num_dbs ) )
@@ -490,7 +584,7 @@ def estimate_deadlayers( model_params, channels, actual_energies,
     # parameters.
 
     # set_lower_bound = model_params.quadratic_source or model_params.quadratic_det
-    set_lower_bound = 1
+    set_lower_bound = 0
 
     # if model_params.det_thickness is not None :
     #     fit_params.add( 'det_thickness', value = 1000 )
@@ -572,7 +666,7 @@ def estimate_deadlayers( model_params, channels, actual_energies,
                                                                  for t in range( num_sources )
                                                                  for v in range( num_peaks_per_source[t] ) ] ) ) )
 
-            if num_data < total_num_peaks + 1 + 2 :
+            if num_data < 2 : # prev total_num_peaks + 3 
                 frontstrips_to_remove.append( x )
                 # print( frontstrips_to_remove ) 
                 continue
@@ -626,33 +720,38 @@ def estimate_deadlayers( model_params, channels, actual_energies,
     #                           p_names = [ 'det_deadlayer', 'source_constant_0_0', 'source_constant_0_1' ] )
 
     # lmfit.printfuncs.report_ci( ci ) 
-    
+
 
     # determine whether to use 3d plot or 2d plot
     
-    angled_3d_plot = ( plot_3d and ( not model_params.vary_det_deadlayer )
-                       and dbmgr.angled in dbs )
+    calibrated_energies = [ [ [0 for j in range( num_peaks_per_source[i] ) ]
+                              * for i in range( num_sources ) ]
+                            for d in range( num_dbs ) ]
 
+    fro 
 
-    if angled_3d_plot :
-        plot_results_3d( result, secant_matrices, peak_matrices,
-                         dbs, source_indices,
-                         model_params,
-                         savefig_dir )
-
-        
-    else :
-        plot_energy_vs_sectheta( result, secant_matrices, peak_matrices,
-                                 dbs, source_indices,
-                                 model_params,
-                                 annotate = annotate,
-                                 subtitle = subtitle,
-                                 view_pixel = view_pixel,
-                                 residual_scatter_plot = residual_scatter_plot,
-                                 angled_3d_plot = angled_3d_plot,
-                                 savefig_dir = savefig_dir ) 
     
 
+    # if angled_3d_plot :
+    #     plot_results_3d( result, source_geometries, peak_matrices,
+    #                      dbs, source_indices,
+    #                      model_params,
+    #                      savefig_dir )
+
+        
+    # else :
+    #     plot_energy_vs_sectheta( result, secant_matrices, peak_matrices,
+    #                              dbs, source_indices,
+    #                              model_params,
+    #                              annotate = annotate,
+    #                              subtitle = subtitle,
+    #                              view_pixel = view_pixel,
+    #                              residual_scatter_plot = residual_scatter_plot,
+    #                              angled_3d_plot = angled_3d_plot,
+    #                              savefig_dir = savefig_dir ) 
+    
+
+    return result 
 
 
 
@@ -687,206 +786,209 @@ def plot_one_strip( model_params, channels, source_geometries, coords ) :
 
     
 
-def plot_results_3d( lmfit_result, secant_matrices, mu_matrices,
-                     dbs, source_indices,
-                     model_params, savefig_dir ) :
+# def plot_results_3d( lmfit_result, source_geometries, mu_matrices,
+#                      dbs, source_indices,
+#                      model_params, savefig_dir ) :
+
+#     # det_sectheta = source_geometries.det_sectheta
+#     # source_sectheta = source_geometries.source_sectheta
+    
+    
+#     f = plt.figure( figsize = ( 10, 8 ) )
+    
 
     
-    f = plt.figure( figsize = ( 10, 8 ) )
+#     axarr_2d = [ f.add_subplot( 3,2, 2*i + 1 ) for i in range(3) ]
+#     for i in range(2) :
+#         axarr_2d[i].set_xticklabels([])
+
+#     axarr_2d[0].set_title( 'Absolute Calibration of Coupled Peaks' )
+
+#     # ax1 = f.add_subplot(222, projection='3d' )
+#     # ax2 = f.add_subplot(224, projection='3d' )
+
+#     ax1 = f.add_subplot(222 )
+#     ax1.set_xticklabels([])
+#     ax2 = f.add_subplot(224 )
+
+#     ax1.set_title( 'Residuals of Decoupled Peaks' )
     
+#     axarr_3d = [ ax1, ax2 ]
 
+#     axarr = [ axarr_2d, axarr_3d ]
+
+#     # add some labels
     
-    axarr_2d = [ f.add_subplot( 3,2, 2*i + 1 ) for i in range(3) ]
-    for i in range(2) :
-        axarr_2d[i].set_xticklabels([])
-
-    axarr_2d[0].set_title( 'Absolute Calibration of Coupled Peaks' )
-
-    # ax1 = f.add_subplot(222, projection='3d' )
-    # ax2 = f.add_subplot(224, projection='3d' )
-
-    ax1 = f.add_subplot(222 )
-    ax1.set_xticklabels([])
-    ax2 = f.add_subplot(224 )
-
-    ax1.set_title( 'Residuals of Decoupled Peaks' )
-    
-    axarr_3d = [ ax1, ax2 ]
-
-    axarr = [ axarr_2d, axarr_3d ]
-
-    # add some labels
-    
-    # \mathrm instead of \text
+#     # \mathrm instead of \text
 
         
-    f.suptitle( r'Calibration of Entire Detector Under Model: '
-                + r'$ \tilde{\chi}^2 = '
-                + '%.2f' % ( lmfit_result.redchi , ) + '$',
-                fontsize = 20 ) 
+#     f.suptitle( r'Calibration of Entire Detector Under Model: '
+#                 + r'$ \tilde{\chi}^2 = '
+#                 + '%.2f' % ( lmfit_result.redchi , ) + '$',
+#                 fontsize = 20 ) 
             
     
-    # # create common x and y axis labels
-    # f.add_subplot(121, frameon=False)
-    # plt.tick_params(labelcolor='none', top='off', bottom='off', left='off', right='off')
-    # plt.grid(False)
-    # plt.xlabel( r'$sec ( \theta_\mathrm{det} ) $' )
-    # plt.ylabel( r'$E_\mathrm{det}$ (keV)' )
+#     # # create common x and y axis labels
+#     # f.add_subplot(121, frameon=False)
+#     # plt.tick_params(labelcolor='none', top='off', bottom='off', left='off', right='off')
+#     # plt.grid(False)
+#     # plt.xlabel( r'$sec ( \theta_\mathrm{det} ) $' )
+#     # plt.ylabel( r'$E_\mathrm{det}$ (keV)' )
 
-    # f.add_subplot(221, frameon=False)
-    # plt.tick_params(labelcolor='none', top='off', bottom='off', left='off', right='off')
-    # plt.grid(False)
-    # plt.xlabel( r'$sec ( \theta_\mathrm{det} ) $' )
-    # plt.ylabel( r'$sec ( \theta_\mathrm{source} ) $' )
+#     # f.add_subplot(221, frameon=False)
+#     # plt.tick_params(labelcolor='none', top='off', bottom='off', left='off', right='off')
+#     # plt.grid(False)
+#     # plt.xlabel( r'$sec ( \theta_\mathrm{det} ) $' )
+#     # plt.ylabel( r'$sec ( \theta_\mathrm{source} ) $' )
     
-    label_fontsize = 16
+#     label_fontsize = 16
     
-    f.text(0.04, 0.5, r'$E_\mathrm{det}$ (keV)',
-                fontsize = 16, va='center', rotation='vertical')
+#     f.text(0.04, 0.5, r'$E_\mathrm{det}$ (keV)',
+#                 fontsize = 16, va='center', rotation='vertical')
 
-    f.text(0.5, 0.5, r'$ \sec ( \theta_\mathrm{S} ) $',
-           fontsize = 16, va='center', ha='center', rotation='vertical')
+#     f.text(0.5, 0.5, r'$ \sec ( \theta_\mathrm{S} ) $',
+#            fontsize = 16, va='center', ha='center', rotation='vertical')
 
-    # f.text( 0.5, 0.05, r'$ \sec ( \theta_\mathrm{det} ) $',
-    #         fontsize = 16, va = 'center', ha='center' )
+#     # f.text( 0.5, 0.05, r'$ \sec ( \theta_\mathrm{det} ) $',
+#     #         fontsize = 16, va = 'center', ha='center' )
 
-    f.subplots_adjust( hspace = 0.0, wspace = 0.4 )
+#     f.subplots_adjust( hspace = 0.0, wspace = 0.4 )
 
-    axarr[0][2].set_xlabel( r'$ \sec ( \theta_\mathrm{D} ) $', fontsize = 16 )
+#     axarr[0][2].set_xlabel( r'$ \sec ( \theta_\mathrm{D} ) $', fontsize = 16 )
     
-    axarr[1][1].set_xlabel( r'$ \sec ( \theta_\mathrm{D} ) $', fontsize = 16 )
-
-    
-    # plt.ylabel( r'$(E - E_\mathrm{cal}) / \Delta( E_\mathrm{cal} )' )
+#     axarr[1][1].set_xlabel( r'$ \sec ( \theta_\mathrm{D} ) $', fontsize = 16 )
 
     
-    titles = [ 'Pu 240', 'Pu 238', 'Cf 249' ]
+#     # plt.ylabel( r'$(E - E_\mathrm{cal}) / \Delta( E_\mathrm{cal} )' )
+
     
-    ax_loc2 = -1
+#     titles = [ 'Pu 240', 'Pu 238', 'Cf 249' ]
+    
+#     ax_loc2 = -1
 
-    for i in range(len( source_indices ) ) :
+#     for i in range(len( source_indices ) ) :
 
-        for j in source_indices[i] :
+#         for j in source_indices[i] :
 
             
-            # get the location to put this source in the plot
-            # ax_loc1 is the first index of the "grid" (0 -> 2D plots, 1 -> 3D plots )
-            # and ax_loc2 is the second index.
-            # i == 1 corresponds to the pu_238 data.
+#             # get the location to put this source in the plot
+#             # ax_loc1 is the first index of the "grid" (0 -> 2D plots, 1 -> 3D plots )
+#             # and ax_loc2 is the second index.
+#             # i == 1 corresponds to the pu_238 data.
 
-            if i == 1 :
-                ax_loc1 = 1
-                ax_loc2 = j
-            else:
-                ax_loc1 = 0
-                ax_loc2 += 1
+#             if i == 1 :
+#                 ax_loc1 = 1
+#                 ax_loc2 = j
+#             else:
+#                 ax_loc1 = 0
+#                 ax_loc2 += 1
             
-            ax = axarr[ ax_loc1 ][ ax_loc2 ]
+#             ax = axarr[ ax_loc1 ][ ax_loc2 ]
 
-            ax.set_ylabel( titles[i] )
+#             ax.set_ylabel( titles[i] )
             
 
-            if model_params.vary_det_deadlayer:
-                det_constant = lmfit_result.params[ 'source_constant_%d_%d' % (i,j) ].value #.item()
-                print( 'effective dl: ' + str ( det_constant / si_stopping_powers[i][j] ) )
+#             if model_params.vary_det_deadlayer:
+#                 det_constant = lmfit_result.params[ 'source_constant_%d_%d' % (i,j) ].value #.item()
+#                 print( 'effective dl: ' + str ( det_constant / si_stopping_powers[i][j] ) )
 
  
-            # aggragate data in these arrays so that we can add everything to plots
-            # at the same time. 
+#             # aggragate data in these arrays so that we can add everything to plots
+#             # at the same time. 
 
-            data_dimensions = ( len(dbs), len( model_params.fstrips_requested ), len( model_params.bstrips ) )
+#             data_dimensions = ( len(dbs), len( model_params.fstrips_requested ), len( model_params.bstrips ) )
 
-            det_sectheta = meas.meas.empty( data_dimensions )
-            source_sectheta = meas.meas.empty( data_dimensions ) 
-            Edet = meas.meas.empty( data_dimensions )
-            E_residual = np.empty( data_dimensions )
-            Efit = np.empty( data_dimensions )
+#             det_sectheta = meas.meas.empty( data_dimensions )
+#             source_sectheta = meas.meas.empty( data_dimensions ) 
+#             Edet = meas.meas.empty( data_dimensions )
+#             E_residual = np.empty( data_dimensions )
+#             Efit = np.empty( data_dimensions )
 
                                 
-            for db_num in range(len(dbs)) : 
+#             for db_num in range(len(dbs)) : 
 
-                db = dbs[ db_num ] 
+#                 db = dbs[ db_num ] 
                 
-                source = db.sources[i]
+#                 source = db.sources[i]
 
-                for row_num in range( len( model_params.fstrips_requested ) ) :
+#                 for row_num in range( len( model_params.fstrips_requested ) ) :
                     
-                    row = model_params.fstrips_requested[ row_num ]
+#                     row = model_params.fstrips_requested[ row_num ]
 
-                    idx = ( db_num, row_num )
+#                     idx = ( db_num, row_num )
                     
-                    if row not in model_params.fstrips[ db.name ] :
-                        det_sectheta[ idx ] = meas.nan
-                        continue
+#                     if row not in model_params.fstrips[ db.name ] :
+#                         det_sectheta[ idx ] = meas.nan
+#                         continue
 
-                    x = secant_matrices[source][0][row][ model_params.bstrips ]
-                    y = secant_matrices[source][1][row][ model_params.bstrips ]
-                    z = mu_matrices[ db.name ][i][j][row][ model_params.bstrips ]
+#                     # x = secant_matrices[source][0][row][ model_params.bstrips ]
+#                     # y = secant_matrices[source][1][row][ model_params.bstrips ]
+#                     z = mu_matrices[ db.name ][i][j][row][ model_params.bstrips ]
 
-                    test_id = '_' + db.name + '_%d' % ( row, )
+#                     test_id = '_' + db.name + '_%d' % ( row, )
 
-                    a = lmfit_result.params[ 'a' + test_id ].value.item()
-                    b = lmfit_result.params[ 'b' + test_id ].value.item()
-
-                    
-                    det_sectheta[ idx ] = x
-                    source_sectheta[ idx ] = y
-
-                    E = a * z + b
-                    if ( 0 in E.dx ) :
-                        print('warning: E.dx == 0' )
-                        print(z)
-                    
-                    Edet[ idx ] = E
-
-                    calibrated_E = energy_from_mu_lmfit( lmfit_result.params,
-                                                         z, x, y,
-                                                         db.name, row, i, j,
-                                                         model_params )
-
-                    E_residual[ idx ] = peak_energies[i][j] - calibrated_E.x
-                    Efit[ idx ] = peak_energies[i][j] - ( calibrated_E.x - E.x )
+#                     a = lmfit_result.params[ 'a' + test_id ].value.item()
+#                     b = lmfit_result.params[ 'b' + test_id ].value.item()
 
                     
-            # add aggragated data to 3d or 2d plot
+#                     det_sectheta[ idx ] = x
+#                     source_sectheta[ idx ] = y
 
-            det_sectheta = det_sectheta.flatten()
-            source_sectheta = source_sectheta.flatten()
-            Edet = Edet.flatten()
-            E_residual = E_residual.flatten()
-            Efit = Efit.flatten()
+#                     E = a * z + b
+#                     if ( 0 in E.dx ) :
+#                         print('warning: E.dx == 0' )
+#                         print(z)
+                    
+#                     Edet[ idx ] = E
+
+#                     calibrated_E = energy_from_mu_lmfit( lmfit_result.params,
+#                                                          z, x, y,
+#                                                          db.name, row, i, j,
+#                                                          model_params )
+
+#                     E_residual[ idx ] = peak_energies[i][j] - calibrated_E.x
+#                     Efit[ idx ] = peak_energies[i][j] - ( calibrated_E.x - E.x )
+
+                    
+#             # add aggragated data to 3d or 2d plot
+
+#             det_sectheta = det_sectheta.flatten()
+#             source_sectheta = source_sectheta.flatten()
+#             Edet = Edet.flatten()
+#             E_residual = E_residual.flatten()
+#             Efit = Efit.flatten()
             
-            if ax_loc1 == 1 :
+#             if ax_loc1 == 1 :
                 
-                normalized_residuals = E_residual / Edet.dx
+#                 normalized_residuals = E_residual / Edet.dx
 
-                vmax = np.nanmax( np.abs( normalized_residuals[ ( normalized_residuals < 5 ) ] ) )
-                # linthresh = np.nanmin( np.abs( normalized_residuals ) ) 
-                linthresh = 1.0
+#                 vmax = np.nanmax( np.abs( normalized_residuals[ ( normalized_residuals < 5 ) ] ) )
+#                 # linthresh = np.nanmin( np.abs( normalized_residuals ) ) 
+#                 linthresh = 1.0
                 
-                im = ax.scatter( det_sectheta.x, source_sectheta.x,
-                                 c = normalized_residuals,
-                                 s = 5,
-                                 # norm = SymLogNorm( linthresh,
-                                 #                   vmin = -vmax, vmax = vmax ),
-                                 vmax = vmax, vmin = -vmax,
-                                 cmap = colorcet.m_diverging_bkr_55_10_c35 )
-                plt.colorbar( im, ax = ax )
+#                 im = ax.scatter( det_sectheta.x, source_sectheta.x,
+#                                  c = normalized_residuals,
+#                                  s = 5,
+#                                  # norm = SymLogNorm( linthresh,
+#                                  #                   vmin = -vmax, vmax = vmax ),
+#                                  vmax = vmax, vmin = -vmax,
+#                                  cmap = colorcet.m_diverging_bkr_55_10_c35 )
+#                 plt.colorbar( im, ax = ax )
 
-            else :
-                ax.errorbar( det_sectheta.x, Edet.x, xerr = det_sectheta.dx, yerr = Edet.dx,
-                             c='b', zorder = 1,
-                             ls = 'none' )                        
+#             else :
+#                 ax.errorbar( det_sectheta.x, Edet.x, xerr = det_sectheta.dx, yerr = Edet.dx,
+#                              c='b', zorder = 1,
+#                              ls = 'none' )                        
 
-                mask = ~ np.isnan( Efit )
+#                 mask = ~ np.isnan( Efit )
 
-                ax.plot( det_sectheta.x[ mask ] , Efit[ mask ], c = 'r', zorder = 2 ) 
+#                 ax.plot( det_sectheta.x[ mask ] , Efit[ mask ], c = 'r', zorder = 2 ) 
 
 
-    if savefig_dir :
-        plt.savefig( savefig_dir, format='eps', dpi=2000 )
+#     if savefig_dir :
+#         plt.savefig( savefig_dir, format='eps', dpi=2000 )
     
-    plt.show()
+#     plt.show()
 
 
     

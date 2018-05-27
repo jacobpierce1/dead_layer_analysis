@@ -7,8 +7,15 @@
 # * option to automatically construct a sum of fitfuncs
 # * * suboption to hold some params constant when doing this
 
+import matplotlib 
+matplotlib.use('Agg')
+
+
 import libjacob.jmath as jmath
 from libjacob.jmath import xcut
+
+
+
 
 import numpy as np
 import scipy.special as special
@@ -34,6 +41,9 @@ from enum import Enum
 
 
 
+# alpha fit params :  (A, mu, sigma) * N, eta, tau1, tau2
+
+
 
 class peak_types( Enum ) :
     a = 0
@@ -43,9 +53,9 @@ class peak_types( Enum ) :
 
 
 _fitters_num_params = { 'a' : (3,3),
-                         'b' : None,
-                         'g' : None,
-                         'cb' : None } 
+                        'b' : None,
+                        'g' : None,
+                        'cb' : None } 
 
      
 # __alpha_num_peak_params = 2
@@ -205,10 +215,12 @@ class spectrum_fitter( object ) :
         self.params_array_size = peak_idx + det_idx
              
 
-        # defaults 
+        # defaults
+        self.success = -1 
         self.params_result = None
         self.params_result_errors = None
         self.redchisqr = -1
+        self.cov = None
 
 
 
@@ -275,7 +287,7 @@ class spectrum_fitter( object ) :
             # else :
             #     self.det_params[i] = np.copy( det_params_guess[ peak_type ] ) 
                 
-        params_array = self.__construct_params_array()
+        params_array = self._construct_params_array()
        
         # print( params_array ) 
 
@@ -294,7 +306,7 @@ class spectrum_fitter( object ) :
         # print( objective( x, y, dy ) )
 
         
-        ret = scipy.optimize.leastsq( objective, params_array, args = (x,y,dy),
+        ret = scipy.optimize.leastsq( objective, params_array, args = (x, y, dy),
                                       full_output = 1 )
 
         params_result, cov, info, msg, status = ret
@@ -312,17 +324,23 @@ class spectrum_fitter( object ) :
             
             if print_output :
                 print( '' ) 
-                print( 'fit converged!' ) 
+                print( 'fit converged!' )
+                print( self.xbounds ) 
+                    
 
             if not self.check_valid_fit_params() :
                 self.success = 0
-                if print_output : 
-                    print( 'invalid fit params' ) 
+                if print_output :
+                    print( 'invalid fit params' )
+                    print( [ '%.2f' % z for z in params_array ] )
+                    print( [ '%.2f' % z for z in params_result ] )
+                    
                 return self 
             
             self.chisqr = np.sum( info['fvec']**2 )
             self.nfree = len( x ) - len( params_array ) 
             self.redchisqr = self.chisqr / self.nfree
+            self.cov = cov
 
             params_result_errors = np.sqrt( np.diag( cov ) * self.redchisqr )
 
@@ -331,11 +349,12 @@ class spectrum_fitter( object ) :
             self.pvalue = 1 - chi2.cdf( self.chisqr, self.nfree )
 
             if print_output : 
-                print( params_array ) 
-                print( params_result )
-                print( params_result_errors )
-                print( 'redchisqr: ' + str(self.redchisqr) )
-                print( 'pvalue: ' + str( self.pvalue ) )
+                print( [ '%.2f' % z for z in params_array ] )
+                print( [ '%.2f' % z for z in params_result ] )
+                print( [ '%.2f' % z for z in params_result_errors ] )
+                
+                print( 'redchisqr: %.3f' % self.redchisqr )
+                print( 'pvalue: %.3f' % self.pvalue )
 
             
             if fit_acceptor is not None :
@@ -384,7 +403,7 @@ class spectrum_fitter( object ) :
 
     
             
-    def __construct_params_array( self ) :
+    def _construct_params_array( self ) :
 
         p = np.empty( self.params_array_size )
 
@@ -435,17 +454,62 @@ class spectrum_fitter( object ) :
                 return 0
         
         return 1
-        
+
+    
 
     def plot( self, ax, c = 'r', **kw_args ) :
         ax.plot( self.x, self.eval( self.x ), c=c, **kw_args )
 
+
+
         
 
+    # return a spectrum_fitter with one peak, equal to the peaknum
+    # peak in self.
+    def subpeak( self, peaknum ) :
 
-
+        peak_type = self.peak_types[ peaknum ]
         
+        single_peak = spectrum_fitter( peak_type )
 
+        single_peak.num_peaks = 1 
+        
+        single_peak.peak_params = [ np.copy( self.peak_params[ peaknum ] ) ] 
+        single_peak.peak_params_errors = [ np.copy( self.peak_params_errors[ peaknum ] ) ]
+        single_peak.det_params = [ np.copy( self.det_params[ peaknum ] ) ]
+        single_peak.det_params_errors = [ np.copy( self.det_params_errors[ peaknum ] ) ]
+        
+        num_peak_params, num_det_params = _fitters_num_params[ peak_type ]
+
+        single_peak.params_array_peak_indices = [ [ 0, num_peak_params ] ]
+        single_peak.params_array_det_indices = [ [ num_peak_params,
+                                                   num_peak_params + num_det_params ] ]
+
+        # single_peak.set_params_from_params_array( self._construct_params_array() ) 
+
+        # single_peak._construct_params_array()
+
+        single_peak.success = self.success
+
+        if self.cov is not None :
+            
+            cov_indices = np.concatenate( [ np.arange( * self.params_array_peak_indices[ peaknum ],
+                                                       dtype = int ),
+                                            np.arange( * self.params_array_det_indices[ peaknum ],
+                                                       dtype = int ) ] )
+            
+            single_peak.cov = np.copy( self.cov[ cov_indices ][ :, cov_indices ] )
+
+        else :
+            single_peak.cov = None
+            
+        return single_peak 
+
+
+
+
+    
+        
 # reference: equation 10 in Bortels 1987  
 # this function is meant to be applied to scalar x, not list
 
@@ -695,8 +759,8 @@ def auto_fit_many_spectra( spec_db, data_retriever,
                             spec_db.insert_fit_data( x, y, l, None ) 
             
             plt.savefig( image_path + ( 'x=%d.%d' % (x,k) ) + '.png', format='png')
-            plt.clf()
-            plt.close()
+            # plt.clf()
+            plt.close( f )
                             
             
     # spec_db.disconnect()

@@ -15,19 +15,25 @@ import scipy.interpolate
 
 
 
+
 # create and populate the histogram array 
-def data_fetcher( name, x, y ) :
+def data_fetcher( name, detnum, x, y, mode  ) :
 
     xaxis = np.arange( 5000 )
-        
-    infile = ( '../../data/extracted_ttree_data/'
-               + name + '/%s_%d_%d.bin' % ( name, x, y ) )
 
+    if detnum is not None : 
+        infile = ( '../../data/extracted_ttree_data/'
+                   + name + '/%s_%d_%d_%d.bin' % ( name, detnum, x, y ) )
+
+    else :
+        infile = ( '../../data/extracted_ttree_data/'
+                   + name + '/%s_%d_%d.bin' % ( name, x, y ) )
+    
     # print( infile ) 
     
     efront_histo = np.zeros( xaxis.size )
 
-    if not data.construct_histo_array( infile, efront_histo ) :
+    if not data.construct_histo_array( infile, efront_histo, mode ) :
         print( 'error: couldnt open file' ) 
 
     dy = np.sqrt( efront_histo )
@@ -40,15 +46,32 @@ def data_fetcher( name, x, y ) :
 
 
 
-db_name = 'angled'
-f = 16
-bstrips = [ 2, 16, 31 ]
-cols = [ 'r', 'g', 'b' ] 
+# db_name = 'alpharun20-30'
+db_name = 'alpharun11-19' 
+detnum = 3
+channels = [ 1400, 3100 ]
+f = 15
+bstrips = [ 7,8, 9, 10 ]
+mode = 0
 
-db_path = '../../storage/databases/'
-db = spec.spectrum_db( db_path + db_name )
-channels = db.read_mu_values( '../../storage/mu_values/' + db_name
-                              + '_mu_values.bin' ) 
+
+# db_name = 'det3_cent'
+# detnum = None
+# channels = [2600,3100]
+# f = 15
+# bstrips = [ 13, 15, 17 ]
+# mode = 0
+
+
+cols = 'bgrk'
+
+peakzoom = None
+
+
+# db_path = '../../storage/databases/'
+# db = spec.spectrum_db( db_path + db_name )
+# channels = db.read_values( '../../storage/mu_values/' + db_name
+#                               + '_mu_values.bin' ) 
 
 
 
@@ -60,11 +83,14 @@ for i in range( len( bstrips ) ) :
 
     b = bstrips[i]
 
-    x, y, dy = data_fetcher( db_name, f, b  )
+    x, y, dy = data_fetcher( db_name, detnum, f, b, mode  )
 
     ax.semilogy( x, y, c = cols[i], label = str( b ),
                  ls='steps-mid', linewidth = 0.3 )
 
+    ax.set_title( '%s: det=%s, fstrip=%d, bstrips=%s' % ( db_name, str( detnum ),
+                                                          f, str(bstrips) ) ) 
+    
     # print( ( f,b ) )
     # print( 'mu values:' )
     # print( [ channels[i][j][ f, b ] for i in range(3) for j in range(2) ] )
@@ -72,7 +98,7 @@ for i in range( len( bstrips ) ) :
            
 ax.legend
 
-ax.set_xlim( [2550,3100] )
+ax.set_xlim( channels )
 
 ax.legend( loc = 'best' ) 
 

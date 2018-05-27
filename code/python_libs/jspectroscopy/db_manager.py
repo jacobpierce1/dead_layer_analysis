@@ -43,6 +43,17 @@ schema_cols = [ 'x', 'y', 'fit_id', 'successful_fit',
 
 
 
+# class providing storage, access, and filtering capabilities
+# to make the user's life less annoying.
+
+
+
+
+
+
+
+
+
 # class providing complete set of operations for writing
 # and specialized querying for the DBs.
 # det_number is optional number of the detector, in case
@@ -61,13 +72,18 @@ class spectrum_db( object ):
         self.path = path
         self.conn = None
         self.name = name
+
+        pathdir = os.path.dirname( path ) 
+        if not os.path.exists( pathdir ) :
+            os.mkdir( pathdir ) 
         
         if not os.path.exists( path ) :
             if create_new_db :
                 self.is_empty = 1 
                 self.create( dimensions, peak_types, constrain_det_params )
             else :
-                print( 'ERROR: attempted to load db, but the path does not exist' ) 
+                print( 'ERROR: attempted to load db, but the path does not exist' )
+                sys.exit(0) 
 
         else : 
             self.is_empty = 0
@@ -136,12 +152,13 @@ class spectrum_db( object ):
             
     # fill the db with each fit id that we need, giving the needs update flag for
     # everything. this is meant to only be called when the table is empty 
-    def populate( self, numx, numy, numfits ):
+    def populate( self, dets_used, numx, numy, numfits ):
 
+        for d in dets_used : 
             for x in range( self.xdim ):
                 for y in range( self.ydim ):
                     for i in range( self.num_groups ):
-                        self.insert_fit_data( x, y, i, None ) 
+                        self.insert_fit_data( d, x, y, i, None ) 
 
 
 
@@ -152,8 +169,9 @@ class spectrum_db( object ):
         time = str( datetime.datetime.now() )
 
         if self.is_empty :
-            self.conn.cursor().execute( 'INSERT INTO metadata VALUES ( ?, ?, ?, ?, ?, ? ) ',
-                                        ( self.xdim, self.ydim,
+            self.conn.cursor().execute( 'INSERT INTO metadata VALUES ( ?, ?, ?, ?, ?, ?, ? ) ',
+                                        ( json.dumps( self.dets_used ), 
+                                          self.xdim, self.ydim,
                                           _to_bin( self.peak_types ),
                                           _to_bin( self.constrain_det_params ),
                                           time, self.name ) )
@@ -166,9 +184,9 @@ class spectrum_db( object ):
 
         cursor = self.conn.cursor()
         cursor.execute( 'SELECT * FROM metadata' )
-        # xdim, ydim, peak_types, yield_data, timestamp = cursor.fetchall()
         metadata  = dict( cursor.fetchone() )
-                
+
+        self.dets_used = json.loads( metadata[ 'dets_used' ] ) 
         self.xdim = metadata[ 'xdim' ] 
         self.ydim = metadata[ 'ydim' ]
         self.peak_types = _from_bin( metadata[ 'peak_types' ] ) 
@@ -177,7 +195,8 @@ class spectrum_db( object ):
         self.name = metadata[ 'name' ]
 
         self.num_groups = len( self.peak_types ) 
-        self.num_peaks_per_group = [ len(x) for x in self.peak_types ] 
+        self.num_peaks_per_group = [ len(x) for x in self.peak_types ]
+
 
         
 
@@ -203,7 +222,7 @@ class spectrum_db( object ):
             if not self.exists():
                 print( 'ERROR: db has not been created.' )
                 return 0 
-            
+
         self.conn = sqlite3.connect( self.path ) 
 
         # this is set to allow you to read into an sqlite3.Row,
@@ -239,35 +258,36 @@ class spectrum_db( object ):
 
     
 
-    def insert_fit_data( self, x, y, group_num, spectrum_fit ):        
+    def insert_fit_data( self, detnum, x, y, group_num, spectrum_fit ):        
 
         if self.conn is None:
             raise ValueError( 'Cannot insert data, sqlite3 connection is not open. Call db.connect().' )
 
         if self.is_empty :
-            query = 'INSERT INTO fits VALUES ( ?, ?, ?, ?, ?, ?, ?, ? )'
-            self.conn.cursor().execute( query, ( x, y, group_num, -1,
-                                                 None, None, None, -1 ) )
+            query = 'INSERT INTO fits VALUES ( ?, ?, ?, ?, ?, ?, ?, ?, ?, ? )'
+            self.conn.cursor().execute( query, ( detnum, x, y, group_num, -1,
+                                                 None, None, None, None, -1 ) )
             
         else:
             if spectrum_fit is None :
                 query = ( 'UPDATE fits SET success=? '
-                          + 'WHERE x=? and y=? and group_num=?' )
+                          + 'WHERE detnum=? and x=? and y=? and group_num=?' )
                 
-                self.conn.cursor().execute( query, ( 0, x, y, group_num ) ) 
+                self.conn.cursor().execute( query, ( 0, detnum, x, y, group_num ) ) 
             
             else :
                 query = ( 'UPDATE fits SET success=?, '
                           + 'params_result=?, params_result_errors=?, '
-                          + 'fit_bounds=?, redchisqr=? '
-                          + 'WHERE x=? and y=? and group_num=?' )
+                          + 'cov=?, fit_bounds=?, redchisqr=? '
+                          + 'WHERE detnum=? and x=? and y=? and group_num=?' )
 
                 self.conn.cursor().execute( query, ( spectrum_fit.success,
                                                      _to_bin( spectrum_fit.params_result ),
                                                      _to_bin( spectrum_fit.params_result_errors),
+                                                     _to_bin( spectrum_fit.cov ),
                                                      _to_bin( spectrum_fit.fit_bounds ),
                                                      spectrum_fit.redchisqr,
-                                                     x, y, group_num ) )
+                                                     detnum, x, y, group_num ) )
 
             self.conn.commit()
         
@@ -277,20 +297,24 @@ class spectrum_db( object ):
         
 
 
-    def read_fit_data( self, x, y, fit_id ):
+    def read_fit_data( self, detnum, x, y, fit_id ):
 
         # print( (x,y,fit_id) )
 
         if self.conn is None:
             raise ValueError( 'Cannot read db, sqlite3 connection is not open. Call db.connect().' )
 
-        query = 'SELECT * FROM fits WHERE x=? and y=? and fit_id=?'
+        query = 'SELECT * FROM fits WHERE detnum=? and x=? and y=? and fit_id=?'
 
         cursor = self.conn.cursor()
-        cursor.execute( query, ( x, y, fit_id ) )
+        cursor.execute( query, ( detnum, x, y, fit_id ) )
         result = dict( cursor.fetchone() )
         
         spec_result = _from_bin( result[ 'spectrum_fit' ] )
+
+        print( result )
+
+        sys.exit(0)
 
         # print( spec_result ) 
 
@@ -403,8 +427,13 @@ class spectrum_db( object ):
             y = row['y'] 
             group_num = row[ 'group_num' ]
             success = row[ 'success' ]
-            
+
+            # print( 'success: ' + str( success ) ) 
+                        
             if success :
+                
+                cov = _from_bin( row[ 'cov' ] ) 
+
                 params_result = _from_bin( row[ 'params_result' ] )
                 params_result_errors = _from_bin( row[ 'params_result_errors' ] )
                 
@@ -412,16 +441,27 @@ class spectrum_db( object ):
 
                 spectrum.set_params_from_params_array( params_result, errors = 0)
                 spectrum.set_params_from_params_array( params_result_errors, errors = 1)
-
-                # print( spectrum.peak_params[0][1] )
-                # print( spectrum.peak_params[1][1] )
-                # print( '' ) 
-                    
+                spectrum.cov = cov 
                 
                 for j in range( self.num_peaks_per_group[ group_num ] ) :
-                    peak_values[ group_num ][j][x,y] = meas.meas( spectrum.peak_params[j][1],
-                                                                spectrum.peak_params_errors[j][1] ) 
-                    
+
+                    # print( spectrum.cov)
+                    # print( 'params_result: ' + str( params_result ) ) 
+                    # print( spectrum._construct_params_array() )
+                    # print( spectrum.peak_params[0] )
+                                        
+                    if spectrum.cov is not None : 
+                        alpha_peak = spec.find_alpha_peak( spectrum, j, 500, 0 ) 
+
+                        if alpha_peak is None :
+                            peak_values[ group_num ][j][x,y] = meas.nan
+
+                        else : 
+                            peak_values[ group_num ][j][x,y] = alpha_peak 
+
+                    else :
+                        peak_values[ group_num ][j][x,y] = meas.nan
+                        
             else :  
                 for j in range( self.num_peaks_per_group[ group_num ] ) :
                     peak_values[ group_num ][j][x,y] = meas.nan 
@@ -445,6 +485,7 @@ class spectrum_db( object ):
 
         return values 
 
+    
 
 
     

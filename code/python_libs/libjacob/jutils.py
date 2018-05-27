@@ -13,12 +13,12 @@ class time_estimator( object ) :
     def __init__( self, num_iterations, num_updates ) :
         self.iteration = 0 
         self.counter = 1
-        self.num_updates = 0
+        self.num_updates = num_updates 
         self.num_iterations = num_iterations
         self.start_time = time.time()
 
         
-    def update() :
+    def update( self ) :
         self.iteration += 1
 
         if( 1. * self.iteration / self.num_iterations 
@@ -33,7 +33,7 @@ class time_estimator( object ) :
                        / self.counter ) )
 
             
-    def reset( num_updates = None ) :
+    def reset( self, num_updates = None ) :
         self.iteration = 0 
         self.counter = 1
         self.start_time = time.time()
@@ -45,7 +45,7 @@ class time_estimator( object ) :
 
 
 
-# flattne a list of lists.
+# Flattne a list of lists.
 def flatten_list( list_ ):
     return [ x for sublist in list_ for x in sublist ]
 
