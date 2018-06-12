@@ -13,11 +13,11 @@ import scipy.interpolate
 
 # CONFIG 
 
-filter_channels = 1 
+# filter_channels = 1 
 
-filter_above_sectheta = 1.3 
+# filter_above_sectheta = 1.3 
 
-peak_indices = [ [1,2], [1,2], [1,3,4] ]
+peak_indices = [ [0], [1] ]
 
 
 

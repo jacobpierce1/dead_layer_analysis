@@ -1,6 +1,0 @@
-*.egg-info
-build
-dist
-temp_examples
-*.pyc
-*.sw*

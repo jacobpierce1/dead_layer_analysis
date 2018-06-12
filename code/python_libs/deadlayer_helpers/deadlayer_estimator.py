@@ -27,6 +27,8 @@ import jspectroscopy as spec
 
 
 from scipy.interpolate import interp1d
+import scipy.integrate
+
 
 import heapq
 
@@ -118,7 +120,8 @@ class deadlayer_model_params( object ) :
                   different_pixel_deadlayers = 0,
                   fix_source_deadlayers = None,
                   one_source_constant = 0,
-                  det_thickness = None ) :
+                  det_thickness = None,
+                  vary_source_height = 0 ) :
 
         self.dimx = 32
         self.dimy = 32 
@@ -170,6 +173,8 @@ class deadlayer_model_params( object ) :
 
         self.account_for_det = 0
         self.det_thickness = det_thickness
+
+        self.vary_source_height = variable_source_height 
         
         return None
 
@@ -234,7 +239,7 @@ def compute_all_energies( params, model_params, channels,
                 
                 for x in model_params.fstrips[ d ] :
 
-                    e_, edet_, loss_, weight_ = energy_from_mu_lmfit(
+                    e_, edet_, loss_, d_e = energy_from_mu_lmfit(
                         params, model_params,
                         channels[ db_num ][i][j][x][ model_params.bstrips ],
                         det_sectheta[x][ model_params.bstrips ],
@@ -245,7 +250,7 @@ def compute_all_energies( params, model_params, channels,
                     e[d][i][j][x] = e_
                     edet[d][i][j][x] = e_
                     loss[d][i][j][x] = e_
-                    resid[d][i][j][x] = ( actual_energies[i][j] - e ) * weight 
+                    resid[d][i][j][x] = ( actual_energies[i][j] - e_ ) / d_e 
 
     return e, edet, loss, resid 
 
@@ -276,8 +281,6 @@ def energy_from_mu_lmfit( params, model_params,
                           db_num, x, i, j,
                           compute_weight = 0 ) : 
 
-    # print( 'test' ) 
-
     a = params[ 'a_%d_%d' % ( db_num, x ) ].value.item()
     b = params[ 'b_%d_%d' % ( db_num, x ) ].value.item()
 
@@ -305,10 +308,6 @@ def energy_from_mu_lmfit( params, model_params,
             det_deadlayer = params[ 'det_deadlayer' ].value #.item()
             
         if model_params.interp_det_stopping_power is not None :
-
-            # print( source_sectheta.x ) 
-            # print( source_constant )
-            # print( actual_energies[i][j] )
             
             S = model_params.det_stopping_power_interp( actual_energies[i][j]
                                                         - source_constant * source_sectheta )
@@ -340,19 +339,31 @@ def energy_from_mu_lmfit( params, model_params,
         
         
     # compute how much energy was lost in the source and det deadlayers.
-       
-    combined_deadlayer_losses =  ( det_constant * det_sectheta
-                                   + source_constant * source_sectheta )
 
-    if model_params.quadratic_source :
-        source_constant2 = params[ 'source_constant2_%d_%d' % (i,j) ].value.item()
+    if not model_params.vary_source_height : 
+    
+        combined_deadlayer_losses =  ( det_constant * det_sectheta
+                                       + source_constant * source_sectheta )
 
-        combined_deadlayer_losses += source_constant2 * (source_sectheta.x ** 2)
+    else :
 
-    if model_params.quadratic_det :
-        det_constant2 = params[ 'det_constant2_%d_%d' % (i,j) ].value.item()
+        # get curve through the data
+        h = np.array( [ params[ 'h_%d_%d' % ( i, z )
+                                for z in range( num_source_heights ) ] ] )
 
-        combined_deadlayer_losses += det_constant2 * ( det_sectheta.x - 1 ) ** 2
+        # get stopping power at E0
+        
+        det_loss = scipy.integrate.dblquad( 
+        
+    # if model_params.quadratic_source :
+    #     source_constant2 = params[ 'source_constant2_%d_%d' % (i,j) ].value.item()
+
+    #     combined_deadlayer_losses += source_constant2 * (source_sectheta.x ** 2)
+
+    # if model_params.quadratic_det :
+    #     det_constant2 = params[ 'det_constant2_%d_%d' % (i,j) ].value.item()
+
+    #     combined_deadlayer_losses += det_constant2 * ( det_sectheta.x - 1 ) ** 2
         
 
     # ignoring the pulse height defect, just add back the energy
@@ -387,11 +398,10 @@ def energy_from_mu_lmfit( params, model_params,
     # under the model. under all circumstances, this is dominated
     # by the uncertainty in mu.
         
-    if compute_weight : 
-        weight = 1 / ( a * channels.dx )
-        return ( energy, energy_det, combined_deadlayer_losses, weight ) 
+    d_energy = a * channels.dx
 
-    return ( energy, energy_det, combined_deadlayer_losses ) 
+    return ( energy, energy_det, combined_deadlayer_losses, d_energy ) 
+
 
 
 
@@ -404,7 +414,7 @@ def objective( params, model_params, channels, source_geometries, actual_energie
 
     e, edet, loss, resid = compute_all_energies( params, model_params,
                                                  channels, source_geometries, actual_energies )
-
+    
     print( 'flattening' ) 
     flattened = [ a for a in resid[d][j][i][x][y]
                   for d in model_params.num_dbs
@@ -724,9 +734,9 @@ def estimate_deadlayers( model_params, channels, actual_energies,
 
     # determine whether to use 3d plot or 2d plot
     
-    calibrated_energies = [ [ [0 for j in range( num_peaks_per_source[i] ) ]
-                              * for i in range( num_sources ) ]
-                            for d in range( num_dbs ) ]
+    # Edet = [ [ [0 for j in range( num_peaks_per_source[i] ) ]
+    #            for i in range( num_sources ) ]
+    #          for d in range( num_dbs ) ]
 
     fro 
 

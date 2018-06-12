@@ -2,11 +2,12 @@
 
 import jspectroscopy as spec
 import numpy as np
-import deadlayer_helpers.data_handler as data
+# import deadlayer_helpers.data_handler as data
 import matplotlib.pyplot as plt 
-import libjacob.jutils as jutils
+import jutils
 
 import bpt
+import sys
 
 
 # inputs = spectrum_fitter_inputs( (32,32), data_fetcher )
@@ -48,7 +49,7 @@ num_peaks_to_detect = 6
 # self.peak_structures = None 
 
 
-
+bpt_data_path = '../../bpt-data/extracted_root_tree_data'
                    
 
 
@@ -128,6 +129,7 @@ def params_shuffler() :
 
 
 
+
     
 
 def fit_acceptor( x, y, dy, spec_fitter_result ) :
@@ -158,9 +160,14 @@ def fit_acceptor( x, y, dy, spec_fitter_result ) :
 
 
 
-def one_spectrum( coords ) : 
-    x, y, dy = data_fetcher( 'angled', *coords ) 
 
+
+def one_spectrum( coords ) : 
+
+    data_retriever = lambda detnum, x, y : bpt.data_fetcher( bpt_data_path,
+                                                                 'angled', detnum, x, y ) 
+    
+    x, y, dy = data_retriever( 1, *coords ) 
 
     dy = np.sqrt( y )
     dy[ ( dy == 0 ) ] = 1 
@@ -194,11 +201,24 @@ def all_spectra( db_names ) :
 
     for name in db_names : 
         
-        db = spec.spectrum_db( '../../storage/databases/' + name, (32,32),
+        dets_used = bpt.dets_used( bpt_data_path, name )
+
+
+
+        db = spec.spectrum_db( '../../storage/databases/' + name, dets_used, (32,32),
                                peak_types, constrain_det_params )
 
+        # db.disconnect()
 
-        data_retriever = lambda x, y : data_fetcher( name, x, y ) 
+        # db = spec.spectrum_db( '../../storage/databases/' + name )
+
+
+        # sys.exit(0 )
+        
+        
+        
+        data_retriever = lambda detnum, x, y : bpt.data_fetcher( bpt_data_path,
+                                                                 name, detnum, x, y ) 
 
         spec.auto_fit_many_spectra( db, data_retriever,
                                     '../../images/current_fit_images/' + name + '/', (4,4),
@@ -210,25 +230,26 @@ def all_spectra( db_names ) :
                                     params_shuffler = params_shuffler,
                                     rel_plot_bounds = rel_plot_bounds,
                                     logscale = 1, time_estimator = time_estimator,
-                                    print_output = 0 )
+                                    print_output = 0,
+                                    dets_used = dets_used )
 
-        mu_path = '../../storage/mu_values/' + name + '_mu_values.bin'
+        # mu_path = '../../storage/mu_values/' + name + '_mu_values.bin'
 
-        db.write_mu_values( mu_path )
+        # db.write_mu_values( mu_path )
 
         db.disconnect()
 
 
- 
-# one_spectrum( (20,19) ) 
-
-# all_spectra( [ 'moved', 'angled', 'centered', 'flat' ] ) #  [ 'moved', 'angled', 'centered', 'flat', 'det3_cent', 'det3_moved' ] )  
-
-# all_spectra( [ 'alpharun20-30', 'alpharun11-19'
 
 
 
-all_spectra( [ 'det3_cent', 'det3_moved' ] )
+
+all_spectra( [ 'moved', 'angled', 'centered', 'flat', 'det3_cent', 'det3_moved' ] )
+
+
+
+
+
 
 
 # # plot the histogram without fit yet 

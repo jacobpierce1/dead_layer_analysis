@@ -1,3 +1,0 @@
-include README.rst changelog.rst
-include LICENSE
-include examples/*.py
