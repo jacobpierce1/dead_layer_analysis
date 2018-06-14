@@ -6,7 +6,7 @@
 
 # my includes 
 # import deadlayer_helpers.sql_db_manager as db
-import libjacob.jmeas as meas
+import jutils.meas as meas
 
 
 
@@ -34,7 +34,7 @@ _CM_PER_INCH = 2.54
 _MM_PER_INCH = 25.4
 
 
-USE_MARY_DISPLACEMENTS = 0
+USE_MARY_DISPLACEMENTS = 1
 
 # these are the first pixel displacements as computed by Mary
 mary_first_pixel_displacements = { 'pu_240' : meas.meas( [87.10, -9.31, 58.35], np.zeros(3) ),
@@ -571,7 +571,6 @@ def compute_average_sectheta_over_source( R, nhat, radius ) :
 # same as the direction of 'right'
 
 def _populate_sectheta_grid( secant_matrices, all_coords, source_data,
-                             compute_source_costheta = False,
                              average_over_source = False ):
        
     det_coords = all_coords.loc['detector']
@@ -738,7 +737,7 @@ def get_secant_matrices( compute_source_sectheta = 0,
         
     secant_matrices_labels = [ sources, ['detector', 'source'] ]
     secant_matrices = dict( zip( sources,
-                                 meas.meas.empty( ( len(sources), 2, 32, 32 ) ) ) )
+                                 meas.empty( ( len(sources), 2, 32, 32 ) ) ) )
 
     
     # measurements 
@@ -754,9 +753,8 @@ def get_secant_matrices( compute_source_sectheta = 0,
 
 
     # get each array of values / uncertainties and add to the grid.
-    _populate_sectheta_grid( secant_matrices, all_coords, source_data,
-                             compute_source_sectheta,
-                             average_over_source )
+    secant_matrices = _compute_sectheta_grid( secant_matrices, all_coords, source_data,
+                                              average_over_source )
 
     for key, val in secant_matrices.items() :
         secant_matrices[key] = abs( val )
@@ -783,7 +781,7 @@ def get_secant_matrices( compute_source_sectheta = 0,
 
         
         
-    return secant_matrices
+    return secant_matrices, displacements, nhats
     
 
 

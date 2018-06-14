@@ -1,4 +1,4 @@
-# fit all peaks for data with gadolinium source
+# fit all peaks for data with Cm and Gd sources
 
 
 

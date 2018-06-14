@@ -4,11 +4,11 @@ import jspectroscopy as spec
 
 
 # db_names = [ 'moved' ]
-# db_names = [ 'angled', 'moved', 'centered', 'flat' ] # , 'det3_cent', 'det3_moved' ]
+db_names = [ 'angled', 'moved', 'centered', 'flat', 'det3_cent', 'det3_moved' ]
 
 # db_names = [ 'det3_cent', 'det3_moved' ] 
 
-db_names = [ 'alpharun11-19', 'alpharun20-30' ] 
+# db_names = [ 'alpharun11-19', 'alpharun20-30' ] 
 
 
 for name in db_names :

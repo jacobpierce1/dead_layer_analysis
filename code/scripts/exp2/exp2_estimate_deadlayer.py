@@ -1,38 +1,32 @@
 import sys
 import numpy as np
 
-import deadlayer_helpers.deadlayer_estimator as dl_estimator
-import deadlayer_helpers.geometry as geom
+
+
+# from .. import deadlayer_estimator as dl_estimator 
+sys.path.append('../')
+import deadlayer_estimator as dl_estimator
+
+# import exp1_geometry as geom 
 
 import jspectroscopy as spec
-import libjacob.jutils as jutils
-import libjacob.jmeas as meas 
+import jutils 
+import jutils.meas as meas 
 
 import scipy.interpolate
 
 
 # CONFIG 
 
-filter_channels = 1 
+# filter_channels = 1 
 
-filter_above_sectheta = 1.3 
+# filter_above_sectheta = 1.3 
 
-peak_indices = [ [1,2], [1,2], [1,3,4] ]
-
-
+peak_indices = [ [0], [1] ]
 
 
 
-
-
-# peak_indices = [ [2], [2], [1] ]
-
-# db_names = [ 'angled' ] # , 'flat' ] # , 'flat', 'centered' ] 
-
-
-
-db_names = [ 'det3_cent', 'det3_moved' ]
-pu238_geoms = [ 'centered', 'flat' ] 
+db_names = [ 'alpharun20-30' ]
 
 
 strip_coords = 'all'
@@ -40,21 +34,37 @@ strip_coords = 'all'
 
 
 
-# si_interp_energies = np.array( [ 5.050E+00, 5.090E+00, 5.130E+00, 5.170E+00,
-#                                  5.210E+00, 5.250E+00, 5.290E+00, 5.330E+00,
-#                                  5.370E+00, 5.410E+00, 5.450E+00, 5.490E+00,
-#                                  5.530E+00, 5.570E+00, 5.610E+00, 5.650E+00,
-#                                  5.690E+00, 5.730E+00, 5.770E+00, 5.810E+00,
-#                                  5.81310,] )
+det_center_x = -1.08*25.4
 
-# si_interp_stopping_powers = np.array( [ 6.138E+02, 6.107E+02, 6.075E+02, 6.044E+02,
-#                                         6.014E+02, 5.983E+02, 5.953E+02, 5.924E+02,
-#                                         5.894E+02, 5.866E+02, 5.837E+02, 5.809E+02,
-#                                         5.781E+02, 5.753E+02, 5.726E+02, 5.699E+02,
-#                                         5.672E+02, 5.645E+02, 5.619E+02, 5.593E+02,
-#                                         5.591E+02 ] )
+det_center_y = 0.2*25.4 # plus minus of this
+
+det_center_z = 4.155*25.4
+
+        
 
 
+def get_angles( fstrip, bstrip ) : 
+
+    theta1 = numpy.arctan2( np.sqrt( (det_center_x + ( bstrip - 16.5) * 2 ) ** 2 
+                                     + ( det_center_y + ( fstrip - 16.5) * 2 ) ** 2 ),
+                                     det_center_z )
+
+    theta2 = numpy.arctan2( np.sqrt( ( det_center_x + (bstrip - 16.5 ) * 2) ** 2
+                                     + ( -det_center_y + ( fstrip - 16.5 ) * 2) ** 2),
+                                     det_center_z )
+
+    
+    
+    return theta1, theta2 
+
+
+
+
+# def get_secant( fstrip, bstrip ) :
+
+    
+
+    
 actual_energies = [ np.array( [ 5123.68, 5168.17 ] ),
                     np.array( [ 5456.3, 5499.03 ] ),
                     np.array( [ 5759.5, 5813.3, 5903.2, 5946.0 ] ) ]
@@ -63,6 +73,7 @@ actual_energies = [ np.array( [ 5123.68, 5168.17 ] ),
 
 
 density_si = 2.328 # g / cm^2
+
 
 
 # density_si_dioxide = 2.65
@@ -129,6 +140,15 @@ def construct_si_stopping_power_interpolation( plot = 0 ) :
 
 
 
+# construct the mean energy loss divide by height at each 
+
+
+
+
+
+
+
+
 
 model_params = dl_estimator.deadlayer_model_params( vary_det_deadlayer = 0,
                                                     interp_det_stopping_power = 1,
@@ -137,77 +157,44 @@ model_params = dl_estimator.deadlayer_model_params( vary_det_deadlayer = 0,
                                                     bstrips = np.arange( 2, 30 ),
                                                     fix_source_deadlayers = None,
                                                     one_source_constant = 0,
-                                                    det_thickness = 0 )
+                                                    det_thickness = 0,
+                                                    vary_source_thickness = 0 )
 
-# db_names = [ 'angled' ] # , 'flat' ]
-# db_names = [ 'angled', 'moved' ]
 
 num_dbs = len( db_names ) 
 
-db_path = '../../storage/databases/'
+db_path = '../../../storage/databases/'
+
 dbs = [ spec.spectrum_db( db_path + db_names[i] ) for i in range( len( db_names ) ) ]
 
-channels = [ dbs[i].read_values( '../../storage/peak_values/'
+channels = [ dbs[i].read_values( '../../../storage/peak_values/'
                                     + db_names[i]
                                     + '_peak_values.bin' )
              for i in range( len( db_names ) ) ]
 
 
-# channels = [ dbs[i].read_mu_values( '../../storage/peak_values/'
-#                                     + db_names[i]
-#                                     + '_mu_values.bin' )
-#              for i in range( len( db_names ) ) ] 
+
+num_sources = len( channels ) 
 
 
 
-num_sources = len( channels[0] ) 
-
+# print( channels ) 
+print( channels[0][0][1][1][3] )
 
 
 # REMOVE UNNECSSARY PEAKS
-
-
 
 print( len( channels ) )
 print( len( channels[0] ) )
 print( len( channels[0][0] ) ) 
 print( channels[0][0][0].shape() ) 
-# print( len( channels[0][0][0] ) ) 
-# print( len( channels[0][0][0][0] ) ) 
-# print( channels[0][0].shape )
 
-
-# sys.exit(0) 
 
 if peak_indices is not None :
     for i in range( num_dbs ) : 
         for j in range( num_sources ) :
 
             channels[i][j] = [ channels[i][j][x]  for x in peak_indices[j] ]
-
-
-
-# peak_indices = [ [1,2], [1,2], [2] ]
-
-
-
-
-
-
-
-
-
-# READ IN THE ANGLES AND DO SOME FILTERING 
-
-cut_sectheta = 1.3 
-                    
-secant_matrices = geom.get_secant_matrices( compute_source_sectheta = 1, reset = 1 )
-
-
-
-    
-# print( secant_matrices ) 
-
 
 
 
@@ -237,6 +224,12 @@ for d in range( num_dbs ) :
         source_geometries[d][j] = dl_estimator.source_geom_data( secant_matrices[ sources[j] ][0].x,
                                                                  secant_matrices[ sources[j] ][1].x,
                                                                  is_angled[j] )
+
+
+
+
+        
+
 
 
 # FILTERING       
@@ -307,7 +300,8 @@ dl_estimator.estimate_deadlayers( model_params, channels, actual_energies,
                                   det_stopping_power_interp, det_deadlayer_guess,
                                   calibration_coefs_guess,
                                   names = db_names,
-                                  strip_coords = strip_coords ) 
+                                  strip_coords = strip_coords,
+                                  figpath = '../../../storage/current_peaks_vs_sectheta/') 
 
 
 
@@ -322,6 +316,15 @@ dl_estimator.estimate_deadlayers( model_params, channels, actual_energies,
 #                                   residual_scatter_plot = 0,
 #                                   plot_3d = 1,
 #                                   savefig_dir = '../../../deadlayer_analysis_paper/images/det1_calibration.eps' )
+
+
+
+
+
+
+
+
+
 
 
 

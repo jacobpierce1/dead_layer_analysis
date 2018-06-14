@@ -10,18 +10,8 @@ import os
 import sys 
 import time
 
-import libjacob.jpyplot as jplt
-import libjacob.jmeas as meas
-import libjacob.jutils as jutils
-import libjacob.jmath as jmath
-# import libjacob.jstats as jstats
-
-
-# import deadlayer_helpers.stopping_power_interpolation as stop
-# import deadlayer_helpers.stopping_power_interpolation as stop
-# import deadlayer_helpers.sql_db_manager as dbmgr
-# import deadlayer_helpers.analysis as anal
-# import deadlayer_helpers.data_handler as data
+import jutils
+import jutils.meas as meas 
 
 import jspectroscopy as spec
 
@@ -48,6 +38,8 @@ from scipy.stats import chi2
 import lmfit
 
 import colorcet
+
+import scipy.integrate
 
 
 
@@ -91,9 +83,6 @@ def nth_largest(n, iter):
 
 
 
-# def data_container( object ) :
-
-#     pass 
 
     
 
@@ -197,6 +186,63 @@ class source_geom_data( object ) :
         self.source_sectheta_errors = source_sectheta_errors
 
 
+
+
+
+# multiply by stopping power at emission energy and take dot product
+# with (h0, ..., h_N-1 ) to get energy loss due to source distribution
+# with height given by P0 finite element 
+
+def compute_normalized_energy_losses( displacement, nhat, mesh ) : 
+    
+    R = mesh[-1]
+
+    def normalizer_integrand( r, phi, d ) :
+        rprime = np.array( [ r * np.cos( phi ), r * np.sin( phi ), 0 ]  )
+        tmp = ( d - rprime ) 
+        return r * np.cos( phi ) * ( tmp ).dot( nhat ) / np.linalg.norm( tmp ) ** 3 
+
+    def mesh_integrand( r, phi, d, i ) :
+        rprime = np.array( [ r * np.cos( phi ), r * np.sin( phi ), 0 ]  )
+        tmp = ( d - rprime ) 
+        return ( ( 1 / d[2] ) * r * np.cos( phi ) * ( tmp ).dot( nhat )
+                 / np.linalg.norm( tmp ) ** 2 )
+        
+    normalizers = np.zeros( (32,32) )
+    
+    ret = np.zeros( (32,32, len(mesh)-1 ) )
+
+    for i in range(32) :
+        for j in range(32) :
+
+            d = displacement + np.array( 2 * i, 
+
+            normalizers[i,j] = scipy.integrate.dblquad(
+                normalizer_integrand, (0, 2*np.pi ), 0, R,
+                args = (d,) )
+                    
+            # compute integrals along each interval in the mesh (fencepost ) 
+                    
+            for k in range( len( mesh ) - 1 ) : 
+
+                ret[i,j,k] = scipy.integrate.dblquad(
+                    normalizer_integrand, (0, 2*np.pi ), mesh[k], mesh[k+1],
+                    args = (d,) )
+
+    ret /= normalizers
+
+    return ret 
+
+    
+
+
+                
+def get_stopping_power_interpolation( Z ) :
+    pass
+
+
+                
+        
         
 def create_empty_data_container( model_params ) :
 
