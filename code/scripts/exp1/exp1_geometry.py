@@ -53,6 +53,25 @@ mary_first_pixel_displacements = { 'pu_240' : meas.meas( [87.10, -9.31, 58.35], 
 #                                    'pu_238_moved' : meas.meas( [-44.59, -28.58, 57.88], np.zeros(3) ) } 
 
 
+
+
+
+
+class source_geom_data( object ) :
+
+    def __init__( self, det_sectheta, source_sectheta, ,
+                  det_sectheta_errors = None, source_sectheta_errors = None ) :
+
+        self.det_sectheta = det_sectheta
+        self.source_sectheta = source_sectheta
+        self.is_angled = is_angled
+        self.det_sectheta_errors = det_sectheta_errors
+        self.source_sectheta_errors = source_sectheta_errors
+
+
+
+        
+
                                    
 sources = [ 'pu_240', 'cf_249', 'pu_238_centered',
             'pu_238_moved', 'pu_238_flat', 'pu_238_angled' ]
