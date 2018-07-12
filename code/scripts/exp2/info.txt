@@ -1,0 +1,29 @@
+Gd148 roughly at 3 MeV and Cm244 (which is made of 2 peaks, roughly at 6 MeV).
+
+
+
+http://www.nndc.bnl.gov/chart/decaysearchdirect.jsp?nuc=244CM&unc=nds
+
+main: 
+
+  5762.64 3 	    23.10 % 10 	  1.331 6 
+  5804.77 5 	    76.90 % 10 	  4.464 6
+
+all :
+
+  4920 3 	     5.0E-5 % 5 	  2.46E-6 25 
+  4960 3 	     1.49E-4 % 16 	  7.4E-6 8 
+  5166.64 7 	     4E-6 % 3 	  2.1E-7 15 
+  5215 3 	     5.6E-5 % 5 	  2.9E-6 3 
+  5315	     4E-5 %	  2.126E-6
+  5513 3 	     0.00352 % 18 	  1.94E-4 10 
+  5664 3 	     0.0204 % 15 	  0.00116 8 
+  5762.64 3 	    23.10 % 10 	  1.331 6 
+  5804.77 5 	    76.90 % 10 	  4.464 6 
+
+
+
+
+
+http://www.nndc.bnl.gov/chart/decaysearchdirect.jsp?nuc=148GD&unc=nds	
+  3182.690 24 	   100 %	  3.182690

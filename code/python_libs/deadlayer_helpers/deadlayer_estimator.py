@@ -542,7 +542,8 @@ def objective( params, model_params, channels, source_geometries, actual_energie
 # deadlayer_distance * si_stopping_power * sec(theta)
 
 def estimate_deadlayers( model_params, channels, actual_energies,
-                         source_geometries, source_stopping_power_interps,
+                         det_sectheta, source_sectheta,
+                         source_stopping_power_interps,
                          source_deadlayer_guesses,
                          det_stopping_power_interp, det_deadlayer_guess,
                          calibration_coefs_guess,
@@ -560,9 +561,9 @@ def estimate_deadlayers( model_params, channels, actual_energies,
     model_params.num_peaks_per_source  = num_peaks_per_source
     model_params.total_num_peaks = total_num_peaks 
 
-    angled_3d_plot = np.any( [  source_geometries[d][i].is_angled
-                                for d in range( num_dbs )
-                                for i in range( num_sources ) ] ) 
+    # angled_3d_plot = np.any( [  source_geometries[d][i].is_angled
+    #                             for d in range( num_dbs )
+    #                             for i in range( num_sources ) ] ) 
 
     # print( angled_3d_plot ) 
             

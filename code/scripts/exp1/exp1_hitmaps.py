@@ -16,6 +16,7 @@ from scipy.stats import chi2
 import os 
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import matplotlib.cm
+import colorcet
 
 # config
 # use_variable_thickness = 1
@@ -26,6 +27,7 @@ mesh_size = 4
 
 num_basis_functions = mesh_size
 
+cut_strips = 1
 
 integrals = None 
 
@@ -412,7 +414,7 @@ hitmaps = spec.compute_hitmaps( (32,32), data_retriever,
                                 plot = 0,
                                 reset = 0,
                                 filter_data = 1,
-                                debug_coords = ( 20, 20 ),
+                                debug_coords = None, # ( 20, 20 ),
                                 rel_plot_bounds = [-100, 120] ) 
 
 
@@ -500,8 +502,6 @@ hitmaps = spec.compute_hitmaps( (32,32), data_retriever,
 #         f.colorbar( im, ax = axarr[ 1+j, i ] ) 
 
 
-cut_strips = 0
-
 
 savepath = '../../../plots_important/point_source/'
 
@@ -539,7 +539,7 @@ for i in range( 3 ) :
     # axarr[0,i].imshow( hitmaps[i] )
 
     masked_array = np.ma.array( hitmaps[i], mask=np.isnan( hitmaps[i] ) )
-    cmap = matplotlib.cm.jet
+    cmap = colorcet.m_fire
     cmap.set_bad('white',1.)
     im = axarr[ 0, i ].imshow( hitmaps[i], cmap = cmap  )
     divider = make_axes_locatable( axarr[0,i] )
@@ -587,6 +587,7 @@ for i in range( 3 ) :
 
     resid = ( hitmap - point_source_counts( result, hitmap ) ) / d_hitmap 
 
+    cmap = colorcet.m_diverging_bkr_55_10_c35
     im = axarr[ 1, i ].imshow( resid, cmap = cmap )
     divider = make_axes_locatable( axarr[1,i] )
     cax = divider.append_axes("right", size="5%", pad=0.1)

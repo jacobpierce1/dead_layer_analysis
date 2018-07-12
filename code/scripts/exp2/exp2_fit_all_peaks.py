@@ -1,7 +1,8 @@
 # fit all peaks for data with Cm and Gd sources
 
 
-
+import matplotlib
+# matplotlib.use('Agg')
 # -*- coding: utf-8 -*-
 
 import jspectroscopy as spec
@@ -25,9 +26,9 @@ debug = 0
 rel_plot_bounds = [ -100, 120 ] 
 
 
-group_ranges = [ [-35,12], [-40,12] ]
-peak_locations = [ [0], [-21, 0] ]
-peak_sizes_guesses = [ [5000], [1500, 5000] ]
+group_ranges = [ [-95,15], [-45,13] ]
+peak_locations = [ [-63,0], [-21, 0] ]
+peak_sizes_guesses = [ [300, 15000], [3000, 15000] ]
 
 peak_types = [ ['a'] * len(x) for x in peak_locations ]
 
@@ -43,7 +44,7 @@ num_peaks_to_detect = 2
 coords = ( 16, 17 ) 
 
 
-bpt_data_path = '../../bpt-data/extracted_root_tree_data'
+bpt_data_path = '../../../bpt-data/extracted_root_tree_data/'
 
 
 
@@ -61,6 +62,17 @@ def primary_peak_detector( peaks_detected, histo ) :
     if len( peaks_detected ) < 2 :
         return None
 
+    if( debug ) :
+        print( 'peaks_detected', peaks_detected )
+
+    if ( peaks_detected[0] > 2000
+         or peaks_detected[1] < 2000
+         or peaks_detected[0] < 1000 ) :
+
+        if debug :
+            print( "peak detect failed" )
+        
+        return None
     
     return peaks_detected 
 
@@ -103,10 +115,18 @@ def fit_acceptor( x, y, dy, spec_fitter_result ) :
 
 
 
-def one_spectrum( db_name, detnum, coords ) :
+def one_spectrum( db_name, detnum, x, y ) :
     
-    x, y, dy = data_fetcher( db_name, detnum, *coords ) 
-
+    # db = spec.spectrum_db( '../../storage/databases/' + db_name, detnum, coords,
+    #                         )
+    global debug
+    debug = 1
+    
+    data_retriever = lambda detnum, x, y : bpt.data_fetcher( bpt_data_path,
+                                                             db_name, detnum, x, y )
+        
+    x, y, dy = data_retriever( detnum, x, y ) 
+    
     dy = np.sqrt( y )
     dy[ ( dy == 0 ) ] = 1 
     
@@ -143,16 +163,15 @@ def all_spectra( db_names ) :
 
         print( dets_used ) 
 
-
-        db = spec.spectrum_db( '../../storage/databases/' + name, dets_used, (32,32),
+        db = spec.spectrum_db( '../../../storage/databases/' + name, dets_used, (32,32),
                                peak_types, constrain_det_params )
 
                 
         data_retriever = lambda detnum, x, y : bpt.data_fetcher( bpt_data_path,
-                                                                     name, detnum, x, y ) 
+                                                                 name, detnum, x, y ) 
 
         spec.auto_fit_many_spectra( db, data_retriever,
-                                '../../images/current_fit_images/%s/'
+                                    '../../../storage//current_fit_images/%s/'
                                     % ( name ),
                                     (4,4),
                                     group_ranges, peak_locations,
@@ -165,7 +184,9 @@ def all_spectra( db_names ) :
                                     rel_plot_bounds = rel_plot_bounds,
                                     logscale = 1, time_estimator = time_estimator,
                                     print_output = 0,
-                                    dets_used = dets_used )
+                                    dets_used = dets_used,
+                                    debug_peaks = 0,
+                                    overwrite = 0 )
         
         # mu_path = '../../storage/mu_values/%s_%d_mu_values.bin' % ( name, detnum ) 
 
@@ -175,83 +196,13 @@ def all_spectra( db_names ) :
 
 
 
-# def compute_success_rates( db_names ) :
 
-#     constrain_det_params = { 'a' : 1 }
+# all_spectra( [ 'alpharun20-30', 'alpharun11-19' ] ) 
+# one_spectrum( 'full_bkgd_tot', 1, 28, 28 );
 
-    
-#     for name in db_names :
+one_spectrum( 'full_bkgd_tot', 1, 8, 15 );
+# all_spectra( [ 'full_bkgd_tot' ] )
 
-#         print( name ) 
-
-#         for detnum in [1, 2, 3, 4] : 
-
-#             print( detnum )
-            
-#             mu_path = '../../storage/mu_values/%s_%d_mu_values.bin' % ( name, detnum ) 
-            
-#             db = spec.spectrum_db( '../../storage/databases/%s_%d' % ( name, detnum ), (32,32),
-#                                    peak_types, constrain_det_params )
-            
-#             # compute yield
-#             values = db.read_values( mu_path )
-
-#             total = 0
-#             success = 0 
-            
-#             for i in range( len( peak_locations ) ) :
-#                 total += 32 * 32
-#                 success += np.count_nonzero( np.isnan( values[i][0].x ) )
-            
-#             success_rate = success / total 
-#             print( 'success rate: %.2f' % success_rate ) 
-
-
-
-# one_spectrum( 'alpharun20-30', 2, coords  ) 
-
-
-all_spectra( [ 'alpharun20-30', 'alpharun11-19' ] ) 
-
-# compute_success_rates( [ 'alpharun20-30', 'alpharun11-19' ] )
-
-
-
-
-
-# one_spectrum( (20,19) ) 
-
-# all_spectra( [ 'moved', 'angled', 'centered', 'flat' ] ) #  [ 'moved', 'angled', 'centered', 'flat', 'det3_cent', 'det3_moved' ] )  
-
-# all_spectra( [ 'alpharun20-30', 'alpharun11-19'
-
-
-
-# all_spectra( [ 'det3_cent', 'det3_moved' ] )
-
-
-# # plot the histogram without fit yet 
-    # if nice_format : 
-    #     jplt.plot_histo( ax, xaxis, efront_histo,
-    #                      plot_bounds = None, logscale = 1,
-    #                      title = "Example Spectrum", xlabel = "Channel",
-    #                      ylabel = "Counts" )
-
-    #     labels = [ '$^{240}\mathrm{Pu}$', '$^{238}\mathrm{Pu}$',
-    #                    '$^{249}\mathrm{Cf}$' ]
-
-    #     for l in range( 3 ) :
-
-    #         peakpos = our_peaks[ 2*l ]
-    #         ax.text( peakpos - 30, 30 + efront_histo[ peakpos ],
-    #                  labels[l] ) # , xycoords = 'data' )
-
-    #         # l.draggable()
-            
-    # else :s
-    #     jplt.plot_histo( ax, xaxis, efront_histo,
-    #                      plot_bounds = None, logscale = 1,
-    #                      title = "", xlabel = "",
-    #                      ylabel = "" )
-        
 # fit_all_spectra( dbmgr.all_dbs )
+
+

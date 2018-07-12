@@ -2,12 +2,11 @@ import jspectroscopy as spec
 
 
 db_names = [ 'moved', 'angled', 'centered', 'flat', 'det3_cent', 'det3_moved',
-             'alpharun11-19', 'alpharun20-30'  ]
+             'alpharun11-19', 'alpharun20-30', 'full_bkgd_tot'  ]
 
 for name in db_names :
 
     db = spec.spectrum_db( '../../storage/databases/' + name )
-
 
     success_rate = db.compute_fit_success_rate()
 

@@ -57,16 +57,16 @@ mary_first_pixel_displacements = { 'pu_240' : meas.meas( [87.10, -9.31, 58.35], 
 
 
 
-class source_geom_data( object ) :
+# class source_geom_data( object ) :
 
-    def __init__( self, det_sectheta, source_sectheta, ,
-                  det_sectheta_errors = None, source_sectheta_errors = None ) :
+#     def __init__( self, det_sectheta, source_sectheta, ,
+#                   det_sectheta_errors = None, source_sectheta_errors = None ) :
 
-        self.det_sectheta = det_sectheta
-        self.source_sectheta = source_sectheta
-        self.is_angled = is_angled
-        self.det_sectheta_errors = det_sectheta_errors
-        self.source_sectheta_errors = source_sectheta_errors
+#         self.det_sectheta = det_sectheta
+#         self.source_sectheta = source_sectheta
+#         self.is_angled = is_angled
+#         self.det_sectheta_errors = det_sectheta_errors
+#         self.source_sectheta_errors = source_sectheta_errors
 
 
 
@@ -658,46 +658,44 @@ def _populate_sectheta_grid( secant_matrices, all_coords, source_data,
 
                 det_sectheta_grid[i][j] = sectheta
 
-                if compute_source_costheta:
+                if not average_over_source : 
 
-                    if not average_over_source : 
-                        
-                        if source != 'pu_238_angled' :
-                            source_sectheta_grid[i,j] = sectheta
-                        
-                        else:
-                            # rotated_displacement = rotate_3d_meas( 1, -theta, displacement ) ) 
-                            # source_costheta_grid[i][j] = costheta_from_3d( rotated_displacement )
-                        
-                            # todo: proper error anaysis.
-                            tmp = ( np.linalg.norm( pu_238_angled_normal.x ) *
-                                    np.linalg.norm( displacement.x ) )
-                            
-                            tmp /= meas.dot( pu_238_angled_normal, displacement )
-                            
-                            source_sectheta_grid[i][j] = tmp        
+                    if source != 'pu_238_angled' :
+                        source_sectheta_grid[i,j] = sectheta
 
                     else:
+                        # rotated_displacement = rotate_3d_meas( 1, -theta, displacement ) ) 
+                        # source_costheta_grid[i][j] = costheta_from_3d( rotated_displacement )
 
-                        # todo: haven't figured out how to do this calculation yet.
-                        if source == 'pu_238_angled' :
-                            tmp = ( np.linalg.norm( pu_238_angled_normal.x ) *
-                                    np.linalg.norm( displacement.x ) )
-                            
-                            tmp /= meas.dot( pu_238_angled_normal, displacement )
-                            
-                            source_sectheta_grid[i][j] = tmp
-                            
-                        else:
-                            source_radius = source_data.loc[ source, 'source_diameter' ] / 2 
-                            ave_sectheta = (
-                                compute_average_sectheta_over_source( displacement.x,
-                                                                      np.array( [0.0, 0.0, 1.0] ),
-                                                                      source_radius ) )
+                        # todo: proper error anaysis.
+                        tmp = ( np.linalg.norm( pu_238_angled_normal.x ) *
+                                np.linalg.norm( displacement.x ) )
 
-                            source_sectheta_grid[i][j] = meas.meas( ave_sectheta, 0 ) 
-                    
-                    
+                        tmp /= meas.dot( pu_238_angled_normal, displacement )
+
+                        source_sectheta_grid[i][j] = tmp        
+
+                else:
+
+                    # todo: haven't figured out how to do this calculation yet.
+                    if source == 'pu_238_angled' :
+                        tmp = ( np.linalg.norm( pu_238_angled_normal.x ) *
+                                np.linalg.norm( displacement.x ) )
+
+                        tmp /= meas.dot( pu_238_angled_normal, displacement )
+
+                        source_sectheta_grid[i][j] = tmp
+
+                    else:
+                        source_radius = source_data.loc[ source, 'source_diameter' ] / 2 
+                        ave_sectheta = (
+                            compute_average_sectheta_over_source( displacement.x,
+                                                                  np.array( [0.0, 0.0, 1.0] ),
+                                                                  source_radius ) )
+
+                        source_sectheta_grid[i][j] = meas.meas( ave_sectheta, 0 ) 
+
+
 
                             
 
@@ -722,35 +720,35 @@ def get_secant_matrices( compute_source_sectheta = 0,
         os.makedirs( data_path )
 
 
-    # what to do if not rewriting all the files: read them from
-    # existing location 
+    # # what to do if not rewriting all the files: read them from
+    # # existing location 
         
-    if not reset:
-        print( 'INFO: attempting to read secant matrices from disk...' )
+    # if not reset:
+    #     print( 'INFO: attempting to read secant matrices from disk...' )
 
-        secant_matrices = {}
+    #     secant_matrices = {}
 
-        if all( [ os.path.exists( data_path + key + z + '.bin' )
-                  for z in [ '_x', '_dx' ]
-                  for key in sources ] ) :
+    #     if all( [ os.path.exists( data_path + key + z + '.bin' )
+    #               for z in [ '_x', '_dx' ]
+    #               for key in sources ] ) :
 
-            for key in sources :
+    #         for key in sources :
                 
-                xpath, dxpath = [ data_path + key + z + '.bin'
-                                  for z in [ '_x', '_dx' ] ]
-                if os.path.exists( xpath ) and os.path.exists( dxpath ) :
+    #             xpath, dxpath = [ data_path + key + z + '.bin'
+    #                               for z in [ '_x', '_dx' ] ]
+    #             if os.path.exists( xpath ) and os.path.exists( dxpath ) :
 
-                    secant_matrices[ key ] = meas.meas( np.fromfile( xpath ).reshape( 2, 32, 32 ),
-                                                        np.fromfile( dxpath ).reshape( 2, 32, 32 ) )
+    #                 secant_matrices[ key ] = meas.meas( np.fromfile( xpath ).reshape( 2, 32, 32 ),
+    #                                                     np.fromfile( dxpath ).reshape( 2, 32, 32 ) )
 
-            print( 'INFO: success.' )
-            return secant_matrices
+    #         print( 'INFO: success.' )
+    #         return secant_matrices
 
-        else:
-            print( 'INFO: not all matrices present, reconstructing...' )
+    #     else:
+    #         print( 'INFO: not all matrices present, reconstructing...' )
     
-    else:
-        print( 'INFO: reconstructing sectheta grid...' )
+    # else:
+    #     print( 'INFO: reconstructing sectheta grid...' )
 
 
         
@@ -772,8 +770,8 @@ def get_secant_matrices( compute_source_sectheta = 0,
 
 
     # get each array of values / uncertainties and add to the grid.
-    secant_matrices = _compute_sectheta_grid( secant_matrices, all_coords, source_data,
-                                              average_over_source )
+    _populate_sectheta_grid( secant_matrices, all_coords, source_data,
+                                               average_over_source )
 
     for key, val in secant_matrices.items() :
         secant_matrices[key] = abs( val )
@@ -781,26 +779,26 @@ def get_secant_matrices( compute_source_sectheta = 0,
 
     # write the arrays to files, both bin and csv.
     
-    for key in sources :
+    # for key in sources :
 
-        xpath, dxpath = [ [ data_path + key + z + suffix
-                            for suffix in [ '.bin', '.csv' ] ]
-                          for z in [ '_x', '_dx' ] ]
+    #     xpath, dxpath = [ [ data_path + key + z + suffix
+    #                         for suffix in [ '.bin', '.csv' ] ]
+    #                       for z in [ '_x', '_dx' ] ]
 
-        secant_matrices[ key ].x.tofile( xpath[0] ) 
-        secant_matrices[ key ].dx.tofile( dxpath[0] )
+    #     secant_matrices[ key ].x.tofile( xpath[0] ) 
+    #     secant_matrices[ key ].dx.tofile( dxpath[0] )
         
         
-        np.savetxt( xpath[1], secant_matrices[ key ].x[0], delimiter = ',', fmt = '%4f' )
+    #     np.savetxt( xpath[1], secant_matrices[ key ].x[0], delimiter = ',', fmt = '%4f' )
 
-        if key == 'pu_238_angled' :
-            np.savetxt( xpath[1].replace( key, key + '_source_sectheta' ),
-                        secant_matrices[ key ].x[1],
-                        delimiter = ',', fmt = '%4f' )
+    #     if key == 'pu_238_angled' :
+    #         np.savetxt( xpath[1].replace( key, key + '_source_sectheta' ),
+    #                     secant_matrices[ key ].x[1],
+    #                     delimiter = ',', fmt = '%4f' )
 
         
         
-    return secant_matrices, displacements, nhats
+    return secant_matrices # , displacements, nhats
     
 
 

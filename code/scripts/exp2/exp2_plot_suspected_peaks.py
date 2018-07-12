@@ -1,14 +1,11 @@
 import numpy as np
 
-# import deadlayer_helpers.geometry as geom
-# import deadlayer_helpers.data_handler as data
 import bpt
 
 import matplotlib.pyplot as plt
 
-import jspectroscopy as spec
+# import jspectroscopy as spec
 import jutils 
-# import libjacob.jmeas as meas 
 
 import scipy.interpolate
 
@@ -16,43 +13,13 @@ import scipy.interpolate
 
 
 
-# # create and populate the histogram array 
-# def data_fetcher( name, detnum, x, y, mode  ) :
-
-#     xaxis = np.arange( 5000 )
-
-#     if detnum is not None : 
-#         infile = ( '../../data/extracted_ttree_data/'
-#                    + name + '/%s_%d_%d_%d.bin' % ( name, detnum, x, y ) )
-
-#     else :
-#         infile = ( '../../data/extracted_ttree_data/'
-#                    + name + '/%s_%d_%d.bin' % ( name, x, y ) )
-    
-#     # print( infile ) 
-    
-#     efront_histo = np.zeros( xaxis.size )
-
-#     if not data.construct_histo_array( infile, efront_histo, mode ) :
-#         print( 'error: couldnt open file' ) 
-
-#     dy = np.sqrt( efront_histo )
-#     dy[ dy==0 ] = 1 
-        
-#     return ( xaxis, efront_histo, dy ) 
-
-
-
-
-
-
-db_name = 'alpharun20-30'
+# db_name = 'alpharun20-30'
 # db_name = 'full1071-1078' 
-# db_name = 'full_bkgd_tot'
+db_name = 'full_bkgd_tot'
 detnum = 1
-channels = [ 1400, 3100 ]
-# channels = [ 2900, 6000 ]
-f = 15
+#channels = [ 1400, 3100 ]
+channels = [ 2900, 6000 ]
+f = 28
 bstrips = [ 12]
 
 
@@ -85,7 +52,7 @@ for i in range( len( bstrips ) ) :
 
     b = bstrips[i]
 
-    x, y, dy = bpt.data_fetcher( '../../bpt-data/extracted_root_tree_data/',
+    x, y, dy = bpt.data_fetcher( '../../../bpt-data/extracted_root_tree_data/',
                                  db_name,
                                  detnum, f, b )
 
