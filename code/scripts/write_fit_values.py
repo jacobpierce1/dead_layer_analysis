@@ -28,23 +28,23 @@ exp2_secant_matrices = exp2.exp2_geometry.get_secant_matrices()
 
 
 
-actual_energies = [ [ 3182.690 ], [ 5762.64, 5804.77 ] ]
-peak_indices = [ [1], [0,1] ]
+# actual_energies = [ [ 3182.690 ], [ 5762.64, 5804.77 ] ]
+# peak_indices = [ [1], [0,1] ]
 
-db_names = [ 'full_bkgd_tot' ]
-source_names = ['Gd 148', 'Cm 244']
-
-
+# db_names = [ 'full_bkgd_tot' ]
+# source_names = ['Gd 148', 'Cm 244']
 
 
 
-# db_names = [ 'centered' ]
-# actual_energies = [ np.array( [ 5123.68, 5168.17 ] ),
-#                     np.array( [ 5456.3, 5499.03 ] ),
-#                     np.array( [ 5813.3 ] ) ]
 
-# peak_indices = [ [1,2], [1,2], [1] ]
-# source_names = [ 'Pu 238', 'Pu 240', 'Cf 249' ]
+
+db_names = [ 'centered' ]
+actual_energies = [ np.array( [ 5123.68, 5168.17 ] ),
+                    np.array( [ 5456.3, 5499.03 ] ),
+                    np.array( [ 5813.3 ] ) ]
+
+peak_indices = [ [1,2], [1,2], [1] ]
+source_names = [ 'Pu 238', 'Pu 240', 'Cf 249' ]
 
 
 
@@ -67,6 +67,7 @@ for name in db_names :
     # db.package_all_fit_params()
     # db.calibrate_pixels( peak_indices, actual_energies )
     # db.write_calibrated_params()
+    # db.write_peakdetect()
     db.plot_all_params( source_names, secant_matrices  ) 
     db.disconnect() 
 

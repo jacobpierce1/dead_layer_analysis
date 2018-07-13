@@ -36,11 +36,11 @@ def get_secant( detnum, x, y ) :
 
     # theta1 = 
     
-    # if x < illuminated_fstrips[ 0 ][ detnum ] :
-    #     return 1 / np.cos( theta2 )
+    if x < illuminated_fstrips[ 0 ][ detnum ] :
+        return 1 / np.cos( theta2 )
         
-    # elif x > illuminated_fstrips[ 1 ][ detnum ] :
-    #     return 1 / np.cos( theta1 ) 
+    elif x > illuminated_fstrips[ 1 ][ detnum ] :
+        return 1 / np.cos( theta1 ) 
 
     else :
         return np.nan
