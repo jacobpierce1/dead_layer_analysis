@@ -709,15 +709,15 @@ def get_secant_matrices( compute_source_sectheta = 0,
                          average_over_source = 0,
                          reset = 0 ):
 
-    data_path =  _current_abs_path + '../../../storage/secant_matrices/'
+    # data_path =  _current_abs_path + '../../../storage/secant_matrices/'
 
-    if average_over_source :
-        data_path += 'average_over_source/'
-    else:
-        data_path += 'regular/'
+    # if average_over_source :
+    #     data_path += 'average_over_source/'
+    # else:
+    #     data_path += 'regular/'
         
-    if not os.path.exists( data_path ) :
-        os.makedirs( data_path )
+    # if not os.path.exists( data_path ) :
+    #     os.makedirs( data_path )
 
 
     # # what to do if not rewriting all the files: read them from

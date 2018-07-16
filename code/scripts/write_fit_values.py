@@ -3,7 +3,7 @@ matplotlib.use( 'agg' )
 
 
 import exp1.exp1_geometry
-import exp2.exp2_geometry 
+# import exp2.exp2_geometry 
 
 import jspectroscopy as spec
 import numpy as np 
@@ -23,7 +23,7 @@ import numpy as np
 
 # geometry
 exp1_secant_matrices = exp1.exp1_geometry.get_secant_matrices()
-exp2_secant_matrices = exp2.exp2_geometry.get_secant_matrices()
+# exp2_secant_matrices = exp2.exp2_geometry.get_secant_matrices()
 
 
 
@@ -37,8 +37,8 @@ exp2_secant_matrices = exp2.exp2_geometry.get_secant_matrices()
 
 
 
-
-db_names = [ 'centered' ]
+db_names = [ 'angled', 'flat', 'moved' ]
+# db_names = [ 'centered' ]
 actual_energies = [ np.array( [ 5123.68, 5168.17 ] ),
                     np.array( [ 5456.3, 5499.03 ] ),
                     np.array( [ 5813.3 ] ) ]
@@ -51,7 +51,7 @@ source_names = [ 'Pu 238', 'Pu 240', 'Cf 249' ]
 
 for name in db_names :
 
-    if name in [ 'centered', 'angled', 'flat', 'angled' ] :
+    if name in [ 'centered', 'angled', 'flat', 'moved' ] :
         secant_matrices = [ [ exp1_secant_matrices[ 'pu_240' ][0].x ],
                             [ exp1_secant_matrices[ 'pu_238_%s' % name ][0].x ],
                             [ exp1_secant_matrices[ 'cf_249' ][0].x ] ]

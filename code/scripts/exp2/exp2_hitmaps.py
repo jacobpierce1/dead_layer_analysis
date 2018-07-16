@@ -96,37 +96,34 @@ def remove_data( hitmap, data_to_remove ) :
 
     for coords in data_to_remove :
         # print( 'removing coords: ', coords ) 
-        hitmap[ coords[0], coords[1] ] = np.nan
+        # hitmap[ coords[0], coords[1] ] = np.nan
+        hitmap[ coords ] = np.nan
 
 
 
-
-def point_source_counts( params ) :
-
+def fitfunc( params, cuts ) :
     
     nhat = np.array( [0,0,1]  )
 
     A = np.zeros(2)
     first_displacements = np.zeros((2,3))
-    cuts = np.zeros(2)
     
     A[0] = params[0]
     first_displacements[0,0:2] = params[1:3]
-    first_displacements[0,2] = params[8]
-    cuts[0] = params[3]
+    first_displacements[0,2] = params[6]
     
-    A[1] = params[4]
-    first_displacements[1,0:2] = params[5:7]
-    first_displacements[1,2] = params[8]
-    cuts[1] = params[7]
+    A[1] = params[3]
+    first_displacements[1,0:2] = params[4:6]
+    first_displacements[1,2] = params[6]
     
-    counts = np.zeros( (32,32) ) 
+    counts = np.zeros( (32,32) )
     
     for x in range(32) :
         for y in range( 32 ) :
             for k in range(2) :
 
-                if ( k==0 and x > cuts[k] ) or ( k==1 and x < cuts[k] ) :
+                if ( k==0 and x >= cuts[k] ) or ( k==1 and x <= cuts[k] ) :
+                    
                     displacement = 2.0 * np.array( [ y, x, 0 ] ) + first_displacements[k] 
                     costheta = displacement.dot( nhat ) / np.linalg.norm( displacement )
                     counts[x,y] += ( A[k] * np.abs( costheta )
@@ -138,8 +135,8 @@ def point_source_counts( params ) :
 
 
 
-def point_source_resid( params, hitmap, d_hitmap ) :
-    counts = point_source_counts( params ) 
+def point_source_resid( params, hitmap, d_hitmap, cuts ) :
+    counts = point_source_counts( params, cuts ) 
     resid = ( counts - hitmap ) / d_hitmap 
     resid[ np.isnan(resid) ] = 0
     return resid.flatten()
@@ -156,139 +153,106 @@ num_peaks_to_detect = 2
 bpt_data_path = '../../../bpt-data/extracted_root_tree_data'
 
 
-
-hitmaps = spec.compute_hitmaps( (32,32), data_retriever,
-                                group_ranges, num_peaks_to_detect, primary_peak_detector,
-                                save_path = '../../../storage/full_bkgd_tot/tmp/hitmaps.dill',
-                                plot = 1,
-                                reset = 0,
-                                filter_data = 1,
-                                debug_coords = None, #( 20, 20 ),
-                                rel_plot_bounds = [-200, 120] ) 
+source_names = [ 'Gd 148', 'Cm 244' ]
 
 
 
 
-savepath = '../../../plots_important/point_source/'
-
-titles = [ 'Gd 148', 'Cm 244' ]
-
-if cut_strips :
-    title = 'Point Source Fits: With Strip Cuts' 
-    savepath += 'with_strip_cuts.eps'
-    
-else :
-    title = 'Point Source Fits: No Strip Cuts'
-    savepath += 'no_strip_cuts.eps'
-
-
-
-# params_guesses = np.array( [ [ 3.0e7, -10.0, -10.0, 100.0, 6.0,
-#                                3.0e7, 10.0, 10.0, 100.0, 20.0 ],
-#                              [3.0e7, -10.0, -10.0, 100.0, 9.0,
-#                                3.0e7, 10.0, 10.0, 10.0, 24.0 ] ] )
 
 # extra_strips_to_remove = [ [ [6,18,17,19,20], [7] ],
 #                            [ [1,9,10], [7,8] ] ]
 
-params_guesses = np.array( [ [ 3.0e7, -10.0, -10.0, 9.0,
-                               3.0e7, 10.0, 10.0, 19.0, 100.0 ],
-                             [3.0e7, -10.0, -10.0, 5.0,
-                               3.0e7, 10.0, 10.0, 24.0, 100.0 ] ] )
 
-extra_strips_to_remove = [ [ [9,16,17,18,19], [7,8,16] ],
-                           [ [1,5,6,23,24,29,30], [7,8,16] ] ]
 
-extra_data_to_remove = [ [ [30,9] ],
-                         [] ]
+
+cut_strips = 1
+
+
+params_guesses = np.array( [ [ [ 3.0e7, -10.0, -30.0, 
+                                 3.0e7, -5.0, -30.0,
+                                 100.0 ] ] * 4,
+                             [ [ 3.0e7, -10.0, -30.0,
+                                 3.0e7, -5.0, -30.0,
+                                 100.0 ] ] * 4 ] )
+
+strips_to_remove = [
+    [
+        [ [1,9,10,24,25], [8,9,16,31] ],
+        [ [2,10,11,13,14,19,21,25,26,31], [8,16,31] ],
+        [ [6,14,17,18,19,20,31], [7,31] ],
+        [ [9,16,17,18,19,31], [7,8,16,31] ],
+    ],
+    [
+        [ [4,29,10,16,17], [8,16,31] ],
+        [ [5,6,7,8,21,22,30,31], [8,12,16,31] ],
+        [ [1,9,10,13,31], [7,8,31] ],
+        [ [1,5,6,23,24,29,30], [7,8,16,31] ]
+    ]
+] 
+
+
+
+data_to_remove = [
+    [
+        [ [] ],
+        [ [15,24] ],
+        [ [] ],
+        [ [30,9] ]
+    ],
+    [
+        [ [] ],
+        [ [24,15] ],
+        [ [] ],
+        [ [] ]
+    ]
+]
+
+
+cuts = [
+    [
+        [10,23],
+        [11,25],
+        [6,20],
+        [10,18]
+    ],
+    [
+        [5,16],
+        [10,21],
+        [9,23],
+        [6,23]
+    ]
+]
                          
 
 
-f, axarr = plt.subplots( 2, 2, figsize = ( 10, 8 ) ) 
+db = spec.spectrum_db( 'full_bkgd_tot', '../../../storage/' ) 
 
-f.suptitle( title ) 
+primary_peaks = db.compute_primary_peaks( primary_peak_detector, num_peaks_to_detect,
+                                          load = 1 )
 
-f.subplots_adjust( wspace = 0.5 )
+hitmaps = db.compute_hitmaps( group_ranges, plot = 1, load = 1 )
 
-for i in range( 2 ) :
+print( hitmaps.shape ) 
 
-    
-    # filter_data( hitmaps[i] )
+for i in range( db.num_groups ) :
+    for d in range( db.num_dets ) :
+        filter_data( hitmaps[i][d] )
+        if cut_strips :
+            remove_strips( hitmaps[i][d], strips_to_remove[i][d][0],
+                           strips_to_remove[i][d][1] ) 
+            remove_data( hitmaps[i][d], data_to_remove[i][d] )
+                
 
-    remove_strips( hitmaps[i], [0,31], [0,31] )
+db.fit_hitmaps( hitmaps, fitfunc, params_guesses,
+                source_names = source_names, plot = 0,
+                extra_args = cuts )# , label = 'no_cut'  )
 
-    if cut_strips : 
-        remove_strips( hitmaps[i], * extra_strips_to_remove[i] )
-        remove_data( hitmaps[i], extra_data_to_remove[i] )
+group_ranges = [ [-30,20], [-50,20] ]
 
-        # print( hitmaps[i][30,9] ) 
-        
-    # axarr[0,i].imshow( hitmaps[i] )
+widths = db.compute_widths( primary_peaks, group_ranges,
+                            plot = 0, load = 0 ) 
 
-    masked_array = np.ma.array( hitmaps[i], mask=np.isnan( hitmaps[i] ) )
-    cmap = colorcet.m_rainbow
-    cmap.set_bad('white',1.)
-    im = axarr[ 0, i ].imshow( hitmaps[i], cmap = cmap  )
-    divider = make_axes_locatable( axarr[0,i] )
-    cax = divider.append_axes("right", size="5%", pad=0.05)
-    f.colorbar(im, cax=cax)
-    
-    # f.colorbar( im, ax = axarr[ 0, i ] ) 
-
-    axarr[0,0].set_ylabel( 'Hit maps' )
-    axarr[1,0].set_ylabel( 'Point Source \nFit Residuals' )
-    axarr[0,i].set_title( titles[i] ) 
-
-    hitmap = hitmaps[i]
-    d_hitmap = np.sqrt( hitmaps[i] )
-    d_hitmap[ d_hitmap == 0 ] = 1
-
-    args = ( hitmap, d_hitmap )
-
-    ret = scipy.optimize.leastsq( point_source_resid, params_guesses[i],
-                                  full_output = 1, args = args )
-
-    result, cov, info, mesg, success = ret
-    success = success >= 1
+db.plot_heatmap( 'widths', source_names, 1 )
 
 
-    chisqr = np.sum( info['fvec']**2 )
-    ndata = np.count_nonzero( hitmaps[i][ ~ np.isnan( hitmaps[i] ) ] ) 
-    nfree =  ndata - len( result ) 
-    redchisqr = chisqr / nfree
-
-
-    print( 'guess: ' + str( params_guesses[i] ) ) 
-    print( 'result: ' + str( result ) )
-    print( 'redchisqr: ' + str( redchisqr ) )
-    pvalue = 1 - chi2.cdf( chisqr, nfree )
-    print( 'pvalue: %.2f' % pvalue )
-    print( 'fit converged: ' + str( success ) )
-
-
-    if cov is not None :
-        errors = np.sqrt( np.diag( cov ) * redchisqr )
-        print( 'errors: ', errors )
-
-    else :
-        print( 'cov is none' ) 
-        
-
-    print( '\n\n' ) 
-
-    resid = ( hitmap - point_source_counts( result ) ) / d_hitmap 
-
-    cmap = colorcet.m_diverging_bkr_55_10_c35
-    cmap.set_bad('white',1.)
-    im = axarr[ 1, i ].imshow( resid, cmap = cmap )
-    divider = make_axes_locatable( axarr[1,i] )
-    cax = divider.append_axes("right", size="5%", pad=0.1)
-    f.colorbar(im, cax=cax)
-
-    axarr[1,i].set_title( r'$\tilde \chi^2 = %d / %d = %.2f$'
-                          % ( np.rint( chisqr ), ndata, redchisqr ) )
-
-
-plt.savefig( savepath, format='png' )
-    
-plt.show() 
+db.disconnect()

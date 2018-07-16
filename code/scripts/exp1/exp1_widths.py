@@ -4,6 +4,8 @@
 # for each source, not to mention more data obtained from aggregating datasets,
 # the source height distributions can be heavily constrained.
 
+import matplotlib
+matplotlib.use('agg')
 
 import numpy as np
 import jutils 
@@ -114,14 +116,6 @@ def remove_strips( hitmap, fstrips, bstrips ) :
 
 
 
-# spec.plot_hitmaps ( hitmaps )
-
-
-
-
-
-
-
 group_ranges = [ [ -60, 20 ], [-60, 20], [-93, 85] ]
 
 
@@ -133,30 +127,16 @@ bpt_data_path = '../../../bpt-data/extracted_root_tree_data'
 
 db = spec.spectrum_db( 'centered', '../../../storage/' ) 
 
-# primary_peaks = spec.write_peakdetect( db, primary_peak_detector, data_retriever,
-#                                        num_peaks_to_detect )
-
-# sys.exit(0) 
-
-
-# hitmaps = spec.compute_hitmaps( (32,32), data_retriever,
-#                                 group_ranges, num_peaks_to_detect, primary_peak_detector,
-#                                 save_path = '../../../storage/hitmaps/centered.dill',
-#                                 plot = 1,
-#                                 reset = 0,
-#                                 filter_data = 1,
-#                                 debug_coords = None, # ( 20, 20 ),
-#                                 rel_plot_bounds = [-100, 120] ) 
 
 
 # primary_peaks = spec.write_peakdetect( db, primary_peak_detector, data_retriever,
 #                                        num_peaks_to_detect )
 
-primary_peaks = db.load_dill( 'primary_peaks' )
+primary_peaks = db.get_primary_peaks( primary_peak_detector, data_retriever,
+                                      num_peaks_to_detect, load = 1 )
 
-print( primary_peaks.shape ) 
 
-widths = db.compute_widths( primary_peaks, raw_data_retriever, group_ranges,
+widths = db.get_widths( primary_peaks, raw_data_retriever, group_ranges,
                             plot = 0, load = 0 ) 
 
 # averages = spec.compute_averages( db, primary_peaks, data_retriever
@@ -171,8 +151,10 @@ secant_matrices = [ [ exp1_secant_matrices[ 'pu_240' ][0].x ],
 
 source_names = [ '240 Pu (moved)', '238 Pu (centered)', '249 Cf (moved)' ]
 
-db.plot_vs_sectheta( 'widths', source_names, secant_matrices, 1 )
 
+db.plot_heatmap( 'primary_peaks', source_names, 1 )
+db.plot_heatmap( 'widths', source_names, 1 ) 
+db.plot_vs_sectheta( 'widths', source_names, secant_matrices, 1 )
 db.plot_vs_sectheta( 'primary_peaks', source_names, secant_matrices, 1 )
 
 
@@ -200,87 +182,16 @@ f, axarr = plt.subplots( 1, 3, figsize = ( 10, 8 ) )
 
 f.subplots_adjust( wspace = 0.5 )
 
-for i in range( 3 ) :
-    cmap = colorcet.m_fire
-    cmap.set_bad('white',1.)
-    im = axarr[ i ].imshow( widths[i,0], cmap = colorcet.m_rainbow )
-    divider = make_axes_locatable( axarr[i] )
-    cax = divider.append_axes("right", size="5%", pad=0.05)
-    f.colorbar(im, cax=cax)
-
-
-
-    
 # for i in range( 3 ) :
-
-    
-#     filter_data( hitmaps[i] )
-        
-#     if cut_strips : 
-#         remove_strips( hitmaps[i], [0,31,10,12,27,15,3], [0,31,15,16,21] ) 
-    
-#     # axarr[0,i].imshow( hitmaps[i] )
-
-#     masked_array = np.ma.array( hitmaps[i], mask=np.isnan( hitmaps[i] ) )
 #     cmap = colorcet.m_fire
 #     cmap.set_bad('white',1.)
-#     im = axarr[ 0, i ].imshow( hitmaps[i], cmap = cmap  )
-#     divider = make_axes_locatable( axarr[0,i] )
+#     im = axarr[ i ].imshow( widths[i,0], cmap = colorcet.m_rainbow )
+#     divider = make_axes_locatable( axarr[i] )
 #     cax = divider.append_axes("right", size="5%", pad=0.05)
 #     f.colorbar(im, cax=cax)
-    
-#     # f.colorbar( im, ax = axarr[ 0, i ] ) 
-
-#     axarr[0,0].set_ylabel( 'Hit maps' )
-#     axarr[1,0].set_ylabel( 'Point Source \nFit Residuals' )
-#     axarr[0,i].set_title( titles[i] ) 
-
-#     hitmap = hitmaps[i]
-#     d_hitmap = np.sqrt( hitmaps[i] )
-#     d_hitmap[ d_hitmap == 0 ] = 1
-
-#     args = ( hitmap, d_hitmap )
-
-#     ret = scipy.optimize.leastsq( point_source_resid, params_guesses[i],
-#                                   full_output = 1, args = args )
-
-#     result, cov, info, mesg, success = ret
-#     success = success >= 1
 
 
-#     chisqr = np.sum( info['fvec']**2 )
-#     ndata = np.count_nonzero( hitmaps[i][ ~ np.isnan( hitmaps[i] ) ] ) 
-#     nfree =  ndata - len( result ) 
-#     redchisqr = chisqr / nfree
-
-
-#     print( 'guess: ' + str( params_guesses[i] ) ) 
-#     print( 'result: ' + str( result ) )
-#     print( 'redchisqr: ' + str( redchisqr ) )
-#     pvalue = 1 - chi2.cdf( chisqr, nfree )
-#     print( 'pvalue: %.2f' % pvalue )
-#     print( 'fit converged: ' + str( success ) )
-
-
-#     if cov is not None :
-#         errors = np.sqrt( np.diag( cov ) * redchisqr )
-#         print( 'errors: ', errors ) 
-
-#     print( '\n\n' ) 
-
-#     resid = ( hitmap - point_source_counts( result, hitmap ) ) / d_hitmap 
-
-#     cmap = colorcet.m_diverging_bkr_55_10_c35
-#     im = axarr[ 1, i ].imshow( resid, cmap = cmap )
-#     divider = make_axes_locatable( axarr[1,i] )
-#     cax = divider.append_axes("right", size="5%", pad=0.1)
-#     f.colorbar(im, cax=cax)
-
-#     axarr[1,i].set_title( r'$\tilde \chi^2 = %d / %d = %.2f$'
-#                           % ( np.rint( chisqr ), ndata, redchisqr ) )
 
 db.disconnect()
 
-plt.savefig( savepath )
     
-plt.show() 
