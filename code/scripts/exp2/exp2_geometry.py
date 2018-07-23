@@ -24,26 +24,27 @@ det_center_z = 4.155 * 25.4
 
 
 # key: group, det, sourcenum, coords
-displacements = [
+displacements =  [
+    [[ 32.0, -32.0, 60.0 ]] * 4,
     # group 1 
     [
         # det 1 
         [
             # left source
-            [ -5.76844528e+00 -2.57996212e+01 9.57466449e+01 ],
-            [  3.68404794e-01 -3.71099292e+01  9.57466449e+01 ]  
+            [ -5.76844528e+00, -2.57996212e+01, 9.57466449e+01 ],
+            [  3.68404794e-01, -3.71099292e+01,  9.57466449e+01 ]  
         ],
         [
-            [ -6.27236723e+00 -2.54154184e+01 9.31458402e+01 ],
-            [ -3.39243777e+00 -3.08870082e+01  9.31458402e+01 ],
+            [ -6.27236723e+00, -2.54154184e+01, 9.31458402e+01 ],
+            [ -3.39243777e+00, -3.08870082e+01,  9.31458402e+01 ],
         ],
         [
-            [ -2.14729892e+00 -2.80700556e+01  8.70656498e+01 ], # bad data 
-            [ -1.41022536e+01 -4.02107244e+01  8.70656498e+01 ]
+            [ -2.14729892e+00, -2.80700556e+01,  8.70656498e+01 ], # bad data 
+            [ -1.41022536e+01, -4.02107244e+01,  8.70656498e+01 ]
         ],
         [
-            [ -5.47707985e+00 -2.29581393e+01 9.57494496e+01 ],
-            [ -8.88687108e+00 -4.22352995e+01  9.57494496e+01 ]
+            [ -5.47707985e+00, -2.29581393e+01, 9.57494496e+01 ],
+            [ -8.88687108e+00, -4.22352995e+01,  9.57494496e+01 ]
         ]
     ],
     # group 2 
@@ -51,27 +52,30 @@ displacements = [
         # det 1 
         [
             [ -6.04991268e+00, -2.88246923e+01, 9.80023281e+01 ],
-            [  -1.00809834e+01 -2.85989816e+01  9.80023281e+01 ]
+            [  -1.00809834e+01, -2.85989816e+01,  9.80023281e+01 ]
         ],
         [
-            [  -2.14729892e+00 -2.80700556e+01 9.05313381e+01 ],
-            [ -1.00684580e+01 -3.54901722e+01  9.05313381e+01 ]
+            [  -2.14729892e+00, -2.80700556e+01, 9.05313381e+01 ],
+            [ -1.00684580e+01, -3.54901722e+01,  9.05313381e+01 ]
         ],
         [
-            [  -7.10437249e+00 -2.39445899e+01  9.38582831e+01 ], # bad data 
-            [  -6.76254885e+00 -3.09655228e+01  9.38582831e+01 ]
+            [  -7.10437249e+00, -2.39445899e+01,  9.38582831e+01 ], # bad data 
+            [  -6.76254885e+00, -3.09655228e+01,  9.38582831e+01 ]
         ],
         [
-            [ -3.10025524e+00 -2.81885239e+01 9.06208294e+01 ],
-            [ -8.61585443e+00 -3.18512124e+01  9.06208294e+01 ]
+            [ -3.10025524e+00, -2.81885239e+01, 9.06208294e+01 ],
+            [ -8.61585443e+00, -3.18512124e+01, 9.06208294e+01 ]
         ]
     ]
-]
+] 
 
 
 
 illuminated_fstrips = [
+    [],
+    # group
     [
+        # det / source
         [10,23],
         [11,25],
         [6,20],
@@ -80,39 +84,38 @@ illuminated_fstrips = [
     [
         [5,16],
         [10,21],
-        [9,23],
+        [9,24],
         [6,23]
     ]
-]
+] 
 
     
 
 
+# i = group (cm or gd )
+# d = detnum
+# x = fstrip
+# y = bstrip
 
-def get_secant( i, detnum, x, y ) :
+def get_secant( i, d, x, y ) :
 
-    fstrip = x + 1
-    bstrip = y + 1
+    # be 8 continuum
+    if i == 0 :
+        displacement = displacements[i][d] + 2.0 * np.array( [ -y, x, 0 ] )
 
-    theta1 = np.arctan2( np.sqrt( (det_center_x + ( bstrip - 16.5) * 2 ) ** 2 
-                                     + ( det_center_y + ( fstrip - 16.5) * 2 ) ** 2 ),
-                                     det_center_z )
+    else : 
+        if x < illuminated_fstrips[i][d][0] :
+            k = 1
 
-    theta2 = np.arctan2( np.sqrt( ( det_center_x + (bstrip - 16.5 ) * 2) ** 2
-                                     + ( -det_center_y + ( fstrip - 16.5 ) * 2) ** 2),
-                                     det_center_z )
+        elif x > illuminated_fstrips[i][d][1] :
+            k = 0
 
-    # theta1 = 
-    
-    if x < illuminated_fstrips[ 0 ][ detnum ] :
-        return 1 / np.cos( theta2 )
-        
-    elif x > illuminated_fstrips[ 1 ][ detnum ] :
-        return 1 / np.cos( theta1 ) 
+        else :
+            return np.nan
 
-    else :
-        return np.nan
+        displacement = displacements[i][d][k] + 2.0 * np.array( [ y, x, 0 ] )
 
+    return np.linalg.norm( displacement ) / displacement[2]
     
 
 # # test secant ( remove )
@@ -135,13 +138,12 @@ def get_secant( i, detnum, x, y ) :
 
 def get_secant_matrices() : 
     
-    det_sectheta = np.zeros( (2, 4, 32,32))
+    det_sectheta = np.zeros( (3, 4, 32,32))
 
-    for i in range( 2 ) : 
+    for i in range( 3 ) : 
         for d in range(4) :
             for x in range(32) :
                 for y in range(32) :
-                    det_sectheta[ i, d, x, y ] = get_secant(
-                        d, x, y ) 
+                    det_sectheta[ i, d, x, y ] = get_secant( i, d, x, y ) 
 
     return det_sectheta

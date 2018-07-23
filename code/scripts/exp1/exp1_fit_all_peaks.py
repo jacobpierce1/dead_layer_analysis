@@ -162,29 +162,129 @@ def fit_acceptor( x, y, dy, spec_fitter_result ) :
 
 
 
-def one_spectrum( coords ) : 
+# def one_spectrum( coords ) : 
 
-    data_retriever = lambda detnum, x, y : bpt.data_fetcher( bpt_data_path,
-                                                                 'angled', detnum, x, y ) 
+#     data_retriever = lambda detnum, x, y : bpt.data_fetcher( bpt_data_path,
+#                                                                  'angled', detnum, x, y ) 
     
-    x, y, dy = data_retriever( 1, *coords ) 
+#     x, y, dy = data_retriever( 1, *coords ) 
 
-    dy = np.sqrt( y )
-    dy[ ( dy == 0 ) ] = 1 
+#     dy = np.sqrt( y )
+#     dy[ ( dy == 0 ) ] = 1 
+    
+#     plt.figure(figsize=(10,12))
+#     ax = plt.axes()     
+
+#     spec.auto_fit_spectrum( x, y, dy,
+#                             group_ranges, peak_locations,
+#                             num_peaks_to_detect, primary_peak_detector,
+#                             peak_sizes_guesses, peak_width_guesses,
+#                             det_params_guesses, peak_mu_offset,
+#                             fit_acceptor = fit_acceptor,
+#                             params_shuffler = params_shuffler,
+#                             ax = ax,
+#                             rel_plot_bounds = rel_plot_bounds,
+#                             print_output = 1)
+    
+
+#     plt.show()
+
+
+
+    
+
+# def all_spectra( db_names ) :
+
+#     constrain_det_params = { 'a' : 1 }
+
+#     time_estimator = jutils.time_estimator( len(db_names) * 32 * 32, 20 )
+
+#     for name in db_names : 
+        
+#         dets_used = bpt.dets_used( bpt_data_path, name )
+
+
+
+#         db = spec.spectrum_db( '../../storage/databases/' + name, dets_used, (32,32),
+#                                peak_types, constrain_det_params )
+
+#         # db.disconnect()
+
+#         # db = spec.spectrum_db( '../../storage/databases/' + name )
+
+
+#         # sys.exit(0 )
+        
+        
+        
+#         data_retriever = lambda detnum, x, y : bpt.data_fetcher( bpt_data_path,
+#                                                                  name, detnum, x, y ) 
+
+#         spec.auto_fit_many_spectra( db, data_retriever,
+#                                     '../../images/current_fit_images/' + name + '/', (4,4),
+#                                     group_ranges, peak_locations,
+#                                     num_peaks_to_detect, primary_peak_detector,
+#                                     peak_sizes_guesses, peak_width_guesses, det_params_guesses,
+#                                     peak_mu_offset,
+#                                     fit_acceptor = fit_acceptor,
+#                                     params_shuffler = params_shuffler,
+#                                     rel_plot_bounds = rel_plot_bounds,
+#                                     logscale = 1, time_estimator = time_estimator,
+#                                     print_output = 0,
+#                                     dets_used = dets_used )
+
+#         # mu_path = '../../storage/mu_values/' + name + '_mu_values.bin'
+
+#         # db.write_mu_values( mu_path )
+
+#         db.disconnect()
+
+
+
+
+
+def one_spectrum( db_name, detnum, x, y ) :
+    
+    db = spec.spectrum_db( db_name, '../../../storage/' )
+
+    global debug
+    debug = 1
+        
+    chans, counts, dcounts = db.get_histo( detnum, x, y )
+    
+    dcounts = np.sqrt( counts )
+    dcounts[ ( dcounts == 0 ) ] = 1 
     
     plt.figure(figsize=(10,12))
-    ax = plt.axes()     
+    ax = plt.axes()
 
-    spec.auto_fit_spectrum( x, y, dy,
-                            group_ranges, peak_locations,
-                            num_peaks_to_detect, primary_peak_detector,
-                            peak_sizes_guesses, peak_width_guesses,
-                            det_params_guesses, peak_mu_offset,
+    primary_peaks = db.load_dill( 'primary_peaks' )
+    primary_peaks = primary_peaks[ :, detnum, x, y ] 
+
+    db.disconnect()
+
+    # peak_params_guesses = [ peak_params_guesser( i, detnum, x, y )
+    #                         for i in range(2) ] 
+
+    spec.auto_fit_spectrum( chans, counts, dcounts,
+                            fit_bounds_guesser,
+                            peak_params_guesser, det_params_guesses,
                             fit_acceptor = fit_acceptor,
                             params_shuffler = params_shuffler,
-                            ax = ax,
+                            primary_peaks = primary_peaks,
                             rel_plot_bounds = rel_plot_bounds,
-                            print_output = 1)
+                            ax = ax, print_output = 1  )
+    
+    # spec.auto_fit_spectrum( x, y, dy,
+    #                         group_ranges, peak_locations,
+    #                         num_peaks_to_detect, primary_peak_detector,
+    #                         peak_sizes_guesses, peak_width_guesses,
+    #                         det_params_guesses, peak_mu_offset,
+    #                         fit_acceptor = fit_acceptor,
+    #                         params_shuffler = params_shuffler,
+    #                         ax = ax,
+    #                         rel_plot_bounds = rel_plot_bounds,
+    #                         print_output = 1)
     
 
     plt.show()
@@ -194,50 +294,36 @@ def one_spectrum( coords ) :
     
 
 def all_spectra( db_names ) :
-
+    
     constrain_det_params = { 'a' : 1 }
 
-    time_estimator = jutils.time_estimator( len(db_names) * 32 * 32, 20 )
+    time_estimator = jutils.time_estimator( len(db_names) * 4 * 32 * 32, 20 )
 
-    for name in db_names : 
-        
-        dets_used = bpt.dets_used( bpt_data_path, name )
+    for name in db_names :
 
+        # dets_used = bpt.dets_used( bpt_data_path, name )
 
-
-        db = spec.spectrum_db( '../../storage/databases/' + name, dets_used, (32,32),
+        db = spec.spectrum_db( name, '../../../storage/', (32,32),
                                peak_types, constrain_det_params )
 
-        # db.disconnect()
-
-        # db = spec.spectrum_db( '../../storage/databases/' + name )
-
-
-        # sys.exit(0 )
-        
-        
-        
-        data_retriever = lambda detnum, x, y : bpt.data_fetcher( bpt_data_path,
-                                                                 name, detnum, x, y ) 
-
-        spec.auto_fit_many_spectra( db, data_retriever,
-                                    '../../images/current_fit_images/' + name + '/', (4,4),
-                                    group_ranges, peak_locations,
-                                    num_peaks_to_detect, primary_peak_detector,
-                                    peak_sizes_guesses, peak_width_guesses, det_params_guesses,
-                                    peak_mu_offset,
+        spec.auto_fit_many_spectra( db, (4,4),
+                                    fit_bounds_guesser,
+                                    peak_params_guesser, det_params_guesses,
                                     fit_acceptor = fit_acceptor,
                                     params_shuffler = params_shuffler,
                                     rel_plot_bounds = rel_plot_bounds,
-                                    logscale = 1, time_estimator = time_estimator,
+                                    logscale = 1,
+                                    time_estimator = time_estimator,
                                     print_output = 0,
-                                    dets_used = dets_used )
+                                    debug_peaks = 0,
+                                    overwrite = 0,
+                                    mask = none )
+        
+        # mu_path = '../../storage/mu_values/%s_%d_mu_values.bin' % ( name, detnum ) 
 
-        # mu_path = '../../storage/mu_values/' + name + '_mu_values.bin'
-
-        # db.write_mu_values( mu_path )
-
+            
         db.disconnect()
+
 
 
 

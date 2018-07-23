@@ -7,7 +7,7 @@
 # the pixel dead layer depth.
 
 import matplotlib 
-matplotlib.use('Agg')
+# matplotlib.use('Agg')
 
 import os 
 import sys 
@@ -115,7 +115,9 @@ class deadlayer_model_params( object ) :
                   one_source_constant = 0,
                   det_thickness = None,
                   vary_source_thickness = 0,
-                  source_radii = None ) :
+                  source_radii = None,
+                  use_different_intercepts = 0,
+                  constant_energy_offset = 0 ) :
 
         self.dimx = 32
         self.dimy = 32 
@@ -178,7 +180,9 @@ class deadlayer_model_params( object ) :
         self.basis_function_integrals = None
         self.source_radii = source_radii
         
-        self.estimate_source_stopping_power = 0 
+        self.estimate_source_stopping_power = 0
+        self.use_different_intercepts = use_different_intercepts
+        self.constant_energy_offset = constant_energy_offset 
         
         return None
 
@@ -299,7 +303,7 @@ def create_empty_data_container( model_params, _meas = 0 ) :
                 # tmp = constructor( ( len( model_params.fstrips[d] ),
                 #                      len( model_params.bstrips ) ) )
                                 
-                tmp = data_type.zeros( ( 32, len( model_params.bstrips ) ) )
+                tmp = data_type.zeros( ( 32, 32 ) )
 
                 tmp[:] = data_type.nan
 
@@ -335,9 +339,9 @@ def compute_all_energies( params, model_params, channels,
 
                     e_, edet_, loss_ = energy_from_mu_lmfit(
                         params, model_params,
-                        channels[ d ][i][j][ fstrip ][ model_params.bstrips ],
-                        tmp_det_sectheta[ fstrip ][ model_params.bstrips ],
-                        tmp_source_sectheta[ fstrip ][ model_params.bstrips ],
+                        channels[ d ][i][j][ fstrip ],
+                        tmp_det_sectheta[ fstrip ],
+                        tmp_source_sectheta[ fstrip ],
                         actual_energies,
                         d, fstrip, i, j, compute_weight = 1  )
                     
@@ -378,8 +382,13 @@ def energy_from_mu_lmfit( params, model_params,
     # fstrip = model_params.fstrips[ db_num ][x]
     
     a = params[ 'a_%d_%d' % ( db_num, fstrip ) ].value.item()
-    b = params[ 'b_%d_%d' % ( db_num, fstrip ) ].value.item()
 
+    if not model_params.use_different_intercepts : 
+        b = params[ 'b_%d_%d' % ( db_num, fstrip ) ].value.item()
+    else :
+        b = params[ 'b_%d_%d_%d' % ( db_num, fstrip, i ) ].value.item()
+
+        
     if not model_params.disable_sources :
         
         if model_params.one_source_constant : 
@@ -500,6 +509,14 @@ def energy_from_mu_lmfit( params, model_params,
         energy *= epsilon_0 
 
 
+    
+    if model_params.constant_energy_offset :
+        if i > 0 : 
+            constant_offset = params[ 'constant_offset_%d' % (i) ]
+            energy += constant_offset
+            energy_det += constant_offset 
+
+        
     return ( energy, energy_det, combined_deadlayer_losses ) 
 
 
@@ -522,12 +539,14 @@ def objective( params, model_params, channels,
                   for i in np.arange( model_params.num_sources )
                   for j in np.arange( model_params.num_peaks_per_source[i] )
                   for x in range(32)
-                  for y in range( len( model_params.bstrips ) ) ]
+                  for y in range(32) ]
                   # for x in np.arange( model_params.num_fstrips[d] )
                   # for y in np.arange( model_params.num_bstrips ) ]
 
     # print( np.sum( ~ np.isnan( flattened ) ) )
-                  
+    # print( 'flattened' ) 
+    # print( flattened ) 
+    
     return flattened 
 
 
@@ -576,67 +595,14 @@ def estimate_deadlayers( model_params, channels, actual_energies,
     print( 'num_dbs: ' + str( num_dbs ) )
     print( 'num_sources: ' + str( num_sources ) )
     print( 'num_peaks_per_source: ' + str( num_peaks_per_source ) ) 
-    
-    # if strip_coords is not None :
-        
-    #     if strip_coords == 'all' :
-    #         for db_num in range( num_dbs ) : 
-                
-    #             tmp_path = figpath 
 
-    #             if names is not None :
-    #                 print( names[ db_num ] ) 
-    #                 tmp_path += '/' + names[ db_num ] + '/' 
+    for db in range( num_dbs ) : 
+        for i in range( num_sources ) :
+            for j in range( num_peaks_per_source[i] ) : 
+                for y in range( 32 ) :
+                    if y not in model_params.bstrips : 
+                        channels[db][i][j][:,y] = meas.nan
 
-    #             if not os.path.exists( tmp_path ) :
-    #                 print( tmp_path ) 
-    #                 os.makedirs( tmp_path, exist_ok = 1 ) 
-
-    #             if names is not None :
-    #                 tmp_path += names[ db_num ]
-                    
-    #             for i in model_params.fstrips_requested :
-
-    #                 print( i )
-                    
-    #                 ax = plot_one_strip( model_params, channels,
-    #                                      det_sectheta, source_sectheta, [db_num,i] )
-                                        
-    #                 # figpath += str(i)
-    #                 if ax is not None :
-    #                     plt.savefig( tmp_path + '_' + str(i) )
-    #                     plt.clf()
-    #                     plt.close()
-                
-    #     else :
-
-    #         db_num, x = strip_coords
-
-    #         for i in range( num_sources ) :
-    #             for j in range( num_peaks_per_source[i] ) :
-            
-    #                 print( (i,j) )
-
-    #                 # print( source_geometries[ db_num ][i].det_sectheta[x,0] )
-                    
-    #                 for k in np.arange( len( channels[0][0][0][0].x ) ) :
-    #                     print( '%d \t %.1f +- %.1f \t %.2f'
-    #                            % ( k, channels[ db_num ][i][j][x,k].x,
-    #                                channels[ db_num ][i][j][x,k].dx,
-    #                                source_geometries[ db_num ][i].det_sectheta[x,k].x  ) )
-    #                 print( '\n\n' )                        
-
-    #         ax = plot_one_strip( model_params, channels, source_geometries, strip_coords )
-    #         plt.show() 
-        
-    #     # plot_energy_vs_sectheta( None, secant_matrices, peak_matrices,
-    #     #                          dbs, source_indices, model_params,
-    #     #                          subtitle = subtitle,
-    #     #                          view_pixel = view_pixel )
-    #     return 1
-
-    
-        
     if model_params.pulse_height_defect :
         raise NotImplemented() 
 
@@ -701,7 +667,7 @@ def estimate_deadlayers( model_params, channels, actual_energies,
 
                     if model_params.fix_source_deadlayers is None :
                         fit_params.add( source_name, value = source_deadlayer_guesses[i][j],
-                                        min = 0, max = 30 )
+                                        min = 0, max = 100 )
 
                     else :
                         fit_params.add( source_name, vary = 0,
@@ -736,6 +702,10 @@ def estimate_deadlayers( model_params, channels, actual_energies,
             model_params.basis_function_integrals = compute_basis_function_integrals(
                 displacements, nhats, savepath ) 
 
+        if model_params.constant_energy_offset :
+            for i in range( 1, num_sources ) :
+                fit_params.add( 'constant_offset_%d' % (i), value = 0.0 )
+            
 
     model_params.fstrips = [0] * num_dbs
     model_params.num_fstrips = [0] * num_dbs 
@@ -748,17 +718,11 @@ def estimate_deadlayers( model_params, channels, actual_energies,
         frontstrips_to_remove = []
 
         for x in model_params.fstrips_requested :
-            
-            skip = 0
-
+            skip = [ 0 for i in range( num_sources ) ] 
             total_strip_data = 0 
-            
             for i in range( num_sources ) :
-
                 num_source_data = 0
-
                 for j in range( num_peaks_per_source[i] ) :
-
                     num_source_data += np.sum( ~ np.isnan( channels[d][i][j][x]
                                                     [ model_params.bstrips ].x ) ) 
                     
@@ -767,9 +731,9 @@ def estimate_deadlayers( model_params, channels, actual_energies,
                 total_strip_data += num_source_data
                 
                 if num_source_data < 5 :
-                    skip = 1
+                    skip[i] = 1 
 
-            if skip :
+            if any( skip ) :
                 frontstrips_to_remove.append( x )
                 continue
 
@@ -780,10 +744,18 @@ def estimate_deadlayers( model_params, channels, actual_energies,
             
             fit_params.add( 'a_' + str(d) + '_%d' % ( x, ),
                             value = calibration_coefs_guess[0] )
-            
-            fit_params.add( 'b_' + str(d) + '_%d' % ( x, ),
-                            value = calibration_coefs_guess[1] )    
 
+            if not model_params.use_different_intercepts : 
+                fit_params.add( 'b_' + str(d) + '_%d' % ( x, ),
+                                value = calibration_coefs_guess[1] )    
+
+            else :
+                for i in range( num_sources ) :
+                    if not skip[i] : 
+                        fit_params.add( 'b_' + str(d) + '_%d_%d' % ( x, i),
+                                        value = calibration_coefs_guess[1] )    
+                
+                
         # end for x in ...
         model_params.fstrips[ d ] = model_params.fstrips_requested[
             ~ np.in1d( model_params.fstrips_requested,
@@ -797,38 +769,6 @@ def estimate_deadlayers( model_params, channels, actual_energies,
                                      * sum( [ len( model_params.fstrips[d] )
                                               for d in range( num_dbs ) ] ) 
                                      * len( model_params.bstrips ) )
-
-
-
-    # print( source_geometries[0][0].det_sectheta.shape ) 
-
-
-    # # remove unnecssary data points: reshape the data so that
-    # # only peaks and angles from the requested and available fstrips / bstrips
-    # # are present. makes computations much faster.
-    
-    # for d in range( model_params.num_dbs ) :
-    #     for i in range( model_params.num_sources ) :
-
-    #         coords =  np.ix_( model_params.fstrips[d], model_params.bstrips )
-
-    #         print( det_sectheta[d][i].shape ) 
-            
-    #         det_sectheta[d][i] = det_sectheta[d][i][ coords ]
-    #         source_sectheta[d][i] = source_sectheta[d][i][ coords ]
-            
-    #         # source_geometries[d][i].det_sectheta = (
-    #         #     source_geometries[d][i].
-            
-    #         # source_geometries[d][i].source_sectheta = (
-    #         #     source_geometries[d][i].source_sectheta[ coords ] )
-
-    #         for j in range( model_params.num_peaks_per_source[i] ) :
-                                
-    #             channels[d][i][j] = channels[d][i][j][ coords ]
-
-    #             # print( source_geometries[0][0].det_sectheta.shape ) 
-
     
     print( 'total_num_data: ', total_num_data ) 
     
@@ -844,25 +784,32 @@ def estimate_deadlayers( model_params, channels, actual_energies,
         
 
     num_params = ( 2 * np.sum( [ len( model_params.fstrips[d] )
-                                 for d in range( model_params.num_dbs ) ] ) + 1 )
+                                 for d in range( model_params.num_dbs ) ] )
+                   + np.sum( num_peaks_per_source ) * num_dbs )
 
     print( 'num_params: ', num_params )
-    if num_params < 5 :
-        return None
-    # print( num_data ) 
 
-        
-    # if num_params > total_num_data :
-    #     return None
-        
+    print( channels[0][0][0][1] ) 
+    
     mini = lmfit.Minimizer( objective,
                             fit_params,
                             nan_policy = 'omit',
                             fcn_args = ( model_params, channels,
                                          det_sectheta, source_sectheta,
-                                         actual_energies ) )
+                                         actual_energies ),
+                            # options = { 'maxiter' : int(1e7),
+                            #             'xatol' : 1e-10,
+                            #             'fatol' : 1e-10 }
+                            maxfev = int(1e7),
+                            xtol = 1e-12,
+                            ftol = 1e-12
+    )
 
-    result = mini.minimize()
+    # print( model_params.fstrips ) 
+    # print( channels[0][0][0][1] ) 
+    # print( '\n\n' ) 
+        
+    result = mini.minimize( method = 'leastsq' )
                             
     
     lmfit.report_fit( result.params, show_correl = 0 )
@@ -872,7 +819,26 @@ def estimate_deadlayers( model_params, channels, actual_energies,
     print( 'ndata: ' + str( result.ndata ) )
     print( 'nfree: ' + str( result.nfree ) )
     print( 'pvalue: ' + str( 1 - chi2.cdf( result.chisqr, result.nfree ) ) )
+    
+    e, edet, loss, resid = compute_all_energies( result.params, model_params,
+                                                 channels, det_sectheta, source_sectheta,
+                                                 actual_energies )
+    
+    for db in range( num_dbs ) :
+        for i in range( num_sources ) :
+            for j in range( num_peaks_per_source[i] ) :
+                resid[db][i][j] = np.expand_dims( resid[db][i][j], axis = 0 ) 
+        resid = spec.dssd_data_container( resid[db] )
+        print( resid.shape ) 
+        resid.plot_heatmap( cmap = colorcet.m_diverging_bkr_55_10_c35,
+                            show = 1 ) 
+        
 
+        
+    # plt.imshow( resid[0][0][0], cmap = colorcet.m_diverging_bkr_55_10_c35 )
+    # plt.show()
+    # plt.cla()
+    
     # print( '' )
 
     # ci = lmfit.conf_interval( mini, result, sigmas = ( 1, 2 ),
@@ -911,36 +877,6 @@ def estimate_deadlayers( model_params, channels, actual_energies,
     
 
     return result 
-
-
-
-
-
-# def plot_one_strip( model_params, channels, det_sectheta, source_sectheta, coords ) :
-
-
-    
-        
-#     for i in range( model_params.num_sources ) :
-#         for j in range( model_params.num_peaks_per_source[i] ) :
-
-#             nan_count = np.count_nonzero( np.isnan( source_sectheta[ db_num ][i][x] )
-#                                            | np.isnan( channels[ db_num ][i][j][x].x ) )
-#             if nan_count < 32 :
-#                 no_data = 0 
-            
-#             axarr[i,j].errorbar( source_sectheta[ db_num ][i][x],
-#                                  channels[ db_num ][i][j][x].x,
-#                                  yerr = channels[ db_num ][i][j][x].dx,
-#                                  ls = 'none' )
-
-
-#     if no_data :
-#         return None
-    
-#     return axarr
-
-        
 
 
 

@@ -14,18 +14,15 @@ import jutils
 import jutils.meas as meas 
 
 import scipy.interpolate
-import exp2_geometry
-
-# CONFIG 
-
-filter_above_channel_delta = 2.0
-
-filter_above_sectheta = 1.2
+import exp1_geometry
 
 
+filter_above_sectheta = 0
 
 
-db_names = [ 'full_bkgd_tot' ]
+data_name = 'det1_moved' 
+
+cut_data = 1
 
 storage_path = '../../../storage/'
 
@@ -35,10 +32,29 @@ storage_path = '../../../storage/'
 strip_coords = None
 
 
-
-num_dets = 4 
+num_dets = 1
 num_sources = 2
 
+
+
+def remove_strips( dssd, fstrips, bstrips ) :
+    for i in range( dssd.num_groups ) :
+        for j in range( dssd.num_data_per_group[i] ) : 
+            for f in fstrips :
+                dssd[ i,j,0,f, : ] = meas.nan
+            for b in bstrips :
+                dssd[i,j,0,:, b ] = meas.nan
+
+
+
+        
+def remove_data( dssd, data_to_remove ) :
+    print( 'removing data: ', data_to_remove ) 
+    for i in range( dssd.num_groups ) :
+        for j in range( dssd.num_data_per_group[i] ) : 
+            for coords in data_to_remove :
+        # print( coords ) 
+                dssd[ i,j,0, coords ] = meas.nan
 
 
 
@@ -51,23 +67,55 @@ num_sources = 2
 
 
 
+analysis_mgr = spec.dssd_analysis_manager( data_name, storage_path, (1,1), [1,1,1] )
 
     
+
+
+cf249_energies = np.array( [  5704, 5759.5, 5783.3, 5813.3, 5849.3 ] )
+cf249_probs = np.array( [ 0.0003, 0.0469, 0.0026, 0.822, 0.01430  ] )
+cf249_probs /= np.sum( cf249_probs )
+
+pu240_energies = np.array( [ 5123.68, 5168.17 ] ) 
+pu240_probs = np.array( [ 0.2710, 0.7280 ] )
+pu240_probs /= np.sum( pu240_probs ) 
+
+actual_energies = [  [ np.dot( pu240_energies, pu240_probs ) ],
+                     [ np.dot( cf249_energies, cf249_probs ) ] ]
+                               
+
+
+channels = analysis_mgr.load_dill( 'means' )
+channels = spec.dssd_data_container( [ channels[0], channels[2] ] )
+
+peak_indices = [ [0], [0] ]
+
+print( 'actual_energies', actual_energies ) 
+
+
+# channels = analysis_mgr.load_dill( 'peaks' )
+# del channels[1]
 # actual_energies = [ np.array( [ 3182.690 ] ),
-#                     np.array( [ 5762.64, 5804.77 ] ) ]
+#                     np.array( [ 5813.3 ] ) ]
 
-    
-actual_energies = [  [ 3182.690 ] ,
-                     [ 0.231 * 5762.64  + 0.769 * 5804.77 ] ]
+# peak_indices = [ [0], [1] ]
+
+# approx_slope = ( (actual_energies[0][0] - actual_energies[1][0] )
+#                  / ( channels[ 0, 0, 0, 16, 16 ] - channels[ 1, 0, 0, 16, 16 ] ) )
+
+# print( 'approx_slope', approx_slope  )
+
+
+
+
+
+
+# actual_energies = [ 5168.17 ]
 
 num_peaks_per_source = [ len( actual_energies[i] ) for i in range( num_sources ) ]
 
 
 density_si = 2.328 # g / cm^3
-
-
-
-
 
 
 
@@ -146,44 +194,43 @@ model_params = dl_estimator.deadlayer_model_params( disable_sources = 0,
                                                     interp_det_stopping_power = 1,
                                                     interp_source_stopping_powers = 0,
                                                     fstrips_requested = np.arange(1,30),
-                                                    bstrips = np.arange( 1, 30 ),
+                                                    bstrips = np.arange( 25, 30 ),
                                                     fix_source_deadlayers = None,
                                                     one_source_constant = 0,
                                                     det_thickness = 0,
                                                     vary_source_thickness = 0,
                                                     constant_energy_offset = 0 )
 
-
-db = spec.spectrum_db( 'full_bkgd_tot', storage_path )
-
-# channels = db.load_dill( 'peaks' )
-# peak_indices = [ [1], [0,1] ]
-# num_peaks_per_source = [ len( x ) for x in peak_indices ]
-
-
-channels = db.load_dill( 'means' )[1:]
-
-peak_indices = [ [0], [0] ]
-
-det_sectheta = exp2_geometry.get_secant_matrices()[1:]
-
-source_sectheta = det_sectheta
+# sys.exit( 0 ) 
 
 
 
-# print( 'channels dimensions:')
-# print( len( channels ) )
-# print( len( channels[0] ) )
-# print( len( channels[0][0] ) )
-# print( len( channels[0][0][0] ) )
 
 
 
-print( 'det_sectheta dimensions:' )
-print( len( det_sectheta ) )
-print( len( det_sectheta[0] ) )
-print( len( det_sectheta[0][0] ) )
-# print( len( channels[0][0][0] ) )
+
+det_sectheta = exp1_geometry.get_secant_matrices()[ data_name ] 
+det_sectheta = np.delete( det_sectheta, 1, axis = 0 )
+
+# print( 'after cut' ) 
+# print( det_sectheta )
+# sys.exit(0)
+
+
+if filter_above_sectheta > 0 :
+    
+    for det in range( num_dets ) :
+        for i in range( num_sources ) :
+            for j in range( num_peaks_per_source[i] ) :
+                mask = ( det_sectheta[i][ det ] > filter_above_sectheta )
+                channels[i][j][ det ][ mask ] = meas.nan
+
+                    
+# print( 'det_sectheta dimensions:' )
+# print( len( det_sectheta ) )
+# print( len( det_sectheta[0] ) )
+# print( len( det_sectheta[0][0] ) )
+# # print( len( channels[0][0][0] ) )
 
 
                     
@@ -206,8 +253,18 @@ for d in range( num_dets ) :
             channels[i][j][ d ][ mask ] = meas.nan
     
 
-        
+strip_cuts = [ [0,31], [] ] # list( range(16) ) + [ 31]  ] 
+data_cuts = [ [18,26] ] 
 
+# print( channels.values )
+print( det_sectheta ) 
+
+if cut_data :
+    remove_strips( channels, strip_cuts[0], strip_cuts[1] ) 
+    remove_data( channels, data_cuts ) 
+
+    # remove_strips( channels, [0] + list( range( 2,31) ), [] )
+    
 # if filter_above_channel_delta > 0 :
     
 #     for det in range( num_dets ) :
@@ -216,18 +273,6 @@ for d in range( num_dets ) :
 #                 mask = ( channels[i][j][ det ].dx > filter_above_channel_delta )
 #                 channels[i][j][ det ][ mask ] = meas.nan
 
-
-
-if filter_above_sectheta > 0 :
-    
-    for det in range( num_dets ) :
-        for i in range( num_sources ) :
-            for j in range( num_peaks_per_source[i] ) :
-                mask = ( det_sectheta[i][ det ] > filter_above_sectheta )
-                channels[i][j][ det ][ mask ] = meas.nan
-
-                    
-        
 
 
 
@@ -240,23 +285,10 @@ det_deadlayer_guess = 100.0
 calibration_coefs_guess = [ 2.0, 0.0 ]
 source_deadlayer_guesses = [ [25.0], [25.0] ] 
 
+# print( channels[0,0,0,1] )
 
-# print( len( channels ) )
-# print( len( channels[0] ) ) 
-# tmp = channels[ 0 ][1]
-# print( len( tmp ) )
-# print( len( tmp[0] ) )
-# print( len( tmp[0][0] ) ) 
+for detnum in  range(1) :
 
-
-# strip_coords = 'all' 
-# strip_coords = [0,2]
-
-for detnum in  range(4) :
-
-    # det_sectheta_tmp = [ det_sectheta[ detnum ] ]
-    # source_sectheta_tmp = [ source_sectheta[ detnum ] ]
-    # channels_tmp = [ channels[ 0 ][ detnum ] ]
 
     det_sectheta_tmp = [ [ det_sectheta[i][ detnum ]
                            for i in range( num_sources ) ] ]
@@ -266,14 +298,6 @@ for detnum in  range(4) :
     channels_tmp = [ [ [ channels[i][j][ detnum ]
                          for j in range( num_peaks_per_source[i] ) ] 
                        for i in range( num_sources ) ] ]
-
-
-    print()
-    print( len( channels_tmp ) ) 
-    print( len( channels_tmp[0] ) )
-    print( len( channels_tmp[0][0] ) )
-    print( len( channels_tmp[0][0][0] ) )
-    print() 
     
     dl_estimator.estimate_deadlayers( model_params,
                                       channels_tmp,
@@ -284,25 +308,11 @@ for detnum in  range(4) :
                                       source_deadlayer_guesses,
                                       det_stopping_power_interp, det_deadlayer_guess,
                                       calibration_coefs_guess,
-                                      names = db_names,
-                                      strip_coords = strip_coords,
-                                      figpath = '../../../storage/current_peaks_vs_sectheta/exp2_aggregate/det_%d/'
-                                      % detnum ) 
+                                      names = data_name,
+                                      strip_coords = strip_coords ) 
+                                      # figpath = '../../../storage/current_peaks_vs_sectheta/exp2_aggregate/det_%d/'
+                                      # % detnum ) 
 
-
-
-
-
-# dl_estimator.estimate_deadlayers( dbs, source_indices,
-#                                   model_params,
-#                                   cut_high_sectheta = 0,
-#                                   annotate = 0,
-#                                   # view_pixel = [ dbmgr.moved, 5 ],
-#                                   subtitle = 'Det 1: Absolute Calibration of Entire Detector\n',
-#                                   reset_angles = None,
-#                                   residual_scatter_plot = 0,
-#                                   plot_3d = 1,
-#                                   savefig_dir = '../../../deadlayer_analysis_paper/images/det1_calibration.eps' )
 
 
 

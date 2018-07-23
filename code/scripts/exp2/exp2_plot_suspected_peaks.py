@@ -37,10 +37,10 @@ cols = 'bgrk'
 peakzoom = None
 
 
-# db_path = '../../storage/databases/'
-# db = spec.spectrum_db( db_path + db_name )
-# channels = db.read_values( '../../storage/mu_values/' + db_name
-#                               + '_mu_values.bin' ) 
+db = spec.spectrum_db( '../../.../storage/', db_name )
+
+
+channels = db.load_dill( 'primary_peaks' ) 
 
 
 

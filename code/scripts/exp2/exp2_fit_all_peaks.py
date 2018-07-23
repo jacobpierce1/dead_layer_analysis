@@ -2,12 +2,12 @@
 
 
 import matplotlib
-# matplotlib.use('Agg')
+matplotlib.use('Agg')
 # -*- coding: utf-8 -*-
 
 import jspectroscopy as spec
 import numpy as np
-# import deadlayer_helpers.data_handler as data
+#import deadlayer_helpers.data_handler as data
 import matplotlib.pyplot as plt 
 import jutils
 
@@ -26,7 +26,7 @@ debug = 0
 rel_plot_bounds = [ -100, 120 ] 
 
 
-group_ranges = [ [-95,15], [-45,13] ]
+group_ranges = np.array( [ [-95,20], [-70,20] ] )
 peak_locations = [ [-63,0], [-21, 0] ]
 peak_sizes_guesses = [ [300, 15000], [3000, 15000] ]
 
@@ -34,27 +34,62 @@ peak_types = [ ['a'] * len(x) for x in peak_locations ]
 
 peak_width_guesses = [ [5.0] * len(x) for x in peak_locations ]
 
-det_params_guesses = [ { 'a' : [ 0.9, 40.0, 2.4 ] } ] * 2
+det_params_guesses = [ { 'a' : [ 0.95, 40.0, 2.4 ] } ] * 2
 
-peak_mu_offset = 7.0 # 9 
+peak_mu_offset = 7.0
 
 num_peaks_to_detect = 2
 
 
-coords = ( 16, 17 ) 
-
-
-bpt_data_path = '../../../bpt-data/extracted_root_tree_data/'
+coords = ( 0, 28, 25 ) 
 
 
 
 
+def peak_params_guesser( i, primary_peak, chans, counts ) :
+
+    # gd
+    peak_params = np.zeros((2,3))
+    peak_params[:,2] = 5.0
+
+    # print( primary_peak ) 
+        
+    if i == 0 :
+        counts = np.sum( counts[ ( chans > ( primary_peak - 140 ) )
+                               & ( chans < ( primary_peak + 32 ) ) ] )
+        peak_params[:,0] = 2 * np.array( [0.02, 0.98] ) * counts
+        peak_params[:,1] = primary_peak + peak_locations[i] + peak_mu_offset
+
+    # cm 
+    elif i == 1 :
+        counts = np.sum( counts[ ( chans > primary_peak - 110 )
+                                 & ( chans < primary_peak + 50 ) ] )
+        peak_params[:,0] = 2 * np.array( [0.23, 0.77] ) * counts
+        peak_params[:,1] = primary_peak + peak_locations[i] + peak_mu_offset
+
+    # print( peak_params ) 
+    
+    return peak_params
 
 
+
+
+def fit_bounds_guesser( i, primary_peak, chans, counts ) :
+
+    if i == 0 :
+        return primary_peak + group_ranges[0]
+
+    else :
+        return primary_peak + group_ranges[1] 
+
+
+
+
+    
 # a function that is guarenteed to detect the reference peak
 # of each group given a list of the peaks detected in the spectrum
 
-def primary_peak_detector( peaks_detected, histo ) :
+def primary_peak_detector( peaks_detected, counts ) :
     
     if debug : 
         print( peaks_detected ) 
@@ -115,34 +150,49 @@ def fit_acceptor( x, y, dy, spec_fitter_result ) :
 
 
 
+
 def one_spectrum( db_name, detnum, x, y ) :
     
-    # db = spec.spectrum_db( '../../storage/databases/' + db_name, detnum, coords,
-    #                         )
+    db = spec.spectrum_db( db_name, '../../../storage/' )
+
     global debug
     debug = 1
-    
-    data_retriever = lambda detnum, x, y : bpt.data_fetcher( bpt_data_path,
-                                                             db_name, detnum, x, y )
         
-    x, y, dy = data_retriever( detnum, x, y ) 
+    chans, counts, dcounts = db.get_histo( detnum, x, y )
     
-    dy = np.sqrt( y )
-    dy[ ( dy == 0 ) ] = 1 
+    dcounts = np.sqrt( counts )
+    dcounts[ ( dcounts == 0 ) ] = 1 
     
     plt.figure(figsize=(10,12))
-    ax = plt.axes()     
+    ax = plt.axes()
 
-    spec.auto_fit_spectrum( x, y, dy,
-                            group_ranges, peak_locations,
-                            num_peaks_to_detect, primary_peak_detector,
-                            peak_sizes_guesses, peak_width_guesses,
-                            det_params_guesses, peak_mu_offset,
+    primary_peaks = db.load_dill( 'primary_peaks' )
+    primary_peaks = primary_peaks[ :, detnum, x, y ] 
+
+    db.disconnect()
+
+    # peak_params_guesses = [ peak_params_guesser( i, detnum, x, y )
+    #                         for i in range(2) ] 
+
+    spec.auto_fit_spectrum( chans, counts, dcounts,
+                            fit_bounds_guesser,
+                            peak_params_guesser, det_params_guesses,
                             fit_acceptor = fit_acceptor,
                             params_shuffler = params_shuffler,
-                            ax = ax,
+                            primary_peaks = primary_peaks,
                             rel_plot_bounds = rel_plot_bounds,
-                            print_output = 1)
+                            ax = ax, print_output = 1  )
+    
+    # spec.auto_fit_spectrum( x, y, dy,
+    #                         group_ranges, peak_locations,
+    #                         num_peaks_to_detect, primary_peak_detector,
+    #                         peak_sizes_guesses, peak_width_guesses,
+    #                         det_params_guesses, peak_mu_offset,
+    #                         fit_acceptor = fit_acceptor,
+    #                         params_shuffler = params_shuffler,
+    #                         ax = ax,
+    #                         rel_plot_bounds = rel_plot_bounds,
+    #                         print_output = 1)
     
 
     plt.show()
@@ -159,34 +209,31 @@ def all_spectra( db_names ) :
 
     for name in db_names :
 
-        dets_used = bpt.dets_used( bpt_data_path, name )
+        # dets_used = bpt.dets_used( bpt_data_path, name )
 
-        print( dets_used ) 
-
-        db = spec.spectrum_db( '../../../storage/databases/' + name, dets_used, (32,32),
+        db = spec.spectrum_db( name, '../../../storage/', (32,32),
                                peak_types, constrain_det_params )
 
-                
-        data_retriever = lambda detnum, x, y : bpt.data_fetcher( bpt_data_path,
-                                                                 name, detnum, x, y ) 
+        mask = np.zeros((3,32,32))
+        mask[0,0:15,:] = 1
+        mask[0,23:,:] = 1 
 
-        spec.auto_fit_many_spectra( db, data_retriever,
-                                    '../../../storage//current_fit_images/%s/'
-                                    % ( name ),
-                                    (4,4),
-                                    group_ranges, peak_locations,
-                                    num_peaks_to_detect, primary_peak_detector,
-                                    peak_sizes_guesses, peak_width_guesses,
-                                    det_params_guesses,
-                                    peak_mu_offset,
+        spec.auto_fit_many_spectra( db, (4,4),
+                                    # group_ranges, peak_locations,
+                                    # num_peaks_to_detect, primary_peak_detector,
+                                    # peak_sizes_guesses, peak_width_guesses,
+                                    # det_params_guesses,
+                                    fit_bounds_guesser,
+                                    peak_params_guesser, det_params_guesses,
                                     fit_acceptor = fit_acceptor,
                                     params_shuffler = params_shuffler,
                                     rel_plot_bounds = rel_plot_bounds,
-                                    logscale = 1, time_estimator = time_estimator,
+                                    logscale = 1,
+                                    time_estimator = time_estimator,
                                     print_output = 0,
-                                    dets_used = dets_used,
                                     debug_peaks = 0,
-                                    overwrite = 0 )
+                                    overwrite = 0,
+                                    mask = mask )
         
         # mu_path = '../../storage/mu_values/%s_%d_mu_values.bin' % ( name, detnum ) 
 
@@ -198,10 +245,12 @@ def all_spectra( db_names ) :
 
 
 # all_spectra( [ 'alpharun20-30', 'alpharun11-19' ] ) 
-# one_spectrum( 'full_bkgd_tot', 1, 28, 28 );
+# one_spectrum( 'full_bkgd_tot', 1, 3, 28 );
 
-one_spectrum( 'full_bkgd_tot', 1, 8, 15 );
-# all_spectra( [ 'full_bkgd_tot' ] )
+
+
+# one_spectrum( 'full_bkgd_tot', *coords );
+all_spectra( [ 'full_bkgd_tot' ] )
 
 # fit_all_spectra( dbmgr.all_dbs )
 

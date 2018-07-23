@@ -77,16 +77,6 @@ def primary_peak_detector( peaks_detected, histo ) :
 
 
 
-def data_retriever( d, x, y ) :
-    return bpt.data_fetcher( bpt_data_path, 'centered', 1, x, y ) 
-
-
-def raw_data_retriever( d, x, y ) :
-    return bpt.raw_data_fetcher( bpt_data_path, 'centered', 1, x, y ) 
-
-
-
-
 def filter_data( hitmap ) :
 
     diff = np.diff( hitmap, axis = 0 ) 
@@ -116,82 +106,59 @@ def remove_strips( hitmap, fstrips, bstrips ) :
 
 
 
-group_ranges = [ [ -60, 20 ], [-60, 20], [-93, 85] ]
+group_ranges = [ [ [-60, 20] ], [[-60, 20]], [[-93, 85]] ]
 
 
 num_peaks_to_detect = 6
 
 
-bpt_data_path = '../../../bpt-data/extracted_root_tree_data'
 
-
-db = spec.spectrum_db( 'centered', '../../../storage/' ) 
-
-
-
-# primary_peaks = spec.write_peakdetect( db, primary_peak_detector, data_retriever,
-#                                        num_peaks_to_detect )
-
-primary_peaks = db.get_primary_peaks( primary_peak_detector, data_retriever,
-                                      num_peaks_to_detect, load = 1 )
-
-
-widths = db.get_widths( primary_peaks, raw_data_retriever, group_ranges,
-                            plot = 0, load = 0 ) 
-
-# averages = spec.compute_averages( db, primary_peaks, data_retriever
-
-savepath = db.storage_path + 'heatmaps/widths.png'
 
 exp1_secant_matrices = exp1_geometry.get_secant_matrices()
+peak_group_ranges = [ [ -np.inf, 2700 ], [ 2700, 2900 ], [ 2900, np.inf ] ]
 
-secant_matrices = [ [ exp1_secant_matrices[ 'pu_240' ][0].x ],
-                    [ exp1_secant_matrices[ 'pu_238_centered' ][0].x ],
-                    [ exp1_secant_matrices[ 'cf_249' ][0].x ] ]
+thresholds = [ 20, 20, 20 ] 
 
-source_names = [ '240 Pu (moved)', '238 Pu (centered)', '249 Cf (moved)' ]
+# for name in [ 'centered', 'moved', 'flat', 'angled' ] : # , 'det3_moved', 'det3_cent' ] : 
+for name in [ 'moved' ] :
 
-
-db.plot_heatmap( 'primary_peaks', source_names, 1 )
-db.plot_heatmap( 'widths', source_names, 1 ) 
-db.plot_vs_sectheta( 'widths', source_names, secant_matrices, 1 )
-db.plot_vs_sectheta( 'primary_peaks', source_names, secant_matrices, 1 )
-
-
-
-
-
-# if cut_strips :
-#     title = 'Point Source Fits: With Strip Cuts' 
-#     savepath += 'with_strip_cuts.eps'
-    
-# else :
-#     title = 'Point Source Fits: No Strip Cuts'
-#     savepath += 'no_strip_cuts.eps'
-
-
-
-# params_guesses = np.array( [ [ 3.0e7, 87.10, -9.31, 58.35 ],
-#                                [ 3.0e7, 32.95, -31.45, 57.88 ],
-#                                [ 3.0e7, 85.35, -46.06, 57.74 ] ] )
-
-
-f, axarr = plt.subplots( 1, 3, figsize = ( 10, 8 ) ) 
-
-# f.suptitle( title ) 
-
-f.subplots_adjust( wspace = 0.5 )
-
-# for i in range( 3 ) :
-#     cmap = colorcet.m_fire
-#     cmap.set_bad('white',1.)
-#     im = axarr[ i ].imshow( widths[i,0], cmap = colorcet.m_rainbow )
-#     divider = make_axes_locatable( axarr[i] )
-#     cax = divider.append_axes("right", size="5%", pad=0.05)
-#     f.colorbar(im, cax=cax)
-
-
-
-db.disconnect()
+    db = spec.spectrum_db( name, '../../../storage/' ) 
 
     
+    secant_matrices = exp1_secant_matrices[ name ] 
+
+    # primary_peaks = spec.write_peakdetect( db, primary_peak_detector, data_retriever,
+    #                                        num_peaks_to_detect )
+
+    primary_peaks = db.compute_primary_peaks( group_ranges,
+                                              primary_peak_detector,
+                                              num_peaks_to_detect = num_peaks_to_detect,
+                                              primary_peak_detector = primary_peak_detector,
+                                              plot = 0, load = 1 )
+
+    # primary_peaks = db.compute_primary_peaks( peak_group_ranges, thresholds,
+    #                                           load = 0, plot = 1  )
+    
+    stds = db.compute_stds( primary_peaks, group_ranges,
+                              plot = 0, load = 1 ) 
+
+    means = db.compute_means( primary_peaks, group_ranges,
+                              plot = 0, load = 1 ) 
+
+    # averages = spec.compute_averages( db, primary_peaks, data_retriever
+
+
+    source_names = [ '240 Pu (moved)', '238 Pu (centered)', '249 Cf (moved)' ]
+
+
+    db.plot_heatmap( 'primary_peaks', source_names )
+    db.plot_heatmap( 'stds', source_names )
+    db.plot_heatmap( 'means', source_names ) 
+
+    db.plot_vs_sectheta( 'stds', source_names, secant_matrices )
+    db.plot_vs_sectheta( 'primary_peaks', source_names, secant_matrices )
+    db.plot_vs_sectheta( 'means', source_names, secant_matrices ) 
+
+    db.disconnect()
+
+
