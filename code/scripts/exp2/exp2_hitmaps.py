@@ -280,6 +280,8 @@ extra_args = [
 
 # db = spec.spectrum_db( 'full_bkgd_tot', '../../../storage/' ) 
 
+source_names = [ 'Be 8 Continuum', 'Gd 148', 'Cm 244' ]
+
 analysis_mgr = spec.dssd_analysis_manager( 'full_bkgd_tot', '../../../storage/', (32,32),
                                            [2,1] ) 
 
@@ -301,41 +303,39 @@ bandwidth = 0.5
 hitmaps = analysis_mgr.compute_hitmaps( group_ranges, plot = 0, load = 1 )
 
 
-kde_peakpos = analysis_mgr.compute_kde_peakpos( primary_peaks, group_ranges,
-                                                peakpos_guesses, bandwidth,
-                                                plot = 0, load = 0 ) 
+# kde_peakpos = analysis_mgr.compute_kde_peakpos( primary_peaks, group_ranges,
+#                                                 peakpos_guesses, bandwidth,
+#                                                 plot = 0, load = 1 ) 
 
-stds = analysis_mgr.compute_stds( primary_peaks, group_ranges,
-                                  plot = 0, load = 1 ) 
+# stds = analysis_mgr.compute_stds( primary_peaks, group_ranges,
+#                                   plot = 0, load = 1 ) 
 
-means = analysis_mgr.compute_means( primary_peaks, group_ranges,
-                                    plot = 0, load = 1 ) 
+# means = analysis_mgr.compute_means( primary_peaks, group_ranges,
+#                                     plot = 0, load = 1 ) 
 
 
-hitmaps.flatten()
-analysis_mgr.save_dill( hitmaps, 'hitmaps' ) 
-stds.flatten()
-analysis_mgr.save_dill( stds, 'stds' )
-means.flatten()
-analysis_mgr.save_dill( means, 'means' )
-kde_peakpos.flatten()
-analysis_mgr.save_dill( kde_peakpos, 'kde_peakpos' )
+# hitmaps.flatten()
+# analysis_mgr.save_dill( hitmaps, 'hitmaps' ) 
+# stds.flatten()
+# analysis_mgr.save_dill( stds, 'stds' )
+# means.flatten()
+# analysis_mgr.save_dill( means, 'means' )
+# kde_peakpos.flatten()
+# analysis_mgr.save_dill( kde_peakpos, 'kde_peakpos' )
  
 
-source_names = [ 'Be 8 Continuum', 'Gd 148', 'Cm 244' ]
+# secant_matrices = exp2_geometry.get_secant_matrices()
 
-secant_matrices = exp2_geometry.get_secant_matrices()
+# # print( hitmaps[0][0].shape ) 
 
-# print( hitmaps[0][0].shape ) 
+# analysis_mgr.plot_heatmap( 'means', source_names )
+# analysis_mgr.plot_heatmap( 'stds', source_names )
+# analysis_mgr.plot_heatmap( 'primary_peaks', source_names ) 
+# analysis_mgr.plot_heatmap( 'kde_peakpos', source_names ) 
 
-analysis_mgr.plot_heatmap( 'means', source_names )
-analysis_mgr.plot_heatmap( 'stds', source_names )
-analysis_mgr.plot_heatmap( 'primary_peaks', source_names ) 
-analysis_mgr.plot_heatmap( 'kde_peakpos', source_names ) 
+# print( secant_matrices.shape ) 
 
-print( secant_matrices.shape ) 
-
-analysis_mgr.plot_vs_sectheta( 'kde_peakpos', source_names, secant_matrices )
+# analysis_mgr.plot_vs_sectheta( 'kde_peakpos', source_names, secant_matrices )
 # analysis_mgr.plot_vs_sectheta( 'means', source_names, secant_matrices )
 # analysis_mgr.plot_vs_sectheta( 'stds', source_names, secant_matrices ) 
 # analysis_mgr.plot_vs_sectheta( 'primary_peaks', source_names, secant_matrices ) 
@@ -345,21 +345,21 @@ analysis_mgr.plot_vs_sectheta( 'kde_peakpos', source_names, secant_matrices )
 
 
 
-# for i in range( hitmaps.num_groups ) :
-#     for d in range( hitmaps.num_dets ) :
-#         # filter_data( hitmaps[i][d] )
-#         print( i,d)
-#         print( 'removing: ', strips_to_remove[i][d] )
-#         if cut_strips :
-#             remove_strips( hitmaps[i][0][d], strips_to_remove[i][d][0],
-#                            strips_to_remove[i][d][1] ) 
-#             remove_data( hitmaps[i][0][d], data_to_remove[i][d] )
+for i in range( hitmaps.num_groups ) :
+    for d in range( hitmaps.num_dets ) :
+        # filter_data( hitmaps[i][d] )
+        print( i,d)
+        print( 'removing: ', strips_to_remove[i][d] )
+        if cut_strips :
+            remove_strips( hitmaps[i][0][d], strips_to_remove[i][d][0],
+                           strips_to_remove[i][d][1] ) 
+            remove_data( hitmaps[i][0][d], data_to_remove[i][d] )
 
 
-# fitfuncs = [ [ point_source_counts], [ fitfunc ], [ fitfunc ] ] 
+fitfuncs = [ [ point_source_counts], [ fitfunc ], [ fitfunc ] ] 
 
-# db.fit_hitmaps( hitmaps, fitfuncs, params_guesses,
-#                 source_names = source_names, plot = 0,
-#                 extra_args = extra_args  )
+analysis_mgr.fit_hitmaps( hitmaps, fitfuncs, params_guesses,
+                source_names = source_names, plot = 0,
+                extra_args = extra_args  )
 
 

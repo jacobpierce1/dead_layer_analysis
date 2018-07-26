@@ -25,6 +25,7 @@ det_center_z = 4.155 * 25.4
 
 # key: group, det, sourcenum, coords
 displacements =  [
+    # trapped ion cloud 
     [[ 32.0, -32.0, 60.0 ]] * 4,
     # group 1 
     [

@@ -62,7 +62,7 @@ model_params = dl_estimator.deadlayer_model_params( disable_sources = 0,
                                                     interp_det_stopping_power = 1,
                                                     interp_source_stopping_powers = 0,
                                                     fstrips_requested = np.arange( 1, 31 ),
-                                                    bstrips = np.arange( 3, 24 ),
+                                                    bstrips = np.arange( 15, 28 ),
                                                     fix_source_deadlayers = None,
                                                     one_source_constant = 0,
                                                     det_thickness = 0,
@@ -197,4 +197,4 @@ for d in range(4) :
         ret[ :,k,d ] = meas.meas( [ tmp1.value, tmp2.value ], [ tmp1.stderr, tmp2.stderr ] )
 
 
-print( ret ) 
+analysis_mgr.save_dill( ret, 'agg_dl_sums' )
