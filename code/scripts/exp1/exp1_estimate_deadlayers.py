@@ -1,3 +1,6 @@
+import matplotlib
+matplotlib.use('agg')
+
 import sys
 import numpy as np
 
@@ -19,10 +22,9 @@ import exp1_geometry
 
 filter_above_sectheta = 0
 
-
 data_name = 'det1_moved' 
 
-cut_data = 1
+cut_data = 0
 
 storage_path = '../../../storage/'
 
@@ -30,7 +32,6 @@ storage_path = '../../../storage/'
 # strip_coords = 'all'
 
 strip_coords = None
-
 
 num_dets = 1
 num_sources = 2
@@ -76,6 +77,11 @@ cf249_energies = np.array( [  5704, 5759.5, 5783.3, 5813.3, 5849.3 ] )
 cf249_probs = np.array( [ 0.0003, 0.0469, 0.0026, 0.822, 0.01430  ] )
 cf249_probs /= np.sum( cf249_probs )
 
+# pu238_energies = np.array( [  5704, 5759.5, 5783.3, 5813.3, 5849.3 ] )
+# pu238_probs = np.array( [ 0.0003, 0.0469, 0.0026, 0.822, 0.01430  ] )
+# pu238_probs /= np.sum( pu238_probs )
+
+
 pu240_energies = np.array( [ 5123.68, 5168.17 ] ) 
 pu240_probs = np.array( [ 0.2710, 0.7280 ] )
 pu240_probs /= np.sum( pu240_probs ) 
@@ -87,6 +93,14 @@ actual_energies = [  [ np.dot( pu240_energies, pu240_probs ) ],
 
 channels = analysis_mgr.load_dill( 'means' )
 channels = spec.dssd_data_container( [ channels[0], channels[2] ] )
+
+det_sectheta = exp1_geometry.get_secant_matrices()[ data_name ] 
+det_sectheta = np.delete( det_sectheta, 1, axis = 0 )
+
+
+
+
+
 
 peak_indices = [ [0], [0] ]
 
@@ -126,59 +140,6 @@ density_si = 2.328 # g / cm^3
 # interpolate over a lot of data to obtain large interpolation
 # and set the 
 
-def construct_si_stopping_power_interpolation( plot = 0 ) :
-
-    # data = np.loadtxt( '../../data/stopping_power_data/alpha_stopping_power_si.txt',
-    #                   skiprows = 10, unpack = 1 )
-
-    energy, stopping_power = np.loadtxt(
-        '../../../data/stopping_power_data/alpha_stopping_power_si.txt',
-        usecols = [0,3], unpack = 1 )
-
-    # tmp = np.loadtxt(
-    #     '../../../data/stopping_power_data/alpha_stopping_power_si.txt',
-    #     usecols = [0,3], unpack = 1 )
-
-    
-    # energy = data[0] * 1000
-    
-    # energy = energy[ energy <= emax ] 
-    
-    # stopping_power = data[3][ 0 : len( energy ) ]
-    energy *= 1000 
-    stopping_power *= density_si * 1000 * 100 / 1e9
-
-    print( 'stopping power interp data:' )
-    print( 'energy: ', energy )
-    print( 'stopping: ', stopping_power )
-
-    # add particular data points of interest to the interpolation
-    
-    interp = scipy.interpolate.interp1d( energy, stopping_power, kind = 'cubic' )
-
-    
-    if plot :
-
-        ax = plt.axes()
-
-        interp_axis = np.linspace( min( energy ), max( energy ), 100 )
-        
-        ax.scatter( energy, stopping_power, color='r' )
-
-        ax.plot( interp_axis,
-                 interp( interp_axis ),
-                 color = 'b' )
-        
-        plt.show()
-
-        return 1
-        
-
-    return interp
-    
-
-
-det_stopping_power_interp = construct_si_stopping_power_interpolation()
 
 # print( det_stopping_power_interp( 5.5 ) )
 # print( det_stopping_power_interp( 3.2 ) )
@@ -193,8 +154,8 @@ model_params = dl_estimator.deadlayer_model_params( disable_sources = 0,
                                                     vary_det_deadlayer = 1,
                                                     interp_det_stopping_power = 1,
                                                     interp_source_stopping_powers = 0,
-                                                    fstrips_requested = np.arange(1,30),
-                                                    bstrips = np.arange( 25, 30 ),
+                                                    fstrips_requested = np.arange(1,31),
+                                                    bstrips = np.arange( 25, 31 ),
                                                     fix_source_deadlayers = None,
                                                     one_source_constant = 0,
                                                     det_thickness = 0,
@@ -209,8 +170,6 @@ model_params = dl_estimator.deadlayer_model_params( disable_sources = 0,
 
 
 
-det_sectheta = exp1_geometry.get_secant_matrices()[ data_name ] 
-det_sectheta = np.delete( det_sectheta, 1, axis = 0 )
 
 # print( 'after cut' ) 
 # print( det_sectheta )
@@ -225,19 +184,12 @@ if filter_above_sectheta > 0 :
                 mask = ( det_sectheta[i][ det ] > filter_above_sectheta )
                 channels[i][j][ det ][ mask ] = meas.nan
 
-                    
-# print( 'det_sectheta dimensions:' )
-# print( len( det_sectheta ) )
-# print( len( det_sectheta[0] ) )
-# print( len( det_sectheta[0][0] ) )
-# # print( len( channels[0][0][0] ) )
 
 
                     
 if peak_indices is not None :
     for i in range( num_sources ) :
-        channels[i] = [ channels[i][j]
-                        for j in peak_indices[i] ]
+        channels[i] = [ channels[i][j] for j in peak_indices[i] ]
                     
                 
 
@@ -254,7 +206,7 @@ for d in range( num_dets ) :
     
 
 strip_cuts = [ [0,31], [] ] # list( range(16) ) + [ 31]  ] 
-data_cuts = [ [18,26] ] 
+# data_cuts = [ [18,26] ] 
 
 # print( channels.values )
 print( det_sectheta ) 
@@ -262,16 +214,6 @@ print( det_sectheta )
 if cut_data :
     remove_strips( channels, strip_cuts[0], strip_cuts[1] ) 
     remove_data( channels, data_cuts ) 
-
-    # remove_strips( channels, [0] + list( range( 2,31) ), [] )
-    
-# if filter_above_channel_delta > 0 :
-    
-#     for det in range( num_dets ) :
-#         for i in range( num_sources ) :
-#             for j in range( len( num_peaks_per_source ) ) :
-#                 mask = ( channels[i][j][ det ].dx > filter_above_channel_delta )
-#                 channels[i][j][ det ][ mask ] = meas.nan
 
 
 
@@ -298,6 +240,8 @@ for detnum in  range(1) :
     channels_tmp = [ [ [ channels[i][j][ detnum ]
                          for j in range( num_peaks_per_source[i] ) ] 
                        for i in range( num_sources ) ] ]
+
+    savepath = analysis_mgr.storage_path + '/dl_regression/%d/' % analysis_mgr.detidx_to_detnum( detnum )
     
     dl_estimator.estimate_deadlayers( model_params,
                                       channels_tmp,
@@ -306,10 +250,11 @@ for detnum in  range(1) :
                                       source_sectheta_tmp,
                                       source_stopping_power_interps,
                                       source_deadlayer_guesses,
-                                      det_stopping_power_interp, det_deadlayer_guess,
+                                      None, det_deadlayer_guess,
                                       calibration_coefs_guess,
                                       names = data_name,
-                                      strip_coords = strip_coords ) 
+                                      strip_coords = strip_coords,
+                                      savepath = savepath )
                                       # figpath = '../../../storage/current_peaks_vs_sectheta/exp2_aggregate/det_%d/'
                                       # % detnum ) 
 

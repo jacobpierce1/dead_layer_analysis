@@ -46,7 +46,6 @@ import scipy.integrate
 
 
 
-
 plt.rc('text', usetex=True)
 
 
@@ -381,12 +380,12 @@ def energy_from_mu_lmfit( params, model_params,
 
     # fstrip = model_params.fstrips[ db_num ][x]
     
-    a = params[ 'a_%d_%d' % ( db_num, fstrip ) ].value.item()
+    a = params[ 'a_%d_%d' % ( db_num, fstrip ) ].value
 
     if not model_params.use_different_intercepts : 
-        b = params[ 'b_%d_%d' % ( db_num, fstrip ) ].value.item()
+        b = params[ 'b_%d_%d' % ( db_num, fstrip ) ].value
     else :
-        b = params[ 'b_%d_%d_%d' % ( db_num, fstrip, i ) ].value.item()
+        b = params[ 'b_%d_%d_%d' % ( db_num, fstrip, i ) ].value
 
         
     if not model_params.disable_sources :
@@ -399,9 +398,11 @@ def energy_from_mu_lmfit( params, model_params,
 
     else :
         source_constant = 0
-            
-    energy_det = a * channels + b 
 
+    
+    energy_det = (float(a) * channels ) + b 
+    
+    
     # in this case, we are using the actual depth of the
     # detector dead layer as a parameter.
     
@@ -467,7 +468,7 @@ def energy_from_mu_lmfit( params, model_params,
 
     combined_deadlayer_losses += source_loss
 
-        
+    
         
         
     # if model_params.quadratic_source :
@@ -534,12 +535,12 @@ def objective( params, model_params, channels,
                                                  channels, det_sectheta, source_sectheta,
                                                  actual_energies )
     
-    flattened = [ resid[d][i][j][x,y]
-                  for d in np.arange( model_params.num_dbs )
-                  for i in np.arange( model_params.num_sources )
-                  for j in np.arange( model_params.num_peaks_per_source[i] )
-                  for x in range(32)
-                  for y in range(32) ]
+    flattened = np.array( [ resid[d][i][j][x,y]
+                            for d in np.arange( model_params.num_dbs )
+                            for i in np.arange( model_params.num_sources )
+                            for j in np.arange( model_params.num_peaks_per_source[i] )
+                            for x in range(32)
+                            for y in range(32) ] )
                   # for x in np.arange( model_params.num_fstrips[d] )
                   # for y in np.arange( model_params.num_bstrips ) ]
 
@@ -547,8 +548,10 @@ def objective( params, model_params, channels,
     # print( 'flattened' ) 
     # print( flattened ) 
     
-    return flattened 
-
+    # ret = np.nansum( flattened ** 2 )  
+    ret = flattened
+    # print( ret )
+    return ret 
 
 
 
@@ -563,7 +566,7 @@ def objective( params, model_params, channels,
 # do a fit of the form E = A * mu + b + s * sec(phi) +
 # deadlayer_distance * si_stopping_power * sec(theta)
 
-def estimate_deadlayers( model_params, channels, actual_energies,
+def estimate_deadlayers( model_params, channels_in, actual_energies,
                          det_sectheta, source_sectheta,
                          source_stopping_power_interps,
                          source_deadlayer_guesses,
@@ -572,26 +575,33 @@ def estimate_deadlayers( model_params, channels, actual_energies,
                          gen_plots = 0, annotate = 0,
                          strip_coords = None,
                          names = None,
-                         figpath = None ) :
-
-    num_dbs = len( channels )
-    num_sources = len( channels[0] ) 
-    num_peaks_per_source = [ len( channels[0][i] ) for i in range( num_sources ) ]
+                         figpath = None,
+                         savepath = None ) :
+    
+    num_dbs = len( channels_in )
+    num_sources = len( channels_in[0] ) 
+    num_peaks_per_source = [ len( channels_in[0][i] ) for i in range( num_sources ) ]
     total_num_peaks = np.sum( num_peaks_per_source )
 
     model_params.num_dbs = num_dbs
     model_params.num_sources = num_sources
     model_params.num_peaks_per_source  = num_peaks_per_source
-    model_params.total_num_peaks = total_num_peaks 
+    model_params.total_num_peaks = total_num_peaks
 
-    # angled_3d_plot = np.any( [  source_geometries[d][i].is_angled
-    #                             for d in range( num_dbs )
-    #                             for i in range( num_sources ) ] ) 
-
-    # print( angled_3d_plot ) 
-            
-    # print( channels[0][0] ) 
     
+    channels = [ [ [ channels_in[db][i][j].copy()
+                     for j in range( num_peaks_per_source[i] ) ]
+                   for i in range( num_sources ) ]
+                 for db in range( num_dbs ) ]
+
+        
+    for db in range( num_dbs ) :
+        for i in range( num_sources ) :
+            for j in range( num_peaks_per_source[i] ) :
+                mask = np.isnan( det_sectheta[db][i] )
+                channels[db][i][j][ mask ] = meas.nan
+
+                    
     print( 'num_dbs: ' + str( num_dbs ) )
     print( 'num_sources: ' + str( num_sources ) )
     print( 'num_peaks_per_source: ' + str( num_peaks_per_source ) ) 
@@ -704,7 +714,7 @@ def estimate_deadlayers( model_params, channels, actual_energies,
 
         if model_params.constant_energy_offset :
             for i in range( 1, num_sources ) :
-                fit_params.add( 'constant_offset_%d' % (i), value = 0.0 )
+                fit_params.add( 'constant_offset_%d' % (i), value = 0.0, min = -10, max = 10 )
             
 
     model_params.fstrips = [0] * num_dbs
@@ -723,14 +733,16 @@ def estimate_deadlayers( model_params, channels, actual_energies,
             for i in range( num_sources ) :
                 num_source_data = 0
                 for j in range( num_peaks_per_source[i] ) :
+                                        
                     num_source_data += np.sum( ~ np.isnan( channels[d][i][j][x]
                                                     [ model_params.bstrips ].x ) ) 
                     
-                    # print( "num_source_data: ", num_source_data )
+                    # print( channels[d][i][j][x] )
+                    # print( num_source_data ) # print( "num_source_data: ", num_source_data )
                     
                 total_strip_data += num_source_data
                 
-                if num_source_data < 5 :
+                if num_source_data < 3 :
                     skip[i] = 1 
 
             if any( skip ) :
@@ -789,7 +801,6 @@ def estimate_deadlayers( model_params, channels, actual_energies,
 
     print( 'num_params: ', num_params )
 
-    print( channels[0][0][0][1] ) 
     
     mini = lmfit.Minimizer( objective,
                             fit_params,
@@ -798,11 +809,14 @@ def estimate_deadlayers( model_params, channels, actual_energies,
                                          det_sectheta, source_sectheta,
                                          actual_energies ),
                             # options = { 'maxiter' : int(1e7),
-                            #             'xatol' : 1e-10,
-                            #             'fatol' : 1e-10 }
+                            #             'xatol' : 1e-6,
+                            #             'fatol' : 1e-6 }
                             maxfev = int(1e7),
                             xtol = 1e-12,
                             ftol = 1e-12
+                            # max_nfev = int(1e7),
+                            # xtol = 1e-12,
+                            # ftol = 1e-12
     )
 
     # print( model_params.fstrips ) 
@@ -828,56 +842,86 @@ def estimate_deadlayers( model_params, channels, actual_energies,
         for i in range( num_sources ) :
             for j in range( num_peaks_per_source[i] ) :
                 resid[db][i][j] = np.expand_dims( resid[db][i][j], axis = 0 ) 
-        resid = spec.dssd_data_container( resid[db] )
-        print( resid.shape ) 
+        resid = spec.dssd_data_container( resid[db], 1 )
+        print( resid.shape )
+        heatmap_savepath = savepath + 'cal_heatmap.png'
         resid.plot_heatmap( cmap = colorcet.m_diverging_bkr_55_10_c35,
-                            show = 1 ) 
-        
+                            show = 1, savepath = heatmap_savepath ) 
 
-        
-    # plt.imshow( resid[0][0][0], cmap = colorcet.m_diverging_bkr_55_10_c35 )
-    # plt.show()
-    # plt.cla()
-    
-    # print( '' )
+    if savepath is not None :
+        plot_vs_sectheta( channels, det_sectheta,
+                          actual_energies, result.params, model_params, savepath ) 
 
-    # ci = lmfit.conf_interval( mini, result, sigmas = ( 1, 2 ),
-    #                           p_names = [ 'det_deadlayer', 'source_constant_0_0', 'source_constant_0_1' ] )
-
-    # lmfit.printfuncs.report_ci( ci ) 
-
-
-    # determine whether to use 3d plot or 2d plot
-    
-    # Edet = [ [ [0 for j in range( num_peaks_per_source[i] ) ]
-    #            for i in range( num_sources ) ]
-    #          for d in range( num_dbs ) ]
+    return result
+    # ci = lmfit.conf_interval(mini, result)
+    # lmfit.printfuncs.report_ci(ci)
 
     
-
     
+            
+def plot_vs_sectheta( channels, secant_matrices, actual_energies,
+                      params, model_params, savepath ) : 
 
-    # if angled_3d_plot :
-    #     plot_results_3d( result, source_geometries, peak_matrices,
-    #                      dbs, source_indices,
-    #                      model_params,
-    #                      savefig_dir )
+    # channel_fit = edet_to_channel_fit( edet, params ) 
+    # num_data_per_group = [ len( data[i] ) for i in range( len( data ) ) ]
 
-        
-    # else :
-    #     plot_energy_vs_sectheta( result, secant_matrices, peak_matrices,
-    #                              dbs, source_indices,
-    #                              model_params,
-    #                              annotate = annotate,
-    #                              subtitle = subtitle,
-    #                              view_pixel = view_pixel,
-    #                              residual_scatter_plot = residual_scatter_plot,
-    #                              angled_3d_plot = angled_3d_plot,
-    #                              savefig_dir = savefig_dir ) 
-    
+    num_groups = len( channels[0] )
+    num_data_per_group = [ len(t) for t in channels[0] ] 
+    max_peaks = max( num_data_per_group ) 
 
-    return result 
+    for db in range( len( channels ) ) :
+        for x in model_params.fstrips[db] : 
 
+            no_data = 1 
+
+            f, axarr = plt.subplots( max_peaks, num_groups,
+                                             figsize = ( 12,8 ), squeeze = 0 )
+
+            f.subplots_adjust( wspace = 0.5, hspace = 0.5 )
+
+            for i in range( num_groups ) :
+                for j in range( max_peaks ) :
+                    
+                    if j < num_data_per_group[i] :
+                        
+                        a = params[ 'a_%d_%d' % (db, x ) ]
+                        b = params[ 'b_%d_%d' % (db, x ) ]
+                        source_constant = params[ 'source_constant_%d_%d'
+                                                  % ( i, j ) ]
+
+                        tmp1 = channels[db][i][j][x].x
+                        tmp2 = channels[db][i][j][x].dx
+                        axarr[j,i].errorbar( secant_matrices[db][i][x],
+                                             tmp1, tmp2,
+                                             ls = 'none' ) 
+                        sec = secant_matrices[db][i][x]
+                        min_sectheta = min( sec[ ~ np.isnan( tmp1 ) ] ) 
+                        max_sectheta = max( sec[ ~ np.isnan( tmp1 ) ] ) 
+                        min_chan = ( ( actual_energies[i][j] - source_constant * min_sectheta ) - b ) / a
+                        max_chan = ( ( actual_energies[i][j] - source_constant * max_sectheta ) - b ) / a
+                        axarr[j,i].plot( [ min_sectheta, max_sectheta ], [ min_chan, max_chan ] ) 
+                        
+                        nan_count = np.count_nonzero(
+                            np.isnan( secant_matrices[db][i][x] )
+                            | np.isnan( tmp1 ) ) 
+                        
+                        if nan_count < len( tmp1 ) :
+                            no_data = 0
+
+                    else :
+                        axarr[j,i].axis( 'off' )
+
+            outdir = savepath 
+
+            os.makedirs( outdir, exist_ok = 1 )
+
+            if not no_data : 
+                plt.savefig( outdir +  '%d.png' % x )
+
+            plt.close( 'all' ) 
+
+
+ 
 
 
 

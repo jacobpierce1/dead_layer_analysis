@@ -97,53 +97,59 @@ illuminated_fstrips = [
 # x = fstrip
 # y = bstrip
 
-def get_secant( i, d, x, y ) :
+def get_secant( i, j, d, x, y ) :
 
     # be 8 continuum
     if i == 0 :
+        ret = 1 
         displacement = displacements[i][d] + 2.0 * np.array( [ -y, x, 0 ] )
 
     else : 
-        if x < illuminated_fstrips[i][d][0] :
-            k = 1
+        # if x < illuminated_fstrips[i][d][0] :
+        #     k = 1
 
-        elif x > illuminated_fstrips[i][d][1] :
-            k = 0
+        # elif x > illuminated_fstrips[i][d][1] :
+        #     k = 0
 
-        else :
-            return np.nan
+        # else :
+        #     return np.nan
+        
+        
+        displacement = displacements[i][d][j] + 2.0 * np.array( [ y, x, 0 ] )
 
-        displacement = displacements[i][d][k] + 2.0 * np.array( [ y, x, 0 ] )
-
-    return np.linalg.norm( displacement ) / displacement[2]
+        ret = 0 
+        
+        if j == 0 and x < illuminated_fstrips[i][d][0] :
+            ret = 1
+        elif j == 1 and x > illuminated_fstrips[i][d][1] :
+            ret = 1
+            
+    if ret :
+        return  np.linalg.norm( displacement ) / np.abs( displacement[2] ) 
+    else :
+        return np.nan
     
 
-# # test secant ( remove )
-# theta1 = np.arctan2( np.sqrt( (det_center_x + ( np.arange(32) - 16.5) * 2 ) ** 2 
-#                               + ( det_center_y + ( 0 - 16.5) * 2 ) ** 2 ),
-#                      det_center_z )
-
-# theta2 = np.arctan2( np.sqrt( (det_center_x + ( np.arange(32) - 16.5) * 2 ) ** 2 
-#                               + ( - det_center_y + ( 0 - 16.5) * 2 ) ** 2 ),
-#                      det_center_z )
 
 
+def get_secant_matrices(  ) : 
 
-# print( 'theta1 :', theta1 ) 
-
-# print( 'theta2 :', theta2 ) 
-
-# sys.exit(0);
-
-
-def get_secant_matrices() : 
+    # if not separate_sources : 
     
-    det_sectheta = np.zeros( (3, 4, 32,32))
+    #     det_sectheta = np.zeros( (3, 4, 32,32))
 
-    for i in range( 3 ) : 
-        for d in range(4) :
-            for x in range(32) :
-                for y in range(32) :
-                    det_sectheta[ i, d, x, y ] = get_secant( i, d, x, y ) 
+    #     for i in range( 3 ) : 
+    #         for d in range(4) :
+    #             for x in range(32) :
+    #                 for y in range(32) :
+    #                     det_sectheta[ i, d, x, y ] = get_secant( i, d, x, y ) 
 
+    det_sectheta = np.zeros( ( 3,2,4,32,32 ) )
+    for i in range(3):
+        for j in range(2):
+            for d in range(4):
+                for x in range(32):
+                    for y in range(32) :
+                        det_sectheta[ i,j,d,x,y ] = get_secant( i,j,d,x,y )
+                        
     return det_sectheta

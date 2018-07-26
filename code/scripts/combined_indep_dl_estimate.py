@@ -1,9 +1,15 @@
 import numpy as np
 import scipy.optimize 
 import scipy.interpolate 
-import numdifftools
+import jspectroscopy as jspec 
+import matplotlib.pyplot as plt 
+import scipy.stats
+from jutils import meas 
+import scipy.optimize
 
 
+
+data = []
 
 
 cf_energies = np.array( [  5704, 5759.5, 5783.3, 5813.3, 5849.3 ] )
@@ -24,36 +30,86 @@ cm_probs = [ 0.231,  0.769 ]
 
 
 
-data = np.array( [
-    53.99,
-    48.06,
-    48.14,
-    42.37,
-    39.8281561,
-    29.2330508,
-    30.3482182,
-    21.3137402,
-    38.2670312,
-    25.3025039
-] )
+
+def get_data( name, plot = 0 ) :
+    analysis_mgr = jspec.dssd_analysis_manager( name, '../../storage/', (32,32),
+                                            [1,1,1] ) 
+    data = analysis_mgr.load_dill( 'dl_estimates' )
+
+    num_sources = len( data )
+    num_dets = len( data[0][0] )
+    
+    ret = meas.empty( ( num_sources, num_dets ) )
+
+    for i in range( num_sources ) :
+        for d in range( num_dets ) :
+            tmp = data[i][0][d]
+            ret[i,d] = meas.meas( np.nanmean( tmp.x ), np.nanstd( tmp.x ) )
+    
+    if plot :
+        f, axarr = plt.subplots( num_sources, num_dets, squeeze = 0 )
+
+        for d in range( num_dets ) :
+            for i in range( num_sources ) :
+                tmp = data[i][0][d]
+                print( d, i ) 
+                print( ret[i,d] ) 
+                axarr[i,d].errorbar( range(32), tmp.x, tmp.dx, ls = 'none' )
+                axarr[i,d].axhline( ret[i,d].x, c='r' )
+        plt.show()
+        plt.close( 'all' ) 
+                
+    return ret
+
+# data = {
+#     'det1_old' : {},
+#     'det1' : {},
+#     'det2' : {},
+#     'det3' : {},
+#     'det4' : {}
+#     }
+
+# tmp = get_data( 'det1_moved', plot = 1 ) 
+# data[ 'det1_old' ][ 'pu' ] = tmp[0][0]
+# data[ 'det1_old' ][ 'cf' ] = tmp[1][0]
 
 
+# tmp = get_data( 'det3_moved', plot = 1 ) 
+# data[ 'det3' ][ 'pu' ] = tmp[0][0]
+# data[ 'det3' ][ 'cf' ] = tmp[1][0]
 
-errors = np.array( [
-    1.5,
-    0.96,
-    1.6,
-    1.5,
-    0.474918, # gd det 2
-    0.613169, # cm get 2 
-    0.541718,
-    0.830304,
-    0.470542,
-    0.632588
-    ,0.361234,
-    0.822255
-] )
+# tmp = get_data( 'full_bkgd_tot', plot = 1 ) 
+# data[ 'det1' ][ 'gd' ] = tmp[0][0]
+# data[ 'det1' ][ 'cm' ] = tmp[1][0]
+# data[ 'det2' ][ 'gd' ] = tmp[0][1]
+# data[ 'det2' ][ 'cm' ] = tmp[1][1]
+# data[ 'det3' ][ 'gd' ] = tmp[0][2]
+# data[ 'det3' ][ 'cm' ] = tmp[1][2]
+# data[ 'det4' ][ 'gd' ] = tmp[0][3]
+# data[ 'det4' ][ 'cm' ] = tmp[1][3]
 
+
+data = meas.empty( 12 )
+tmp = get_data( 'det1_moved', plot = 1 )
+data[0] = tmp[0][0]
+data[1] = tmp[1][0]
+
+tmp = get_data( 'det3_moved', plot = 1 )
+data[2] = tmp[0][0]
+data[3] = tmp[1][0]
+
+tmp = get_data( 'full_bkgd_tot', plot = 1 )
+data[4] = tmp[0][0]
+data[5] = tmp[1][0]
+data[6] = tmp[0][1]
+data[7] = tmp[1][1]
+data[8] = tmp[0][2]
+data[9] = tmp[1][2]
+data[10] = tmp[0][3]
+data[11] = tmp[1][3]
+
+
+print( data ) 
 
 
 
@@ -110,21 +166,21 @@ def objective( params ) :
     det1_old_dl, det1_dl, det2_dl, det3_dl, det4_dl, pu, cf, gd, cm = params
 
     resid = np.array( [
-        data[0] - pu - stopping_powers[ 'pu' ] * det1_old_dl,
-        data[1] - cf - stopping_powers[ 'cf' ] * det1_old_dl,
-        data[2] - pu - stopping_powers[ 'pu' ] * det3_dl,
-        data[3] - cf - stopping_powers[ 'cf' ] * det3_dl,
-        data[4] - gd - stopping_powers[ 'gd' ] * det2_dl,
-        data[5] - cm - stopping_powers[ 'cm' ] * det2_dl,
-        data[6] - gd - stopping_powers[ 'gd' ] * det3_dl,
-        data[7] - cm - stopping_powers[ 'cm' ] * det3_dl,
-        data[8] - gd - stopping_powers[ 'gd' ] * det4_dl,
-        data[9] - cm - stopping_powers[ 'cm' ] * det4_dl,
-        data[10] - gd - stopping_powers[ 'gd' ] * det1_dl,
-        data[11] - cm - stopping_powers[ 'cm' ] * det1_dl,
+        data[0].x - pu - stopping_powers[ 'pu' ] * det1_old_dl,
+        data[1].x - cf - stopping_powers[ 'cf' ] * det1_old_dl,
+        data[2].x - pu - stopping_powers[ 'pu' ] * det3_dl,
+        data[3].x - cf - stopping_powers[ 'cf' ] * det3_dl,
+        data[4].x - gd - stopping_powers[ 'gd' ] * det1_dl,
+        data[5].x - cm - stopping_powers[ 'cm' ] * det1_dl,
+        data[6].x - gd - stopping_powers[ 'gd' ] * det2_dl,
+        data[7].x - cm - stopping_powers[ 'cm' ] * det2_dl,
+        data[8].x - gd - stopping_powers[ 'gd' ] * det3_dl,
+        data[9].x - cm - stopping_powers[ 'cm' ] * det3_dl,
+        data[10].x - gd - stopping_powers[ 'gd' ] * det4_dl,
+        data[11].x - cm - stopping_powers[ 'cm' ] * det4_dl,
     ] )
 
-    resid #  /= errors 
+    resid  /= data.dx 
 
     return np.sum(  resid ** 2 )
     # return resid

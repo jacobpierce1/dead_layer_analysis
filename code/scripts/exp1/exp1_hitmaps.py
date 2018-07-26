@@ -326,27 +326,27 @@ source_names = [ '240 Pu', '238 Pu', '249 Cf' ]
 # name = 'angled'
 
 
-# cut_strips = 1
-# strips_to_remove = [ [0,31,10,27,12,15], [0,31,25,26,16,15,21,27] ]
-# params_guesses = np.array( [ [ [ 3.0e7, 87.10, -9.31, 58.35 ] ],
-#                              [ [ 3.0e7, 32.95, -31.45, 58.72 ] ],
-#                              [ [ 3.0e7, 85.35, -46.06, 57.74 ] ] ] )
-# extra_data_to_remove = [ [3,7], [3,7], [11,6] ]
-# name = 'det3_moved'
-
-
-load = 1
-cut_strips = 0
+cut_strips = 1
 strips_to_remove = [ [0,31,10,27,12,15], [0,31,25,26,16,15,21,27] ]
 params_guesses = np.array( [ [ [ 3.0e7, 87.10, -9.31, 58.35 ] ],
                              [ [ 3.0e7, 32.95, -31.45, 58.72 ] ],
                              [ [ 3.0e7, 85.35, -46.06, 57.74 ] ] ] )
 extra_data_to_remove = [ [3,7], [3,7], [11,6] ]
-name = 'det1_moved'
+name = 'det3_moved'
+
+
+# load = 1
+# cut_strips = 0
+# strips_to_remove = [ [0,31,10,27,12,15], [0,31,25,26,16,15,21,27] ]
+# params_guesses = np.array( [ [ [ 3.0e7, 87.10, -9.31, 58.35 ] ],
+#                              [ [ 3.0e7, 32.95, -31.45, 58.72 ] ],
+#                              [ [ 3.0e7, 85.35, -46.06, 57.74 ] ] ] )
+# extra_data_to_remove = [ [3,7], [3,7], [11,6] ]
+# name = 'det1_moved'
 
 
 
-group_ranges = [ [ [-45, 20] ], [[-60, 20]], [[-60, 30]] ]
+group_ranges = [ [ [-55, 20] ], [[-60, 20]], [[-55, 28]] ]
 
 
 num_peaks_to_detect = 6
@@ -388,11 +388,12 @@ primary_peaks = analysis_mgr.compute_primary_peaks( group_ranges,
 #                                           load = 0, plot = 1  )
 
 stds = analysis_mgr.compute_stds( primary_peaks, group_ranges,
-                                  plot = 0, load = load ) 
+                                  plot = 0, load = 1 ) 
 
 means = analysis_mgr.compute_means( primary_peaks, group_ranges,
-                          plot = 0, load = load ) 
+                                    plot = 0, load = 1 ) 
 
+sys.exit(0) 
 # averages = spec.compute_averages( analysis_mgr, primary_peaks, data_retriever
 
 

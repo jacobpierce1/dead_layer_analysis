@@ -171,8 +171,6 @@ def point_source_resid( params, hitmap, d_hitmap ) :
 
 
 
-group_ranges = [ [ -140, 32 ], [-110, 50] ]
-
 
 num_peaks_to_detect = 2
 
@@ -277,45 +275,51 @@ extra_args = [
 
 
 
-db = spec.spectrum_db( 'full_bkgd_tot', '../../../storage/' ) 
+
+
+
+# db = spec.spectrum_db( 'full_bkgd_tot', '../../../storage/' ) 
+
+analysis_mgr = spec.dssd_analysis_manager( 'full_bkgd_tot', '../../../storage/', (32,32),
+                                           [2,1] ) 
 
 peak_group_ranges = [ [1300,2000], [2500,3300] ]
 thresholds = [ 20, 20 ] 
 
 num_groups = len( peak_group_ranges ) 
 
-primary_peaks = db.compute_primary_peaks( peak_group_ranges, thresholds,
-                                          load = 1, plot = 0  )
+primary_peaks = analysis_mgr.compute_primary_peaks( peak_group_ranges, thresholds,
+                                                    plot = 0, load = 1   )
 
-group_ranges = [ [ [-np.inf, -80], [-30,20] ],  [ [-50,20 ] ] ]
-
-hitmaps = db.compute_hitmaps( group_ranges, plot = 0, load = 1 )
+group_ranges = [ [ [-np.inf, -80], [-35,25] ],  [ [-51,35 ] ] ]
 
 
+peakpos_guesses = [ [ -800, None ], [ None ] ]
+bandwidth = 0.5
 
 
-
-# print( hitmaps.values )
-# sys.exit(0)
+hitmaps = analysis_mgr.compute_hitmaps( group_ranges, plot = 0, load = 1 )
 
 
-# group_ranges = [ [ [np.inf,-30], [-30,20] ],  [ [-50,20] ] ]
+kde_peakpos = analysis_mgr.compute_kde_peakpos( primary_peaks, group_ranges,
+                                                peakpos_guesses, bandwidth,
+                                                plot = 0, load = 0 ) 
 
-# group_ranges = [ [-30,20],  [-50,20] ]
+stds = analysis_mgr.compute_stds( primary_peaks, group_ranges,
+                                  plot = 0, load = 1 ) 
 
-stds = db.compute_stds( primary_peaks, group_ranges,
-                        plot = 0, load = 1 ) 
+means = analysis_mgr.compute_means( primary_peaks, group_ranges,
+                                    plot = 0, load = 1 ) 
 
-means = db.compute_means( primary_peaks, group_ranges,
-                            plot = 0, load = 1 ) 
 
 hitmaps.flatten()
-db.save_dill( hitmaps, 'hitmaps' ) 
+analysis_mgr.save_dill( hitmaps, 'hitmaps' ) 
 stds.flatten()
-db.save_dill( stds, 'stds' )
+analysis_mgr.save_dill( stds, 'stds' )
 means.flatten()
-db.save_dill( means, 'means' )
-
+analysis_mgr.save_dill( means, 'means' )
+kde_peakpos.flatten()
+analysis_mgr.save_dill( kde_peakpos, 'kde_peakpos' )
  
 
 source_names = [ 'Be 8 Continuum', 'Gd 148', 'Cm 244' ]
@@ -324,15 +328,17 @@ secant_matrices = exp2_geometry.get_secant_matrices()
 
 # print( hitmaps[0][0].shape ) 
 
-db.plot_heatmap( 'means', source_names, 0 )
-db.plot_heatmap( 'stds', source_names, 0 )
-db.plot_heatmap( 'primary_peaks', source_names, 0 ) 
+analysis_mgr.plot_heatmap( 'means', source_names )
+analysis_mgr.plot_heatmap( 'stds', source_names )
+analysis_mgr.plot_heatmap( 'primary_peaks', source_names ) 
+analysis_mgr.plot_heatmap( 'kde_peakpos', source_names ) 
 
 print( secant_matrices.shape ) 
 
-db.plot_vs_sectheta( 'means', source_names, secant_matrices, 0 )
-db.plot_vs_sectheta( 'stds', source_names, secant_matrices, 0 ) 
-db.plot_vs_sectheta( 'primary_peaks', source_names, secant_matrices, 0 ) 
+analysis_mgr.plot_vs_sectheta( 'kde_peakpos', source_names, secant_matrices )
+# analysis_mgr.plot_vs_sectheta( 'means', source_names, secant_matrices )
+# analysis_mgr.plot_vs_sectheta( 'stds', source_names, secant_matrices ) 
+# analysis_mgr.plot_vs_sectheta( 'primary_peaks', source_names, secant_matrices ) 
 
 
 
@@ -357,4 +363,3 @@ db.plot_vs_sectheta( 'primary_peaks', source_names, secant_matrices, 0 )
 #                 extra_args = extra_args  )
 
 
-db.disconnect()

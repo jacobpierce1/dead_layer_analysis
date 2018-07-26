@@ -14,55 +14,28 @@ import scipy.interpolate
 
 
 
-
-
-# # create and populate the histogram array 
-# def data_fetcher( name, detnum, x, y, mode  ) :
-
-#     xaxis = np.arange( 5000 )
-
-#     if detnum is not None : 
-#         infile = ( '../../data/extracted_ttree_data/'
-#                    + name + '/%s_%d_%d_%d.bin' % ( name, detnum, x, y ) )
-
-#     else :
-#         infile = ( '../../data/extracted_ttree_data/'
-#                    + name + '/%s_%d_%d.bin' % ( name, x, y ) )
-    
-#     # print( infile ) 
-    
-#     efront_histo = np.zeros( xaxis.size )
-
-#     if not data.construct_histo_array( infile, efront_histo, mode ) :
-#         print( 'error: couldnt open file' ) 
-
-#     dy = np.sqrt( efront_histo )
-#     dy[ dy==0 ] = 1 
-        
-#     return ( xaxis, efront_histo, dy ) 
+plot_fstrip = 0
 
 
 
 
-
-
-db_name = 'alpharun20-30'
-# db_name = 'full1071-1078' 
-# db_name = 'full_bkgd_tot'
+# name = 'full_bkgd_tot'
+name = 'alpharun11-19'
 detnum = 1
-channels = [ 1400, 3100 ]
-# channels = [ 2900, 6000 ]
-f = 15
-bstrips = [ 12]
 
 
+if plot_fstrip : 
+    fstrip = 4
+    bstrips = [ 10, 20, 30]
+    num_strips = len( bstrips ) 
+    channels = [ 1400, 3100 ]
+else :
+    bstrip = 15
+    fstrips = [ 3,29 ]
+    num_strips = len( fstrips ) 
+    channels = [ 0, 3000 ] 
 
-# db_name = 'det3_cent'
-# detnum = None
-# channels = [2600,3100]
-# f = 15
-# bstrips = [ 13, 15, 17 ]
-# mode = 0
+analysis_mgr = spec.dssd_analysis_manager( name, '../../storage', (32,32), [ 1,1,1] ) 
 
 
 cols = 'bgrk'
@@ -70,30 +43,32 @@ cols = 'bgrk'
 peakzoom = None
 
 
-# db_path = '../../storage/databases/'
-# db = spec.spectrum_db( db_path + db_name )
-# channels = db.read_values( '../../storage/mu_values/' + db_name
-#                               + '_mu_values.bin' ) 
-
 
 
 plt.figure( figsize=(10,5) )
 
 ax = plt.axes()
 
-for i in range( len( bstrips ) ) :
+for i in range( num_strips ) :
 
-    b = bstrips[i]
+    if plot_fstrip : 
+        data = analysis_mgr.get_data( detnum, fstrip, bstrips[i] )
+        label = bstrips[i]
+    else :
+        data = analysis_mgr.get_data( detnum, fstrips[i], bstrip, mode = 'eback' )
+        label = fstrips[i]
+        
+        
+    x = np.arange( channels[0], channels[1], 2 ) 
+    y, tmp = np.histogram( data, bins = x )
+    x = x[:-1] 
 
-    x, y, dy = bpt.data_fetcher( '../../bpt-data/extracted_root_tree_data/',
-                                 db_name,
-                                 detnum, f, b )
-
-    ax.semilogy( x, y, c = cols[i], label = str( b ),
+    
+    ax.semilogy( x, y, c = cols[i], label = label,
                  ls='steps-mid', linewidth = 0.3 )
 
-    ax.set_title( '%s: det=%s, fstrip=%d, bstrips=%s' % ( db_name, str( detnum ),
-                                                          f, str(bstrips) ) ) 
+    # ax.set_title( '%s: det=%s, fstrip=%d, bstrips=%s' % ( name, str( detnum ),
+    #                                                       fstrip, str(bstrips) ) ) 
     
     # print( ( f,b ) )
     # print( 'mu values:' )
