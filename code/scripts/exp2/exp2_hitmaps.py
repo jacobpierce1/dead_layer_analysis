@@ -175,7 +175,6 @@ def point_source_resid( params, hitmap, d_hitmap ) :
 num_peaks_to_detect = 2
 
 
-bpt_data_path = '../../../bpt-data/extracted_root_tree_data'
 
 
 # source_names = [ 'Gd 148', 'Cm 244' ]
@@ -189,8 +188,6 @@ bpt_data_path = '../../../bpt-data/extracted_root_tree_data'
 
 
 
-
-cut_strips = 1
 
 
 params_guesses =  [

@@ -77,16 +77,16 @@ illuminated_fstrips = [
     # group
     [
         # det / source
-        [10,23],
-        [11,25],
+        [9,24],
+        [9,26],
         [6,20],
-        [10,18]
+        [9,19]
     ],
     [
-        [5,16],
-        [10,21],
+        [4,16],
+        [5,22],
         [9,24],
-        [6,23]
+        [5,24]
     ]
 ] 
 
@@ -120,9 +120,9 @@ def get_secant( i, j, d, x, y ) :
 
         ret = 0 
         
-        if j == 0 and x < illuminated_fstrips[i][d][0] :
+        if j == 0 and x > illuminated_fstrips[i][d][1] :
             ret = 1
-        elif j == 1 and x > illuminated_fstrips[i][d][1] :
+        elif j == 1 and x < illuminated_fstrips[i][d][0] :
             ret = 1
             
     if ret :

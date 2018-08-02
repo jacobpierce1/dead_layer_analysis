@@ -67,12 +67,12 @@ stopping_powers = np.array( [ stop( gd_energy ),
 source_ids = np.array(
 [
     [
-        [ 0, 1, 0, 0 ],
-        [ 0, 1, 1, 1 ]
+        [ 1, 0, 0, 1 ],
+        [ 0, 0, 1, 1 ]
     ],
     [
-        [ 0, 0, 1, 0 ],
-        [ 1, 1, 0, 0 ]
+        [ 1, 0, 0, 0 ],
+        [ 0, 1, 1, 1 ]
     ]
 ] )
 
@@ -85,14 +85,13 @@ bad_data_mask = np.array(
         [ 0, 0, 0, 0 ]
     ],
     [
-        [ 1, 0, 0, 0 ],
-        [ 1, 0, 0, 0 ]
+        [ 0, 0, 0, 1 ],
+        [ 0, 0, 0, 1 ]
     ]
 ], dtype = bool )
 
 
-
-
+print( data ) 
 data[ bad_data_mask ] = meas.nan
 
 
@@ -100,9 +99,7 @@ data[ bad_data_mask ] = meas.nan
 
 print( data )
 
-
-def objective( params ) :
-
+def get_resid( params ) :
     deadlayers = params[:4]
     sources = params[4:]
     sources = sources.reshape((2,2))
@@ -117,9 +114,12 @@ def objective( params ) :
                                  + sources[i, source_id] - data[i,j,d].x  )
 
     resid /= data.dx
+    return resid
+    
 
-    # print( resid ) 
 
+def objective( params ) :
+    resid = get_resid( params )
     resid = resid[ ~np.isnan( resid ) ].flatten()
     # print( resid ) 
     return np.sum(  resid ** 2 )
@@ -183,17 +183,19 @@ params_guess = np.array( [ 100.0, 100.0, 100.0, 100.0, 15.0, 15.0, 15.0, 15.0 ] 
 
 
 
-ret = scipy.optimize.basinhopping( objective, params_guess, disp = 0, niter = 100,
-                                   minimizer_kwargs = { 'ftol' : 1e-12 } ) 
-print( ret ) 
+ret = scipy.optimize.basinhopping( objective, params_guess, disp = 0, niter = 100 )
+# print( ret ) 
 
 cov = ret.lowest_optimization_result.hess_inv
     
             
 params_result = ret.x
 chisqr = ret.fun
+resid = get_resid( params_result )
 
-nfree = len( data.flatten() ) - len( params_result ) 
+print( 'resid: ', resid ) 
+
+nfree = np.sum( ~ np.isnan( resid ) ) - len( params_result ) 
 redchisqr = chisqr / nfree
 print( 'chisqr: ', chisqr ) 
 print( 'redchisqr: ', redchisqr ) 
@@ -204,8 +206,7 @@ print( 'errors: ', params_result_errors )
 
 
 
-print( data ) 
-
+# print( data ) 
 
 
 

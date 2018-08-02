@@ -838,20 +838,22 @@ def estimate_deadlayers( model_params, channels_in, actual_energies,
                                                  channels, det_sectheta, source_sectheta,
                                                  actual_energies )
     
+    if savepath is not None :
+        plot_vs_sectheta( channels, det_sectheta,
+                          actual_energies, result.params, model_params, savepath ) 
+
     for db in range( num_dbs ) :
         for i in range( num_sources ) :
             for j in range( num_peaks_per_source[i] ) :
                 resid[db][i][j] = np.expand_dims( resid[db][i][j], axis = 0 ) 
-        resid = spec.dssd_data_container( resid[db], 1 )
+        resid = spec.dssd_data_container( resid[db]  )
         print( resid.shape )
         heatmap_savepath = savepath + 'cal_heatmap.png'
         resid.plot_heatmap( cmap = colorcet.m_diverging_bkr_55_10_c35,
                             show = 1, savepath = heatmap_savepath ) 
 
-    if savepath is not None :
-        plot_vs_sectheta( channels, det_sectheta,
-                          actual_energies, result.params, model_params, savepath ) 
 
+        
     return result
     # ci = lmfit.conf_interval(mini, result)
     # lmfit.printfuncs.report_ci(ci)
@@ -911,7 +913,7 @@ def plot_vs_sectheta( channels, secant_matrices, actual_energies,
                     else :
                         axarr[j,i].axis( 'off' )
 
-            outdir = savepath 
+            outdir = savepath
 
             os.makedirs( outdir, exist_ok = 1 )
 

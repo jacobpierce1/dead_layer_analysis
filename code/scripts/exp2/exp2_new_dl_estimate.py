@@ -160,7 +160,14 @@ if cut_data :
 
 
 
-savepath = analysis_mgr.storage_path + '/dl_regression/'
+savename = 'dl_regression_indep'
+
+source_names = [ '$^{148}$Gd', '$^{264}$Cm' ]
 
 dl_estimator.independent_dl_regression( channels, secant_matrices, actual_energies,
-                                        show = 0, save = 1, analysis_mgr = analysis_mgr  ) 
+                                        show = 1, savename = savename,
+                                        analysis_mgr = analysis_mgr,
+                                        source_names = source_names,
+                                        # dets = [0], fstrips = [25],
+                                        # title = 'Det 1, Strip 25: Source Distribution Means',
+                                        dpi = 500 ) 
