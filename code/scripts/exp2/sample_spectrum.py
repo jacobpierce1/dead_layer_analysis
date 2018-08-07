@@ -5,7 +5,6 @@ import scipy.stats as st
 from sklearn.neighbors.kde import KernelDensity
 import statsmodels.api as sm
 
-
 # data_name = 'full_bkgd_tot_cut'
 data_name = 'full_bkgd_tot'
 coords = ( 0, 16, 16 ) 

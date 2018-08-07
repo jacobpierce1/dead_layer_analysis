@@ -10,17 +10,24 @@ use_kde = 0
 y_bottom = 1e-6
 hist_bin_size = 20
 
+highres_bin_size = 2
+
 kde_bandwidth = 1
 
-db = spec.spectrum_db( 'full_bkgd_tot', '../../../storage' )
+db = spec.dssd_analysis_manager( 'full_bkgd_tot_cuts', '../../../storage', [1,1,1], (32,32) )
 
 coords = (0 , 16, 16 )
 
 if not use_kde : 
-    data = db.get_data( *coords ) 
+    data = db.get_data( *coords )
+    
     x = np.arange( 0, 3000, hist_bin_size ) 
-    y, bin_edges = np.histogram( data, x ) 
+    y, bin_edges = np.histogram( data, x )
     x = x[0:-1]
+
+    x_fine = np.arange( 0, 3000, highres_bin_size ) 
+    y_fine, bin_edges_fine = np.histogram( data, x_fine )
+    x_fine = x_fine[0:-1]
     
     # ax = plt.axes() 
     
@@ -32,13 +39,13 @@ if not use_kde :
 
 
     ax2 = f.add_subplot( 223 )
-    ax2.semilogy( x, y, ls = 'steps-mid' )
+    ax2.semilogy( x_fine, y_fine, ls = 'steps-mid' )
     ax2.set_xlim( left = 1325, right = 1630 ) 
     ax2.set_title( 'Gd Peak' ) 
 
     
     ax3 = f.add_subplot( 224 )
-    ax3.semilogy( x, y, ls = 'steps-mid' )
+    ax3.semilogy( x_fine, y_fine, ls = 'steps-mid' )
     ax3.set_xlim( left = 2420, right = 2930 ) 
     ax3.set_title( 'Cm Peak' ) 
 
